@@ -1,13 +1,16 @@
 {
-  "name":"wms-industrial-studio-rebuild",
-  "version":"1.7.1",
-  "private":true,
-  "type":"module",
-  "description":"WMS Studio greenfield frontend with Cloudflare D1 compatibility",
-  "scripts":{
-    "build":"node scripts/build.mjs",
-    "check":"node --check public/app/main.js && node --check public/app/data.js && node --check public/app/scene.js && node --check 'functions/api/[[path]].js' && node tests/core.test.mjs",
-    "preview":"python3 -m http.server 4173 -d public"
+  "name": "wms-industrial-studio-rebuild",
+  "version": "1.7.1-github-subdirectory",
+  "private": true,
+  "type": "module",
+  "description": "WMS V171, Cloudflare Pages en subdirectorio Localizador de Productos; se conserva Wrangler y D1.",
+  "scripts": {
+    "build": "npm run verify:cloudflare && node scripts/build.mjs",
+    "check": "npm run verify:cloudflare && node --check public/app/main.js && node --check public/app/data.js && node --check public/app/scene.js && node --check \"functions/api/[[path]].js\" && node tests/core.test.mjs",
+    "preview": "python3 -m http.server 4173 -d public",
+    "verify:cloudflare": "node scripts/verify-cloudflare.mjs"
   },
-  "dependencies":{"three":"0.160.0"}
+  "dependencies": {
+    "three": "0.160.0"
+  }
 }

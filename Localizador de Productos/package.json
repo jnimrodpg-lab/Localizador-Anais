@@ -1,0 +1,13 @@
+{
+  "name":"wms-industrial-studio-rebuild",
+  "version":"1.7.1",
+  "private":true,
+  "type":"module",
+  "description":"WMS Studio greenfield frontend with Cloudflare D1 compatibility",
+  "scripts":{
+    "build":"node scripts/build.mjs",
+    "check":"node --check public/app/main.js && node --check public/app/data.js && node --check public/app/scene.js && node --check 'functions/api/[[path]].js' && node tests/core.test.mjs",
+    "preview":"python3 -m http.server 4173 -d public"
+  },
+  "dependencies":{"three":"0.160.0"}
+}

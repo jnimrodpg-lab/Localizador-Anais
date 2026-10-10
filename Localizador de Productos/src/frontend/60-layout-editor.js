@@ -2156,24 +2156,6 @@
       maxX = Math.max(maxX, Number(pt.x || 0));
       maxY = Math.max(maxY, Number(pt.y || 0));
     });
-    const streetRoadFill = street => `url(#street-road-${(ensureStreetVisualDefaults(street).roadType||'drain-covered')})`;
-    const streetSidewalkFill = street => `url(#street-sidewalk-${(ensureStreetVisualDefaults(street).sidewalkType||'paver')})`;
-    const streetFurnitureColor = type => ({ bench:'#c86d56', planter:'#7e9d73', bollard:'#6c7074', bin:'#55595d' }[type] || '#c86d56');
-    const renderStreetFurniture2D = (street, layer, selected=false) => {
-      ensureStreetVisualDefaults(street);
-      (street.streetFurniture||[]).forEach(item => {
-        const x=Number(item.x||0), y=Number(item.y||0), rot=(Number(item.rotation||0)||0)*Math.PI/180;
-        const w=Math.max(9, Number(item.width||36)/4), d=Math.max(9, Number(item.depth||22)/4);
-        const cos=Math.cos(rot), sin=Math.sin(rot);
-        const pts=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(([dx,dy])=>({x:x+dx*cos-dy*sin,y:y+dx*sin+dy*cos}));
-        const group=svgEl('g',{'pointer-events':'none'});
-        group.appendChild(svgEl('path',{d:pathFromPts(pts),fill:streetFurnitureColor(item.type),stroke:selected?'#0f4a3f':'rgba(62,63,66,.68)','stroke-width':selected?'1.3':'1'}));
-        if(item.type==='planter') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(4,Math.min(w,d)*.22)),fill:'#557a4f'}));
-        if(item.type==='bench') group.appendChild(svgEl('line',{x1:String(pts[0].x),y1:String((pts[0].y+pts[3].y)/2),x2:String(pts[1].x),y2:String((pts[1].y+pts[2].y)/2),stroke:'rgba(255,244,234,.85)','stroke-width':'1'}));
-        if(item.type==='bollard' || item.type==='bin') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(3.2,Math.min(w,d)*.18)),fill:'rgba(255,250,240,.55)'}));
-        layer.appendChild(group);
-      });
-    };
     (appState.layout?.streets || []).forEach(street => {
       [...(street.sidewalkPts || []), ...(street.roadPts || [])].forEach(pt => {
         minX = Math.min(minX, Number(pt.x || 0));
@@ -2391,6 +2373,25 @@
     if(appState.editor.wallsVisible === false) wallLayer.setAttribute('style','display:none');
     if(appState.editor.openingsVisible === false) openingLayer.setAttribute('style','display:none');
     svg.append(streetsLayer, areaLayer, roomLayer, edgeLayer, zoneLayer, wallLayer, openingLayer, rackLayer, guideLayer, measureLayer, vertexLayer, overlayLayer, streetHandleLayer);
+
+    const streetRoadFill = street => `url(#street-road-${(ensureStreetVisualDefaults(street).roadType||'drain-covered')})`;
+    const streetSidewalkFill = street => `url(#street-sidewalk-${(ensureStreetVisualDefaults(street).sidewalkType||'paver')})`;
+    const streetFurnitureColor = type => ({ bench:'#c86d56', planter:'#7e9d73', bollard:'#6c7074', bin:'#55595d' }[type] || '#c86d56');
+    const renderStreetFurniture2D = (street, layer, selected=false) => {
+      ensureStreetVisualDefaults(street);
+      (street.streetFurniture||[]).forEach(item => {
+        const x=Number(item.x||0), y=Number(item.y||0), rot=(Number(item.rotation||0)||0)*Math.PI/180;
+        const w=Math.max(9, Number(item.width||36)/4), d=Math.max(9, Number(item.depth||22)/4);
+        const cos=Math.cos(rot), sin=Math.sin(rot);
+        const pts=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(([dx,dy])=>({x:x+dx*cos-dy*sin,y:y+dx*sin+dy*cos}));
+        const group=svgEl('g',{'pointer-events':'none'});
+        group.appendChild(svgEl('path',{d:pathFromPts(pts),fill:streetFurnitureColor(item.type),stroke:selected?'#0f4a3f':'rgba(62,63,66,.68)','stroke-width':selected?'1.3':'1'}));
+        if(item.type==='planter') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(4,Math.min(w,d)*.22)),fill:'#557a4f'}));
+        if(item.type==='bench') group.appendChild(svgEl('line',{x1:String(pts[0].x),y1:String((pts[0].y+pts[3].y)/2),x2:String(pts[1].x),y2:String((pts[1].y+pts[2].y)/2),stroke:'rgba(255,244,234,.85)','stroke-width':'1'}));
+        if(item.type==='bollard' || item.type==='bin') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(3.2,Math.min(w,d)*.18)),fill:'rgba(255,250,240,.55)'}));
+        layer.appendChild(group);
+      });
+    };
 
     const floorDefs=svgEl('defs');
     Object.entries(FLOOR_FINISHES).forEach(([key,finish])=>{

@@ -151,18 +151,6 @@ body.theme-light .sidebar-foot .dot.green + b {color:#27613b!important}
 body.theme-dark .sidebar-foot .dot.green + b {color:#9de7ad!important}
 body.theme-light .category-filter-btn,body.theme-dark .category-filter-btn{font-weight:750!important}
 body.theme-light .rack-models-page .rack-block button:disabled,body.theme-dark .rack-models-page .rack-block button:disabled{opacity:.55}
-/* Panel de secciones: no ocultar geometría ni cubrir controles inferiores. */
-@media(min-width:981px){
- .layout-cad-v80 .v80-section-floating{
-  right:18px!important;left:auto!important;bottom:66px!important;
-  width:min(370px,calc(100% - 140px))!important;
-  max-height:min(34vh,280px);overflow:auto;
-  transform:none!important;
-  border-radius:18px;
- }
- .layout-cad-v80 .v80-section-floating .layout-section-grid{grid-template-columns:1fr!important}
- .layout-cad-v80 .v80-section-floating .layout-section-card svg{height:90px!important;min-height:90px!important}
-}
 /* Herramientas del layout legibles en temas claros y oscuros. */
 body.theme-light .layout-cad-v80 .v80-tool-btn.seg-btn,
 body.theme-dark .layout-cad-v80 .v80-tool-btn.seg-btn{color:var(--ink)!important}

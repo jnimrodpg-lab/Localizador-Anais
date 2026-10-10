@@ -33,3 +33,9 @@ Incluye pruebas de sincronía del frontend, compatibilidad de auth, geometría 3
 ## Limitaciones de verificación
 
 Las pruebas de Node terminaron correctamente, y se revisaron visualmente el tablero en escritorio y móvil y el editor de layout en móvil. No se validaron conexiones reales a Google Sheets / Cloudflare D1 ni todos los flujos WebGL con datos de producción. Antes de sustituir el despliegue activo, conviene publicarlo en Preview y comprobar permisos y escenas 3D allí.
+
+## V172 — Corrección dimensional profunda (octubre 2026)
+
+Se corrigió la ocupación del espacio virtual 3D, la estructura del editor CAD y la distribución de secciones en horizontal con botón de visibilidad. Se eliminó el marco externo de sucursales y se unificó la anchura del sidebar entre temas. También se redujeron rebordes blancos de textos SVG. Ver `AUDITORIA_VISUAL_V172.md`.
+
+**Importante:** Los archivos Wrangler, D1 y las migraciones son los mismos de V171. En Cloudflare Pages usar `npm ci && npm run build`, salida `public`.

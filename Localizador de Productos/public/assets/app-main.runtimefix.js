@@ -11412,6 +11412,7 @@ function getSheetBranchOpenMap(){
             <button class="seg-btn v80-icon-btn" data-layout-tag-action="toggle-snap" title="Snap">⌁</button>
             <button class="seg-btn v80-icon-btn" data-layout-tag-action="toggle-dims" title="Cotas">▦</button>
             <button class="seg-btn v80-icon-btn" id="btnZoomFit" title="Ajustar vista">□</button>
+            <button class="seg-btn v172-sections-switch ${appState.editor.sectionVisible ? 'is-active' : ''}" id="btnToggleSections" type="button" aria-pressed="${!!appState.editor.sectionVisible}" title="Mostrar u ocultar cortes X e Y">${appState.editor.sectionVisible ? '◉ Ocultar secciones' : '◫ Mostrar secciones'}</button>
             <button class="seg-btn v165-inspector-toggle" data-layout-tag-action="toggle-right-props" type="button">${appState.editor.rightPanelOpen === false ? 'Mostrar inspector' : 'Ocultar inspector'}</button>
             <button class="seg-btn v165-presentation-toggle" id="btnPresentationMode" type="button">${appState.editor.presentationMode ? 'Salir de solo espacio' : 'Solo espacio'}</button>
             <button class="seg-btn v134-open-3d" id="btnOpenLayout3D" type="button" title="Abrir el mismo modelo en 3D">◈ Ver en 3D</button>
@@ -11451,8 +11452,8 @@ function getSheetBranchOpenMap(){
                   ${structureMode && appState.editor.mode==='wall' ? `<div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · ESC finaliza</div>` : ''}
                   <div id="layoutStackMenu" class="layout-stack-overlay"></div>
                 </div>
-                <div id="layoutSectionWrap" class="v80-section-floating"></div>
               </div>
+              <div id="layoutSectionWrap" class="v80-section-floating" aria-label="Secciones horizontales X e Y"></div>
             </main>
             <aside id="layoutRightPanel" class="layout-right-panel v80-right-panel">${renderLayoutRightPanelMarkup()}</aside>
           </div>
@@ -11876,7 +11877,7 @@ function getSheetBranchOpenMap(){
       const zoneSub = String(zone.id || '').trim().toUpperCase();
       const padX = 12, padY = 10;
       const badgeW = Math.min(Math.max(88, zoneTitle.length * 8.2 + 24), Math.max(96, zb.maxX - zb.minX - 24));
-      const hasSub = zoneSub && zoneSub !== zoneTitle.toUpperCase();
+      const hasSub = !!zoneSub && !zoneTitle.toUpperCase().includes(zoneSub);
       const badgeH = hasSub ? 42 : 28;
       const badgePos = findZoneBadgePlacement(zone, badgeW, badgeH);
       const badgeX = badgePos.x;
@@ -12634,7 +12635,7 @@ function getSheetBranchOpenMap(){
       else if(action === 'toggle-lock-zones') appState.editor.zonesLocked = !appState.editor.zonesLocked;
       else if(action === 'toggle-dims') appState.editor.showDims = !appState.editor.showDims;
       else if(action === 'toggle-snap') { appState.editor.snapEnabled = !isSnapEnabled(); clearRackSnapPreview(); }
-      else if(action === 'toggle-section') appState.editor.sectionVisible = !appState.editor.sectionVisible;
+      else if(action === 'toggle-section'){ appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; }
       else if(action === 'toggle-walls') appState.editor.wallsVisible = appState.editor.wallsVisible === false ? true : false;
       else if(action === 'toggle-openings') appState.editor.openingsVisible = appState.editor.openingsVisible === false ? true : false;
       else if(action === 'toggle-racks') appState.editor.racksVisible = appState.editor.racksVisible === false ? true : false;
@@ -12660,6 +12661,7 @@ function getSheetBranchOpenMap(){
     if($('#btnSaveLayoutTop')) $('#btnSaveLayoutTop').onclick = runSaveLayout;
     if($('#btnSaveLayoutVisible')) $('#btnSaveLayoutVisible').onclick = runSaveLayout;
     if($('#btnSaveLayoutFloat')) $('#btnSaveLayoutFloat').onclick = runSaveLayout;
+    if($('#btnToggleSections')) $('#btnToggleSections').onclick = () => { appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; renderLayoutEditor(); };
     if($('#btnPresentationMode')) $('#btnPresentationMode').onclick = () => { appState.editor.presentationMode = !appState.editor.presentationMode; renderLayoutEditor(); };
     if($('#btnExitPresentation')) $('#btnExitPresentation').onclick = () => { appState.editor.presentationMode = false; renderLayoutEditor(); };
     $$('[data-layout-context-action]').forEach(btn=>btn.onclick = () => {

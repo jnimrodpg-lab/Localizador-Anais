@@ -1,17 +1,24 @@
-# WMS Industrial V180 · Arquitectura compartida 2D / 3D
+# WMS Industrial V181 · CAD estable, pisos y edición de calles
 
-Aplicación WMS para **Cloudflare Pages + Pages Functions + D1**. Esta versión extiende la V179 sin sustituir los módulos de inventario, Google Sheets, mobiliario, racks y calles.
+Aplicación WMS para **Cloudflare Pages + Pages Functions + D1**. Esta versión mejora la V180 sin sustituir los módulos de inventario, Google Sheets, mobiliario, racks y calles.
 
 ## Desplegar
 
-1. Utiliza la carpeta `WMS_Industrial_V180` como raíz de tu repositorio GitHub.
+1. Utiliza la carpeta `WMS_Industrial_V181` como raíz de tu repositorio GitHub.
 2. En Cloudflare Pages selecciona **Framework preset: None**, comando `npm run build` y directorio de salida `public`.
 3. **No cambies las credenciales ni los identificadores de D1** ya configurados en tu proyecto; revisa `wrangler.toml` y conserva el binding `DB`.
 4. Cloudflare debe ejecutar `npm ci` antes de compilar: instala **Three.js 0.160.0** y lo copia a `public/vendor/three.module.js` durante el build.
 5. Publica primero en **Preview**, prueba editar muros y vanos, guardar, cambiar a CAD y volver al espacio 3D. Luego actualiza producción.
-6. La esquina inferior muestra **WMS V180 · Arquitectura 2D/3D**. Usa Ctrl + Shift + R si la interfaz sigue mostrando otra versión.
+6. La esquina inferior muestra **WMS V181 · CAD y Pisos**. Usa Ctrl + Shift + R si la interfaz sigue mostrando otra versión.
 
-## Novedades
+## Novedades V181
+
+- Soluciona `overlayLayer is not defined` en CAD y elimina la acumulación de escuchas de eventos del SVG al editar varios muros.
+- Acabados de piso por zona: porcelanato blanco, marfil y gris, mármol claro, concreto pulido, madera clara y base original. La misma selección aparece en 2D y 3D.
+- Edición de calles desde el inspector: ancho de calzada, ancho de vereda, esquinas de 90°/diagonal y vértices independientes de calzada, vereda interior y exterior.
+- El ajuste de vértices queda guardado en `street.vertexOffsets` y se vuelve a aplicar al reconstruir intersecciones.
+
+## Características arquitectónicas existentes
 
 - Inspector arquitectónico dentro de **Diseñar espacio 3D**, con pestañas Mobiliario / Arquitectura.
 - Muros reales del CAD con longitud, espesor, altura y acabado editables.
@@ -29,10 +36,11 @@ npm ci
 npm run check
 ```
 
-Pruebas destacadas: `npm run test:architecture`, `npm run test:virtual`, `npm run test:auth` y `npm run test:ui-v176` (prueba de regresión de CAD y Sheets, renombrada próximamente).
+Pruebas destacadas: `npm run test:regression-v181`, `npm run test:architecture`, `npm run test:virtual`, `npm run test:auth` y `npm run test:ui-v176` (prueba de regresión de CAD y Sheets, renombrada próximamente).
 
 ## Observaciones y límites
 
+- En el entorno de validación sin acceso al registro npm no fue posible descargar Three.js para completar la prueba WebGL local; la compilación en Cloudflare debe ejecutar `npm ci` y conservar el respaldo CDN.
 - El render completo WebGL con Three.js y los guardados reales en **D1 remoto** deben verificarse en Cloudflare Pages Preview; las pruebas locales no confirman el comportamiento de un despliegue remoto.
 - El perímetro se convierte en muros CAD editables solo si no existe ya un sistema de paredes en esa sucursal. No se altera deliberadamente un plano existente.
 - Las modificaciones de extremos vinculados afectan los muros compartidos mediante sus nodos, pero mover un muro no redefine automáticamente todas las zonas interiores.
@@ -47,4 +55,4 @@ Pruebas destacadas: `npm run test:architecture`, `npm run test:virtual`, `npm ru
 - `functions/`, `migrations/`, `wrangler.toml`: API y base de datos Cloudflare.
 - `tests/architecture-v180.test.mjs`: validación geométrica de paredes y aberturas.
 
-Las mejoras específicas se documentan en `CAMBIOS_V180.md`.
+Las mejoras específicas se documentan en `CAMBIOS_V181.md`.

@@ -445,7 +445,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
           roadWidth: street.roadWidth,
           cornerStyle: street.cornerStyle || appState.layout.meta.defaultStreetCornerStyle || 'right'
         });
-        return { ...street, ...rebuilt, id: street.id || nextStreetId(), name: street.name || `Calle ${street.side}` };
+        return { ...street, ...applyStreetVertexOffsets(street,rebuilt), id: street.id || nextStreetId(), name: street.name || `Calle ${street.side}` };
       }
       return street;
     });
@@ -475,6 +475,113 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const nums = streets.map(s => { const m = String(s?.id || '').match(/^C(\d+)$/i); return m ? Number(m[1]) : NaN; }).filter(Number.isFinite);
     return `C${Math.max(0, ...nums) + 1}`;
   }
+  const FLOOR_FINISHES = Object.freeze({
+    'default':{label:'Base cálida',color:'#e9d7bb',grout:'#e0d0b5',size:60},
+    'porcelain-white':{label:'Porcelanato blanco 60×60',color:'#f2f0eb',grout:'#d1cec7',size:60},
+    'porcelain-ivory':{label:'Porcelanato marfil 60×60',color:'#e8dfcf',grout:'#c9bea9',size:60},
+    'porcelain-gray':{label:'Porcelanato gris 60×60',color:'#c3c7c7',grout:'#929a9c',size:60},
+    'marble':{label:'Porcelanato mármol claro',color:'#e8e8e3',grout:'#b7b9b4',size:60},
+    'concrete':{label:'Concreto pulido',color:'#aeb4b3',grout:'#969f9e',size:120},
+    'wood':{label:'Madera clara',color:'#caaa82',grout:'#9f805d',size:90}
+  });
+  const STREET_SURFACE_PRESETS = Object.freeze({
+    'drain-covered':{label:'Calle con dos canales tapados',fill:'#8e9498',stroke:'#585d62',centerLine:'#f0c447',laneDash:false,drains:true,texture:'drain-covered'},
+    'plain':{label:'Calle sin canales',fill:'#9a9ea1',stroke:'#5c6165',centerLine:'#ead9b2',laneDash:false,drains:false,texture:'plain'}
+  });
+  const SIDEWALK_SURFACE_PRESETS = Object.freeze({
+    'paver':{label:'Vereda con adoquín',fill:'#c47f67',stroke:'#a16450',curb:'#d8bb45',texture:'paver'},
+    'concrete':{label:'Vereda de concreto',fill:'#e7dfd1',stroke:'#c9b892',curb:'#c7b18d',texture:'concrete'}
+  });
+  const STREET_FURNITURE_PRESETS = Object.freeze({
+    'bench':{label:'Banca urbana',width:125,depth:42,rotation:0,accent:'#d16f55'},
+    'planter':{label:'Macetero',width:58,depth:58,rotation:0,accent:'#6c8d64'},
+    'bollard':{label:'Bolardo',width:22,depth:22,rotation:0,accent:'#6e6e70'},
+    'bin':{label:'Basurero',width:34,depth:34,rotation:0,accent:'#666666'}
+  });
+  function getZoneFloorFinish(zone){return FLOOR_FINISHES[zone?.floorFinish] || FLOOR_FINISHES.default;}
+  function getStreetSurfacePreset(key){return STREET_SURFACE_PRESETS[key] || STREET_SURFACE_PRESETS['drain-covered'];}
+  function getSidewalkSurfacePreset(key){return SIDEWALK_SURFACE_PRESETS[key] || SIDEWALK_SURFACE_PRESETS.paver;}
+  function getStreetFurniturePreset(key){return STREET_FURNITURE_PRESETS[key] || STREET_FURNITURE_PRESETS.bench;}
+  function nextStreetFurnitureId(street){
+    const items=Array.isArray(street?.streetFurniture)?street.streetFurniture:[];
+    const nums=items.map(item=>{const m=String(item?.id||'').match(/^SF(\d+)$/i);return m?Number(m[1]):NaN;}).filter(Number.isFinite);
+    return `SF${Math.max(0,...nums)+1}`;
+  }
+  function polygonBounds(pts=[]){
+    if(!Array.isArray(pts)||!pts.length)return {minX:0,minY:0,maxX:0,maxY:0,w:0,h:0};
+    const xs=pts.map(pt=>Number(pt?.x||0)), ys=pts.map(pt=>Number(pt?.y||0));
+    const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    return {minX,minY,maxX,maxY,w:maxX-minX,h:maxY-minY};
+  }
+  function ensureStreetVisualDefaults(street){
+    if(!street||typeof street!=='object')return street;
+    street.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,street.roadType)?street.roadType:'drain-covered';
+    street.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,street.sidewalkType)?street.sidewalkType:'paver';
+    if(!Array.isArray(street.streetFurniture))street.streetFurniture=[];
+    const refBounds=polygonBounds(street.outerSidewalkPts?.length?street.outerSidewalkPts:(street.sidewalkPts?.length?street.sidewalkPts:street.roadPts||[]));
+    street.streetFurniture=street.streetFurniture.map((item,index)=>{
+      const preset=getStreetFurniturePreset(item?.type);
+      const nx=Number(item?.x), ny=Number(item?.y);
+      const fallbackX=street.side==='left'||street.side==='right' ? refBounds.minX + refBounds.w * 0.5 : refBounds.minX + refBounds.w * (0.2 + (index%4)*0.18);
+      const fallbackY=street.side==='left'||street.side==='right' ? refBounds.minY + refBounds.h * (0.2 + (index%4)*0.18) : refBounds.minY + refBounds.h * 0.5;
+      return {
+        id:String(item?.id||nextStreetFurnitureId(street)),
+        type:Object.hasOwn(STREET_FURNITURE_PRESETS,item?.type)?item.type:'bench',
+        name:String(item?.name||preset.label),
+        x:Number.isFinite(nx)?nx:fallbackX,
+        y:Number.isFinite(ny)?ny:fallbackY,
+        rotation:Number.isFinite(Number(item?.rotation))?Number(item.rotation):(street.side==='left'||street.side==='right'?90:0),
+        width:Math.max(12,Number(item?.width||preset.width)||preset.width),
+        depth:Math.max(12,Number(item?.depth||preset.depth)||preset.depth)
+      };
+    });
+    return street;
+  }
+  function streetFurnitureDefaultPosition(street,index=0){
+    const pts=street?.outerSidewalkPts?.length?street.outerSidewalkPts:(street?.sidewalkPts?.length?street.sidewalkPts:street?.roadPts||[]);
+    const b=polygonBounds(pts);
+    if(!pts.length)return {x:0,y:0,rotation:0};
+    if(street?.side==='top') return {x:b.minX+b.w*(0.18+(index%4)*0.2),y:b.minY+b.h*0.5,rotation:0};
+    if(street?.side==='bottom') return {x:b.minX+b.w*(0.18+(index%4)*0.2),y:b.minY+b.h*0.5,rotation:180};
+    if(street?.side==='left') return {x:b.minX+b.w*0.5,y:b.minY+b.h*(0.18+(index%4)*0.2),rotation:90};
+    return {x:b.minX+b.w*0.5,y:b.minY+b.h*(0.18+(index%4)*0.2),rotation:-90};
+  }
+  function addStreetFurniture(street,type='bench'){
+    if(!street)return null;
+    ensureStreetVisualDefaults(street);
+    const preset=getStreetFurniturePreset(type);
+    const idx=(street.streetFurniture||[]).length;
+    const pos=streetFurnitureDefaultPosition(street,idx);
+    const item={id:nextStreetFurnitureId(street),type:Object.hasOwn(STREET_FURNITURE_PRESETS,type)?type:'bench',name:preset.label,x:pos.x,y:pos.y,rotation:pos.rotation,width:preset.width,depth:preset.depth};
+    street.streetFurniture.push(item);
+    return item;
+  }
+  function clearStreetFurniture(street){ if(street) street.streetFurniture=[]; }
+  function isValidStreetPolygon(pts){
+    if(!Array.isArray(pts)||pts.length<3||!pts.every(p=>Number.isFinite(Number(p.x))&&Number.isFinite(Number(p.y))))return false;
+    const orient=[];
+    for(let i=0;i<pts.length;i++){
+      const a=pts[i],b=pts[(i+1)%pts.length],c=pts[(i+2)%pts.length];
+      const cross=(b.x-a.x)*(c.y-b.y)-(b.y-a.y)*(c.x-b.x);
+      if(Math.abs(cross)<1e-4)return false;
+      orient.push(Math.sign(cross));
+    }
+    const area=Math.abs(pts.reduce((sum,p,i)=>{const q=pts[(i+1)%pts.length];return sum+p.x*q.y-q.x*p.y;},0)/2);
+    return area>80 && orient.every(x=>x===orient[0]);
+  }
+  function applyStreetVertexOffsets(street,geometry){
+    const result={...geometry};
+    ['roadPts','sidewalkPts','outerSidewalkPts'].forEach(part=>{
+      const offsets=street.vertexOffsets?.[part];
+      if(!offsets||!Array.isArray(result[part]))return;
+      const candidate=result[part].map((point,i)=>{
+        const offset=offsets[i]||{};
+        return {x:point.x+Math.max(-200,Math.min(200,Number(offset.dx)||0)),y:point.y+Math.max(-200,Math.min(200,Number(offset.dy)||0))};
+      });
+      if(isValidStreetPolygon(candidate))result[part]=candidate;
+    });
+    return result;
+  }
   function getStreetCornerStyle(){ return String(appState.layout?.meta?.defaultStreetCornerStyle || 'right') === 'diagonal' ? 'diagonal' : 'right'; }
   function normalizeStreetDims(source={}, fallback={}){
     const sidewalkWidth = Math.max(20, Number(source.sidewalkWidth ?? fallback.sidewalkWidth ?? 42) || 42);
@@ -499,16 +606,17 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       cornerStyle: street?.cornerStyle || appState.layout?.meta?.defaultStreetCornerStyle || 'right'
     }));
     appState.layout.streets = appState.layout.streets.map(street => {
-      if(!street?.side) return street;
-      return {
+      if(!street?.side) return ensureStreetVisualDefaults(street);
+      const rebuilt={
         ...street,
-        ...buildStreetGeometry(street.side, {
+        ...applyStreetVertexOffsets(street,buildStreetGeometry(street.side, {
           network,
           sidewalkWidth: street.sidewalkWidth,
           roadWidth: street.roadWidth,
           cornerStyle: street.cornerStyle || appState.layout?.meta?.defaultStreetCornerStyle || 'right'
-        })
+        }))
       };
+      return ensureStreetVisualDefaults(rebuilt);
     });
     return appState.layout.streets;
   }
@@ -624,9 +732,10 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     let street = existing;
     if(existing){ Object.assign(existing, geo); street = existing; }
     else {
-      street = { id:nextStreetId(), name:`Calle ${side}`, ...geo };
+      street = { id:nextStreetId(), name:`Calle ${side}`, roadType:'drain-covered', sidewalkType:'paver', streetFurniture:[], ...geo };
       appState.layout.streets.push(street);
     }
+    ensureStreetVisualDefaults(street);
     rebuildStreetNetwork();
     return street;
   }

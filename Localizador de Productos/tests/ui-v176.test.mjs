@@ -20,6 +20,6 @@ assert.ok(modern.includes('grid-template-columns:repeat(2,minmax(0,1fr))') && mo
 assert.equal(css.trim(),(core+'\n\n'+modern).trim(),'El CSS desplegado no coincide con su fuente.');
 assert.ok(main.includes('renderSectionAxisSvg') && main.includes('sheet-config-list'), 'El bundle de JavaScript está incompleto.');
 const html=read('public/index.html');
-assert.ok(html.includes('WMS V180') && html.includes('v180-architecture'), 'Versión del despliegue no identificable.');
+assert.ok(html.includes('WMS V181') && html.includes('v181-cad-floor-streets'), 'Versión del despliegue no identificable.');
 assert.ok(read('wrangler.toml').includes('[[d1_databases]]') && fs.existsSync(path.join(root,'functions/api/[[path]].js')), 'Wrangler / D1 incompletos.');
-console.log('V180 UI básica OK: CAD sin botón retirado, Sheets sin marco obsoleto, cortes, CSS coherente, Cloudflare D1 preservado.');
+console.log('V181 UI básica OK: CAD sin botón retirado, Sheets sin marco obsoleto, cortes, CSS coherente, Cloudflare D1 preservado.');

@@ -341,6 +341,20 @@
             <label class="vspace-field">Posición (%)<input id="vsOpeningPosition" type="number" min="1" max="99" value="${Math.round(Number(op.t||.5)*100)}" ${lock}></label></div>
             <div class="vspace-grid-2"><button type="button" class="vspace-primary" id="vsApplyOpening" ${lock}>Aplicar abertura</button><button type="button" id="vsRemoveOpening" ${lock}>Eliminar abertura</button></div>`:''}
           <button type="button" class="vspace-danger" id="vsRemoveWall" ${lock}>Eliminar muro</button>`:''}`;
+      const zonesWithFloors=(appState.layout.zones||[]);
+      if(zonesWithFloors.length){
+        const selections=zonesWithFloors.map(zone=>`<label class="vspace-field">${vspaceEsc(zone.name||zone.id)}<select data-vs-zone-floor="${vspaceEsc(zone.id)}" ${lock}>${Object.entries(FLOOR_FINISHES).map(([value,f])=>`<option value="${value}" ${(zone.floorFinish||'default')===value?'selected':''}>${vspaceEsc(f.label)}</option>`).join('')}</select></label>`).join('');
+        host.insertAdjacentHTML('beforeend',`<div class="vspace-arch-subtitle">Acabados de piso por zona</div>${selections}`);
+        host.querySelectorAll('[data-vs-zone-floor]').forEach(el=>el.onchange=()=>{
+          if(!canWrite())return;
+          const zone=appState.layout.zones.find(z=>z.id===el.dataset.vsZoneFloor);
+          if(!zone)return;
+          recordHistorySnapshot('structure');
+          zone.floorFinish=Object.hasOwn(FLOOR_FINISHES,el.value)?el.value:'default';
+          vspaceCommit(`piso de ${zone.id}`);
+          state.refreshInspector();
+        });
+      }
       host.querySelector('#vsArchUndo')?.addEventListener('click',()=>{if(!canWrite())return;undoHistory('structure');ensureLayoutDecorations();state.refreshInspector();state.render?.(true);});
       host.querySelector('#vsArchRedo')?.addEventListener('click',()=>{if(!canWrite())return;redoHistory('structure');ensureLayoutDecorations();state.refreshInspector();state.render?.(true);});
       host.querySelectorAll('[data-vs-wall]').forEach(btn=>btn.onclick=()=>selectArch(btn.dataset.vsWall));
@@ -547,7 +561,7 @@
       finally{btn.disabled=false;btn.textContent='Guardar en nube';}
     };
     state.refreshObjects();state.refreshInspector();
-    const destroyBase=()=>{state.destroyed=true;window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
+    const destroyBase=()=>{state.destroyed=true;state.releaseFloorTextures?.();window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
     state.destroy=destroyBase;
     (async()=>{
       try{
@@ -644,10 +658,80 @@
           const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys);
           return [{x:minX,y:minY},{x:maxX,y:minY},{x:maxX,y:maxY},{x:minX,y:maxY}];
         };
-        const addTopSurfaceFromPts = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0) => {
+        const floorTextureCache=new Map();
+        state.releaseFloorTextures=()=>{floorTextureCache.forEach(texture=>texture.dispose());floorTextureCache.clear();};
+        const makeCanvasTexture=(cacheKey, painter, repeatX=1, repeatY=1)=>{
+          if(floorTextureCache.has(cacheKey)) return floorTextureCache.get(cacheKey);
+          const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;
+          const ctx=canvas.getContext('2d');
+          painter(ctx,canvas.width,canvas.height);
+          const texture=new THREE.CanvasTexture(canvas);
+          texture.colorSpace=THREE.SRGBColorSpace;
+          texture.wrapS=THREE.RepeatWrapping;texture.wrapT=THREE.RepeatWrapping;
+          texture.repeat.set(repeatX,repeatY);
+          texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy?.()||4);
+          texture.needsUpdate=true;
+          floorTextureCache.set(cacheKey,texture);
+          return texture;
+        };
+        const floorTexture=(key)=>{
+          if(!key || key==='default' || !FLOOR_FINISHES[key])return null;
+          if(floorTextureCache.has(`floor:${key}`))return floorTextureCache.get(`floor:${key}`);
+          const finish=FLOOR_FINISHES[key];
+          const texture=makeCanvasTexture(`floor:${key}`,(ctx)=>{
+            ctx.fillStyle=finish.color;ctx.fillRect(0,0,256,256);
+            if(key==='marble'){
+              ctx.strokeStyle='rgba(148,158,150,.26)';ctx.lineWidth=2;
+              for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-12,i*90+15);ctx.bezierCurveTo(72,i*90-28,145,i*90+45,270,i*90-12);ctx.stroke();}
+            } else if(key==='wood'){
+              ctx.strokeStyle='rgba(122,91,60,.18)';ctx.lineWidth=2;
+              for(let k=0;k<8;k++){ctx.beginPath();ctx.moveTo(0,k*34);ctx.bezierCurveTo(68,k*34-3,184,k*34+4,256,k*34);ctx.stroke();}
+            } else if(key==='concrete'){
+              ctx.fillStyle='rgba(255,255,255,.035)';
+              for(let i=0;i<100;i++){const px=(i*67)%256,py=(i*113)%256;ctx.fillRect(px,py,2,2);}
+            }
+            ctx.strokeStyle=finish.grout;ctx.globalAlpha=key==='concrete'?.18:.65;
+            ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,253,253);ctx.globalAlpha=1;
+          });
+          const tileSize=(finish.size||60)/100;
+          texture.repeat.set(1/tileSize,1/tileSize);
+          return texture;
+        };
+        const streetTexture=(kind='road', key='plain')=>{
+          const cacheKey=`street:${kind}:${key}`;
+          if(floorTextureCache.has(cacheKey)) return floorTextureCache.get(cacheKey);
+          const texture=makeCanvasTexture(cacheKey,(ctx,w,h)=>{
+            if(kind==='road' && key==='drain-covered'){
+              ctx.fillStyle='#8f9497';ctx.fillRect(0,0,w,h);
+              ctx.fillStyle='rgba(255,255,255,.05)';for(let i=0;i<120;i++){ctx.fillRect((i*41)%w,(i*89)%h,2,2);} 
+              ctx.fillStyle='#676b6f';ctx.fillRect(12,0,20,h);ctx.fillRect(w-32,0,20,h);
+              ctx.strokeStyle='#f0c447';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,h*.26);ctx.lineTo(w,h*.26);ctx.moveTo(0,h*.74);ctx.lineTo(w,h*.74);ctx.stroke();
+              ctx.strokeStyle='rgba(236,236,236,.75)';ctx.lineWidth=2;for(let i=0;i<12;i++){ctx.beginPath();ctx.moveTo(15+i*20,12);ctx.lineTo(25+i*20,4);ctx.moveTo(w-25,h-(10+i*0));ctx.lineTo(w-15,h-(18+i*0));ctx.stroke();}
+              ctx.strokeStyle='rgba(90,90,90,.34)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(34,h*.56);ctx.bezierCurveTo(88,h*.5,118,h*.62,208,h*.48);ctx.stroke();
+            }else if(kind==='road'){
+              ctx.fillStyle='#a2a2a0';ctx.fillRect(0,0,w,h);
+              ctx.fillStyle='rgba(255,255,255,.04)';for(let i=0;i<110;i++){ctx.fillRect((i*53)%w,(i*73)%h,2,2);} 
+              ctx.strokeStyle='rgba(248,242,223,.38)';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(0,h*.5);ctx.lineTo(w,h*.5);ctx.stroke();
+              ctx.strokeStyle='rgba(84,84,84,.26)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(18,h*.7);ctx.bezierCurveTo(64,h*.54,124,h*.72,222,h*.54);ctx.stroke();
+            }else if(kind==='sidewalk' && key==='paver'){
+              ctx.fillStyle='#c78368';ctx.fillRect(0,0,w,h);
+              ctx.strokeStyle='rgba(122,73,58,.48)';ctx.lineWidth=2;
+              for(let y=0;y<=h;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+              for(let y=0;y<h;y+=32){const offset=((y/32)%2)*32;for(let x=offset;x<=w;x+=64){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+32);ctx.stroke();}}
+            }else{
+              ctx.fillStyle='#ece4d6';ctx.fillRect(0,0,w,h);
+              ctx.strokeStyle='rgba(201,184,146,.6)';ctx.lineWidth=2;
+              ctx.strokeRect(2,2,w-4,h-4);
+            }
+          });
+          texture.repeat.set(kind==='road'?1.35:1.1,kind==='road'?1.35:1.1);
+          return texture;
+        };
+        const addTopSurfaceFromPts = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0, floorFinish='default', textureOverride=null) => {
           if(!Array.isArray(pts) || pts.length < 3) return null;
           const shape = shapeFromLayoutPts(pts);
-          const material = meshMat(color,{metalness:.03,roughness:.92,transparent:opacity < 1,opacity,polygonOffset:true,polygonOffsetFactor:-1-order*.15,polygonOffsetUnits:-1,side:THREE.DoubleSide});
+          const texture=textureOverride||floorTexture(floorFinish);
+          const material = meshMat(texture?0xffffff:color,{map:texture||null,metalness:.03,roughness:floorFinish==='marble'?.57:.92,transparent:opacity < 1,opacity,polygonOffset:true,polygonOffsetFactor:-1-order*.15,polygonOffsetUnits:-1,side:THREE.DoubleSide});
           const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
           mesh.rotation.x = -Math.PI/2;
           mesh.position.y = y;
@@ -673,14 +757,47 @@
           addTopSurfaceFromPts(basePts, 0xf7f1e4, .002, 0xe0caaa, .99, 0);
           addOutlineFromPts(basePts, 0xb09068, .026, .98);
           addOutlineFromPts(basePts, 0xf6ead5, .042, .84);
+          addOutlineFromPts(basePts, 0x8e7555, .058, .38);
           return basePts;
         };
-        const addStreetBand = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0) => addTopSurfaceFromPts(pts, color, y, outlineColor, opacity, order);
+        const addStreetBand = (pts=[], opts={}) => addTopSurfaceFromPts(pts, opts.color||0x8a8f92, opts.y??.012, opts.outlineColor??0xe9dcc2, opts.opacity??.98, opts.order??0, opts.floorFinish||'default', opts.texture||null);
         const addStreetLabel = (street, pts=[]) => {
           if(!Array.isArray(pts) || !pts.length) return;
           const c = { x:pts.reduce((v,p)=>v+Number(p.x||0),0)/pts.length, y:pts.reduce((v,p)=>v+Number(p.y||0),0)/pts.length };
           const tag = labelSprite(`Calle ${street.side}`, 1.2);
           const cc = coord(c); tag.position.set(cc.x, .065, cc.z); world.add(tag);
+        };
+        const addStreetFurniture3D = street => {
+          ensureStreetVisualDefaults(street);
+          const concreteMat=meshMat(0xbdb8b1,{metalness:.08,roughness:.88});
+          const curbMat=meshMat(0xd3bf58,{metalness:0,roughness:.82});
+          const accentMat=meshMat(0xc96e56,{metalness:.02,roughness:.76});
+          const darkMat=meshMat(0x65686c,{metalness:.24,roughness:.66});
+          const soilMat=meshMat(0x665341,{metalness:0,roughness:.96});
+          const leafMat=meshMat(0x557a4f,{metalness:0,roughness:.88});
+          (street.streetFurniture||[]).forEach(item=>{
+            const p=coord({x:Number(item.x||0),y:Number(item.y||0)});
+            const group=new THREE.Group();
+            group.position.set(p.x,.042,p.z);
+            group.rotation.y=-(Number(item.rotation||0)||0)*Math.PI/180;
+            const w=Math.max(.18, Number(item.width||60)/100), d=Math.max(.18, Number(item.depth||40)/100);
+            if(item.type==='bench'){
+              const seat=new THREE.Mesh(new THREE.BoxGeometry(w,.08,d*.34),accentMat);seat.position.set(0,.25,0);seat.castShadow=seat.receiveShadow=true;group.add(seat);
+              const back=new THREE.Mesh(new THREE.BoxGeometry(w,.12,.06),accentMat);back.position.set(0,.38,-d*.14);back.castShadow=back.receiveShadow=true;group.add(back);
+              [-1,1].forEach(s=>{const leg=new THREE.Mesh(new THREE.BoxGeometry(.05,.25,.05),darkMat);leg.position.set(s*w*.36,.125,0);leg.castShadow=leg.receiveShadow=true;group.add(leg);});
+            }else if(item.type==='planter'){
+              const box=new THREE.Mesh(new THREE.BoxGeometry(w,.32,d),concreteMat);box.position.set(0,.16,0);box.castShadow=box.receiveShadow=true;group.add(box);
+              const soil=new THREE.Mesh(new THREE.BoxGeometry(w*.78,.06,d*.78),soilMat);soil.position.set(0,.31,0);soil.castShadow=soil.receiveShadow=true;group.add(soil);
+              const crown=new THREE.Mesh(new THREE.SphereGeometry(Math.min(w,d)*.22,14,12),leafMat);crown.position.set(0,.5,0);crown.castShadow=crown.receiveShadow=true;group.add(crown);
+            }else if(item.type==='bollard'){
+              const post=new THREE.Mesh(new THREE.BoxGeometry(.11,.42,.11),darkMat);post.position.set(0,.21,0);post.castShadow=post.receiveShadow=true;group.add(post);
+              const cap=new THREE.Mesh(new THREE.BoxGeometry(.15,.05,.15),darkMat);cap.position.set(0,.44,0);cap.castShadow=cap.receiveShadow=true;group.add(cap);
+            }else if(item.type==='bin'){
+              const body=new THREE.Mesh(new THREE.BoxGeometry(.22,.34,.22),darkMat);body.position.set(0,.2,0);body.castShadow=body.receiveShadow=true;group.add(body);
+              const top=new THREE.Mesh(new THREE.BoxGeometry(.26,.04,.26),darkMat);top.position.set(0,.39,0);top.castShadow=top.receiveShadow=true;group.add(top);
+            }
+            world.add(group);
+          });
         };
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
           const scale=getScaleCmPerUnit()/100;
@@ -786,14 +903,18 @@
             addOutlineFromPts(siteBoundary, 0xf1e5cf, .046, .78);
           }
           streets.forEach((street, index) => {
-            addStreetBand(street.outerSidewalkPts, 0xefe7da, .016, 0xd2bc98, .98, 2 + index * .1);
-            addStreetBand(street.roadPts, 0x8c9398, .011, 0xf8efde, .98, 2.1 + index * .1);
-            addStreetBand(street.sidewalkPts, 0xf3ede1, .018, 0xd2bc98, .98, 2.2 + index * .1);
+            ensureStreetVisualDefaults(street);
+            const roadPreset=getStreetSurfacePreset(street.roadType);
+            const sidewalkPreset=getSidewalkSurfacePreset(street.sidewalkType);
+            addStreetBand(street.outerSidewalkPts,{color:0xefe7da,y:.016,outlineColor:0xd2bc98,opacity:.985,order:2+index*.1,texture:streetTexture('sidewalk',street.sidewalkType)});
+            addStreetBand(street.roadPts,{color:roadPreset.fill,y:.011,outlineColor:0xf8efde,opacity:.985,order:2.1+index*.1,texture:streetTexture('road',street.roadType)});
+            addStreetBand(street.sidewalkPts,{color:0xf3ede1,y:.018,outlineColor:0xd2bc98,opacity:.985,order:2.2+index*.1,texture:streetTexture('sidewalk',street.sidewalkType)});
             addStreetLabel(street, street.roadPts || street.sidewalkPts || street.outerSidewalkPts);
+            addStreetFurniture3D(street);
           });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
-            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .97, 4);
+            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .98, 4, zone.floorFinish||'default');
             addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
             addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
           }

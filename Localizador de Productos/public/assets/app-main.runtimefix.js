@@ -1,4 +1,4 @@
-/* WMS_V180_ARCHITECTURE_SYNC */
+/* WMS_V181_CAD_FLOORS_STREETS */
 /* WMS_V147_ASSISTED_MODULAR_RACK */
 /* WMS_V134_SYNC_VISUAL_WMS */
 /* WMS_V130_UNIFIED_WALLS_VIEWS */
@@ -1460,7 +1460,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
           roadWidth: street.roadWidth,
           cornerStyle: street.cornerStyle || appState.layout.meta.defaultStreetCornerStyle || 'right'
         });
-        return { ...street, ...rebuilt, id: street.id || nextStreetId(), name: street.name || `Calle ${street.side}` };
+        return { ...street, ...applyStreetVertexOffsets(street,rebuilt), id: street.id || nextStreetId(), name: street.name || `Calle ${street.side}` };
       }
       return street;
     });
@@ -1490,6 +1490,41 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const nums = streets.map(s => { const m = String(s?.id || '').match(/^C(\d+)$/i); return m ? Number(m[1]) : NaN; }).filter(Number.isFinite);
     return `C${Math.max(0, ...nums) + 1}`;
   }
+  const FLOOR_FINISHES = Object.freeze({
+    'default':{label:'Base cálida',color:'#e9d7bb',grout:'#e0d0b5',size:60},
+    'porcelain-white':{label:'Porcelanato blanco 60×60',color:'#f2f0eb',grout:'#d1cec7',size:60},
+    'porcelain-ivory':{label:'Porcelanato marfil 60×60',color:'#e8dfcf',grout:'#c9bea9',size:60},
+    'porcelain-gray':{label:'Porcelanato gris 60×60',color:'#c3c7c7',grout:'#929a9c',size:60},
+    'marble':{label:'Porcelanato mármol claro',color:'#e8e8e3',grout:'#b7b9b4',size:60},
+    'concrete':{label:'Concreto pulido',color:'#aeb4b3',grout:'#969f9e',size:120},
+    'wood':{label:'Madera clara',color:'#caaa82',grout:'#9f805d',size:90}
+  });
+  function getZoneFloorFinish(zone){return FLOOR_FINISHES[zone?.floorFinish] || FLOOR_FINISHES.default;}
+  function isValidStreetPolygon(pts){
+    if(!Array.isArray(pts)||pts.length<3||!pts.every(p=>Number.isFinite(Number(p.x))&&Number.isFinite(Number(p.y))))return false;
+    const orient=[];
+    for(let i=0;i<pts.length;i++){
+      const a=pts[i],b=pts[(i+1)%pts.length],c=pts[(i+2)%pts.length];
+      const cross=(b.x-a.x)*(c.y-b.y)-(b.y-a.y)*(c.x-b.x);
+      if(Math.abs(cross)<1e-4)return false;
+      orient.push(Math.sign(cross));
+    }
+    const area=Math.abs(pts.reduce((sum,p,i)=>{const q=pts[(i+1)%pts.length];return sum+p.x*q.y-q.x*p.y;},0)/2);
+    return area>80 && orient.every(x=>x===orient[0]);
+  }
+  function applyStreetVertexOffsets(street,geometry){
+    const result={...geometry};
+    ['roadPts','sidewalkPts','outerSidewalkPts'].forEach(part=>{
+      const offsets=street.vertexOffsets?.[part];
+      if(!offsets||!Array.isArray(result[part]))return;
+      const candidate=result[part].map((point,i)=>{
+        const offset=offsets[i]||{};
+        return {x:point.x+Math.max(-200,Math.min(200,Number(offset.dx)||0)),y:point.y+Math.max(-200,Math.min(200,Number(offset.dy)||0))};
+      });
+      if(isValidStreetPolygon(candidate))result[part]=candidate;
+    });
+    return result;
+  }
   function getStreetCornerStyle(){ return String(appState.layout?.meta?.defaultStreetCornerStyle || 'right') === 'diagonal' ? 'diagonal' : 'right'; }
   function normalizeStreetDims(source={}, fallback={}){
     const sidewalkWidth = Math.max(20, Number(source.sidewalkWidth ?? fallback.sidewalkWidth ?? 42) || 42);
@@ -1517,12 +1552,12 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       if(!street?.side) return street;
       return {
         ...street,
-        ...buildStreetGeometry(street.side, {
+        ...applyStreetVertexOffsets(street,buildStreetGeometry(street.side, {
           network,
           sidewalkWidth: street.sidewalkWidth,
           roadWidth: street.roadWidth,
           cornerStyle: street.cornerStyle || appState.layout?.meta?.defaultStreetCornerStyle || 'right'
-        })
+        }))
       };
     });
     return appState.layout.streets;
@@ -11244,6 +11279,21 @@ function getSheetBranchOpenMap(){
           </div>
           <div class="tiny muted layout-panel-hint" style="margin-top:8px">Puedes convertir este recinto en zona y mantenerlo sincronizado con su geometría.</div>
         </section>`; })() : ''}
+        ${structureMode && (appState.layout?.streets||[]).some(s=>s.id===appState.selectedStreetId) ? (()=>{const street=appState.layout.streets.find(s=>s.id===appState.selectedStreetId);return `<section class="layout-prop-card layout-street-properties">
+          <div class="layout-prop-title">Calle seleccionada · ${escapeHtml(street.name||street.id)}</div>
+          <div class="layout-prop-grid two">
+            <label>Calzada (cm)<input id="rpStreetRoad" type="number" min="26" max="600" step="1" value="${Math.round(street.roadWidth||92)}"></label>
+            <label>Veredas (cm)<input id="rpStreetWalk" type="number" min="20" max="300" step="1" value="${Math.round(street.sidewalkWidth||42)}"></label>
+            <label>Esquinas<select id="rpStreetCorner"><option value="right" ${street.cornerStyle!=='diagonal'?'selected':''}>90°</option><option value="diagonal" ${street.cornerStyle==='diagonal'?'selected':''}>Diagonal</option></select></label>
+            <label>Editar geometría<select id="rpStreetPart"><option value="roadPts" ${appState.editor.streetVertexPart==='roadPts'?'selected':''}>Calzada</option><option value="sidewalkPts" ${appState.editor.streetVertexPart==='sidewalkPts'?'selected':''}>Vereda interior</option><option value="outerSidewalkPts" ${appState.editor.streetVertexPart==='outerSidewalkPts'?'selected':''}>Vereda exterior</option></select></label>
+          </div>
+          <div class="layout-template-grid" style="margin-top:10px">
+            <button type="button" class="seg-btn" id="rpStreetVertices">${appState.editor.streetVerticesVisible?'Ocultar vértices':'Editar vértices'}</button>
+            <button type="button" class="seg-btn" id="rpStreetApply">Aplicar medidas</button>
+            <button type="button" class="seg-btn" id="rpStreetReset">Restablecer vértices</button>
+          </div>
+          <div class="tiny muted" style="margin-top:8px">Arrastra los puntos verdes. Las modificaciones se guardan y se reflejan en 3D.</div>
+        </section>`;})() : ''}
         ${structureMode && zone ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Zona</div>
           <div class="layout-prop-grid two">
@@ -11254,6 +11304,9 @@ function getSheetBranchOpenMap(){
             <label>Ancho<input id="rpZoneW" type="number" min="40" value="${formatUnitNumber(zoneB.maxX-zoneB.minX)}" ${isRoomLinkedZone(zone)?'disabled':''}></label>
             <label>Alto<input id="rpZoneH" type="number" min="40" value="${formatUnitNumber(zoneB.maxY-zoneB.minY)}" ${isRoomLinkedZone(zone)?'disabled':''}></label>
             <label>Color<input id="rpZoneColor" type="color" value="${escapeHtml(zone.color||'#6ff0a8')}"></label>
+            <label style="grid-column:1/-1">Acabado de piso<select id="rpZoneFloor">
+              ${[['default','Base cálida'],['porcelain-white','Porcelanato blanco 60×60'],['porcelain-ivory','Porcelanato marfil 60×60'],['porcelain-gray','Porcelanato gris 60×60'],['marble','Porcelanato mármol claro'],['concrete','Concreto pulido'],['wood','Madera clara']].map(([v,label])=>`<option value="${v}" ${(zone.floorFinish||'default')===v?'selected':''}>${label}</option>`).join('')}
+            </select></label>
             <label>Escala cm/u<input id="rpScaleCm" type="number" min="0.1" step="0.1" value="${getScaleCmPerUnit()}"></label>
             <label>Rotación zona<input id="rpZoneRot" type="number" step="1" value="${Math.round(getZoneRotationDegrees(zone))}" ${isRoomLinkedZone(zone)?'disabled':''}></label>
             <label>Contenido<input value="${(appState.layout.racks||[]).filter(r => r.zoneId === zone.id).length} racks vinculados" disabled></label>
@@ -11351,6 +11404,20 @@ function getSheetBranchOpenMap(){
     if($('#layoutSnapEnabled')) $('#layoutSnapEnabled').onchange = e => { appState.editor.snapEnabled = !!e.target.checked; clearRackSnapPreview(); persistActiveLayout(); renderLayoutEditor(); };
     if($('#layoutSnapSize')) $('#layoutSnapSize').onchange = e => updateSnapSize(e.target.value);
     if($('#layoutDimFontSize')) $('#layoutDimFontSize').onchange = e => updateDimFont(e.target.value);
+    const selectedStreet=(appState.layout?.streets||[]).find(s=>s.id===appState.selectedStreetId)||null;
+    if($('#rpStreetPart')) $('#rpStreetPart').onchange=e=>{appState.editor.streetVertexPart=e.target.value;renderLayoutEditor();};
+    if($('#rpStreetVertices')) $('#rpStreetVertices').onclick=()=>{appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
+    if($('#rpStreetApply')) $('#rpStreetApply').onclick=()=>{
+      if(!selectedStreet)return;
+      selectedStreet.roadWidth=Math.max(26,Math.min(600,Number($('#rpStreetRoad')?.value)||92));
+      selectedStreet.sidewalkWidth=Math.max(20,Math.min(300,Number($('#rpStreetWalk')?.value)||42));
+      selectedStreet.cornerStyle=$('#rpStreetCorner')?.value==='diagonal'?'diagonal':'right';
+      rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
+    };
+    if($('#rpStreetReset')) $('#rpStreetReset').onclick=()=>{
+      if(!selectedStreet)return;
+      selectedStreet.vertexOffsets={};rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
+    };
     const zone = findZoneById(appState.selectedZoneId);
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
@@ -11376,6 +11443,7 @@ function getSheetBranchOpenMap(){
     if($('#rpZoneCode')) $('#rpZoneCode').onchange = e => { renameZoneId(zone.id, e.target.value); renderLayoutEditor(); };
     ['rpZoneX','rpZoneY','rpZoneW','rpZoneH'].forEach(id=>{ const el=$('#'+id); if(el) el.onchange = applyZoneGeometry; });
     if($('#rpZoneColor')) $('#rpZoneColor').oninput = e => { zone.color=e.target.value; persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpZoneFloor')) $('#rpZoneFloor').onchange = e => { if(!zone)return; zone.floorFinish=Object.hasOwn(FLOOR_FINISHES,e.target.value)?e.target.value:'default'; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpScaleCm')) $('#rpScaleCm').onchange = e => { ensureLayoutMeta(); appState.layout.meta.scaleCmPerUnit = Math.max(0.1, Number(e.target.value||1)||1); persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpZoneRot')) $('#rpZoneRot').onchange = e => { if(zone && !isRoomLinkedZone(zone)) setZoneRotation(zone.id, Number(e.target.value || 0) || 0); };
     if($('#rpZoneMinus15')) $('#rpZoneMinus15').onclick = () => { if(zone && !isRoomLinkedZone(zone)) rotateZoneWithContents(zone.id, -15); };
@@ -11946,11 +12014,25 @@ function getSheetBranchOpenMap(){
     const rackLayer = svgEl('g');
     const measureLayer = svgEl('g');
     const vertexLayer = svgEl('g');
+    const overlayLayer = svgEl('g',{class:'layout-overlay-layer','pointer-events':'none'});
+    const streetHandleLayer = svgEl('g',{class:'layout-street-handles'});
     if(appState.editor.showZones === false){ zoneLayer.setAttribute('style','display:none'); vertexLayer.setAttribute('style','display:none'); edgeLayer.setAttribute('style','display:none'); }
     if(appState.editor.wallsVisible === false) wallLayer.setAttribute('style','display:none');
     if(appState.editor.openingsVisible === false) openingLayer.setAttribute('style','display:none');
-    svg.append(streetsLayer, areaLayer, roomLayer, edgeLayer, zoneLayer, wallLayer, openingLayer, rackLayer, guideLayer, measureLayer, vertexLayer);
+    svg.append(streetsLayer, areaLayer, roomLayer, edgeLayer, zoneLayer, wallLayer, openingLayer, rackLayer, guideLayer, measureLayer, vertexLayer, overlayLayer, streetHandleLayer);
 
+    const floorDefs=svgEl('defs');
+    Object.entries(FLOOR_FINISHES).forEach(([key,finish])=>{
+      if(key==='default')return;
+      const tile=Math.max(12,Number(finish.size||60)/Math.max(.1,getScaleCmPerUnit()));
+      const pat=svgEl('pattern',{id:`floor-${key}`,patternUnits:'userSpaceOnUse',width:tile,height:tile});
+      pat.appendChild(svgEl('rect',{width:tile,height:tile,fill:finish.color}));
+      if(key==='marble')pat.appendChild(svgEl('path',{d:`M ${tile*.15} ${tile*.8} Q ${tile*.35} ${tile*.3} ${tile*.86} ${tile*.17}`,fill:'none',stroke:'#bcc4bf','stroke-width':'.9',opacity:'.55'}));
+      if(key==='wood')pat.appendChild(svgEl('path',{d:`M 0 ${tile*.33} H ${tile} M 0 ${tile*.68} H ${tile}`,fill:'none',stroke:finish.grout,'stroke-width':'1.4'}));
+      pat.appendChild(svgEl('path',{d:`M 0 ${tile} V 0 H ${tile}`,fill:'none',stroke:finish.grout,'stroke-width':'1.6',opacity:'.88'}));
+      floorDefs.appendChild(pat);
+    });
+    svg.appendChild(floorDefs);
     ensureLayoutMeta();
     const boundary = layoutBoundary();
     const boundaryPts = layoutBoundaryPts();
@@ -11969,12 +12051,12 @@ function getSheetBranchOpenMap(){
       const selected = appState.selectedStreetId === street.id;
       const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
       if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
-        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(235,229,216,.98)':'rgba(244,239,230,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.6':'1.15', 'data-street-id':street.id, style:'cursor:pointer' });
+        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(235,229,216,.98)':'rgba(244,239,230,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.6':'1.15', 'data-street-id':street.id, 'data-street-part':'outerSidewalkPts', style:'cursor:pointer' });
         sw2.addEventListener('pointerdown', pickStreet);
         streetsLayer.appendChild(sw2);
       }
       if(Array.isArray(street.roadPts) && street.roadPts.length >= 4){
-        const road = svgEl('path',{ d:pathFromPts(street.roadPts), fill:selected?'rgba(136,145,151,.98)':'rgba(130,137,143,.94)', stroke:selected?'#f7f3df':'rgba(89,92,95,.88)', 'stroke-width':selected?'1.9':'1.25', 'data-street-id':street.id, style:'cursor:pointer' });
+        const road = svgEl('path',{ d:pathFromPts(street.roadPts), fill:selected?'rgba(136,145,151,.98)':'rgba(130,137,143,.94)', stroke:selected?'#f7f3df':'rgba(89,92,95,.88)', 'stroke-width':selected?'1.9':'1.25', 'data-street-id':street.id, 'data-street-part':'roadPts', style:'cursor:pointer' });
         road.addEventListener('pointerdown', pickStreet);
         streetsLayer.appendChild(road);
         const xs = street.roadPts.map(pt => Number(pt?.x || 0));
@@ -11985,7 +12067,7 @@ function getSheetBranchOpenMap(){
         streetsLayer.appendChild(lane);
       }
       if(Array.isArray(street.sidewalkPts) && street.sidewalkPts.length >= 4){
-        const sw = svgEl('path',{ d:pathFromPts(street.sidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(236,231,219,.94)', stroke:selected?'#d2b07a':'rgba(205,188,158,.95)', 'stroke-width':selected?'1.55':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
+        const sw = svgEl('path',{ d:pathFromPts(street.sidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(236,231,219,.94)', stroke:selected?'#d2b07a':'rgba(205,188,158,.95)', 'stroke-width':selected?'1.55':'1.1', 'data-street-id':street.id, 'data-street-part':'sidewalkPts', style:'cursor:pointer' });
         sw.addEventListener('pointerdown', pickStreet);
         streetsLayer.appendChild(sw);
       }
@@ -12000,6 +12082,54 @@ function getSheetBranchOpenMap(){
         streetsLayer.appendChild(txt);
       }
     });
+    const editedStreet=(appState.layout?.streets||[]).find(street=>street.id===appState.selectedStreetId);
+    if(editedStreet && isStructureLayoutScreen() && appState.editor.streetVerticesVisible){
+      const part=['roadPts','sidewalkPts','outerSidewalkPts'].includes(appState.editor.streetVertexPart) ? appState.editor.streetVertexPart : 'roadPts';
+      (editedStreet[part]||[]).forEach((pt,i)=>{
+        const handle=svgEl('circle',{cx:pt.x,cy:pt.y,r:'8',fill:'#fff8e9',stroke:'#267760','stroke-width':'3',class:'street-vertex-handle',style:'cursor:move;touch-action:none','data-street-vertex':i});
+        handle.addEventListener('pointerdown',event=>{
+          if(event.button!==0)return;
+          event.preventDefault();event.stopPropagation();
+          const original={x:pt.x,y:pt.y};
+          const oldOffsets=clone(editedStreet.vertexOffsets||{});
+          let dragged=false;
+          const move=e=>{
+            const raw=svgPoint(e,svg);
+            const scale=appState.editor?.streetSnapOff?1:getSnapSize();
+            const x=Math.round(raw.x/Math.max(1,scale))*Math.max(1,scale);
+            const y=Math.round(raw.y/Math.max(1,scale))*Math.max(1,scale);
+            const dx=Math.max(-200,Math.min(200,x-original.x));
+            const dy=Math.max(-200,Math.min(200,y-original.y));
+            const next=(editedStreet[part]||[]).map((p,j)=>j===i?{x:original.x+dx,y:original.y+dy}:{x:p.x,y:p.y});
+            if(!isValidStreetPolygon(next))return;
+            editedStreet[part]=next;
+            editedStreet.vertexOffsets=editedStreet.vertexOffsets||{};
+            editedStreet.vertexOffsets[part]=editedStreet.vertexOffsets[part]||{};
+            const prev=oldOffsets?.[part]?.[i]||{dx:0,dy:0};
+            editedStreet.vertexOffsets[part][i]={dx:Number(prev.dx||0)+dx,dy:Number(prev.dy||0)+dy};
+            handle.setAttribute('cx',next[i].x);handle.setAttribute('cy',next[i].y);
+            streetsLayer.querySelectorAll(`[data-street-id="${editedStreet.id}"]`).forEach((shape,k)=>{
+              const group=shape.getAttribute('data-street-part');
+              if(group===part)shape.setAttribute('d',pathFromPts(next));
+            });
+            dragged=true;
+          };
+          const finish=()=>{
+            window.removeEventListener('pointermove',move);
+            window.removeEventListener('pointerup',finish);
+            window.removeEventListener('pointercancel',cancel);
+            if(dragged){persistActiveLayout();renderLayoutEditor();}
+          };
+          const cancel=()=>{
+            editedStreet[part][i]=original;editedStreet.vertexOffsets=oldOffsets;
+            window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);
+            renderLayoutEditor();
+          };
+          window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish,{once:true});window.addEventListener('pointercancel',cancel,{once:true});
+        });
+        streetHandleLayer.appendChild(handle);
+      });
+    }
 
     ensureWallTopology();
     (appState.layout.rooms||[]).forEach(room=>{ const pts=roomPointsRaw(room); if(pts.length<3) return; const linked=getRoomLinkedZone(room); const selected=appState.selectedRoomId===room.id; const d=pts.map((pt,i)=>`${i?'L':'M'} ${pt.x} ${pt.y}`).join(' ')+' Z'; const path=svgEl('path',{d,class:`layout-room-fill ${selected?'selected':''} ${linked?'is-zone':''}`,fill:linked?hexToRgba(linked.color||'#6ff0a8',selected?.14:.075):(selected?'rgba(77,222,166,.12)':'rgba(77,222,166,.055)'),stroke:linked?(linked.color||'#6ff0a8'):(selected?'rgba(111,240,168,.88)':'rgba(77,222,166,.22)'),'stroke-width':selected?'2.3':'1','stroke-dasharray':linked?'5 4':'8 7','data-room-id':room.id,style:'cursor:pointer'}); path.addEventListener('pointerdown',evt=>{ if(!isStructureLayoutScreen()||appState.editor.mode!=='select') return; evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); }); roomLayer.appendChild(path); const c={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}; const t=svgEl('text',{x:c.x,y:c.y,class:`layout-room-label ${selected?'selected':''}`,'text-anchor':'middle','data-room-id':room.id,style:'cursor:pointer;pointer-events:auto'}); const area=Math.round(polygonAreaAbs(pts)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000*100)/100; t.textContent=`${linked?`${linked.name||linked.id} · `:''}${room.name} · ${area} m²`; t.addEventListener('pointerdown',evt=>{ evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); }); roomLayer.appendChild(t); });
@@ -12099,7 +12229,7 @@ function getSheetBranchOpenMap(){
       const d = zone.pts.map((p,i)=>`${i===0?'M':'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
       const zoneWallThickness = getZoneWallThickness(zone);
       const wallInsetOpacity = appState.editor.wallsVisible === false ? (appState.selectedZoneId===zone.id ? .34 : .22) : (appState.selectedZoneId===zone.id ? .20 : .12);
-      const path = svgEl('path',{d,class:'ortho-zone' + (appState.selectedZoneId===zone.id ? ' selected' : ''),fill:hexToRgba(zone.color || '#ffd84d', wallInsetOpacity),stroke:hexToRgba(zone.color || '#ffd84d', appState.editor.wallsVisible === false ? .98 : .46),'stroke-width':'1.4','data-zone-id':zone.id});
+      const path = svgEl('path',{d,class:'ortho-zone' + (appState.selectedZoneId===zone.id ? ' selected' : ''),fill:zone.floorFinish && FLOOR_FINISHES[zone.floorFinish] && zone.floorFinish!=='default' ? `url(#floor-${zone.floorFinish})` : hexToRgba(zone.color || '#ffd84d', wallInsetOpacity),stroke:hexToRgba(zone.color || '#ffd84d', appState.editor.wallsVisible === false ? .98 : .46),'stroke-width':'1.4','data-zone-id':zone.id});
       path.addEventListener('pointerdown', e => {
         try{ e.currentTarget?.setPointerCapture?.(e.pointerId); }catch(_){}
         startZoneDrag(e, zone.id);
@@ -12626,10 +12756,11 @@ function getSheetBranchOpenMap(){
       if(isRackDistributionScreen()) drawSelectedRackMeasurements(measureLayer, selectedRack, selectedZone);
     }
 
-    svg.addEventListener('pointerdown', handleLayoutCanvasDown);
-    svg.addEventListener('pointermove', handleLayoutMove);
-    svg.addEventListener('pointerup', stopEditorDrag);
-    svg.addEventListener('pointerleave', stopEditorDrag);
+    // Los renderizados sucesivos no deben acumular manejadores del canvas.
+    svg.onpointerdown = handleLayoutCanvasDown;
+    svg.onpointermove = handleLayoutMove;
+    svg.onpointerup = stopEditorDrag;
+    svg.onpointerleave = stopEditorDrag;
   }
 
 
@@ -16279,6 +16410,20 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             <label class="vspace-field">Posición (%)<input id="vsOpeningPosition" type="number" min="1" max="99" value="${Math.round(Number(op.t||.5)*100)}" ${lock}></label></div>
             <div class="vspace-grid-2"><button type="button" class="vspace-primary" id="vsApplyOpening" ${lock}>Aplicar abertura</button><button type="button" id="vsRemoveOpening" ${lock}>Eliminar abertura</button></div>`:''}
           <button type="button" class="vspace-danger" id="vsRemoveWall" ${lock}>Eliminar muro</button>`:''}`;
+      const zonesWithFloors=(appState.layout.zones||[]);
+      if(zonesWithFloors.length){
+        const selections=zonesWithFloors.map(zone=>`<label class="vspace-field">${vspaceEsc(zone.name||zone.id)}<select data-vs-zone-floor="${vspaceEsc(zone.id)}" ${lock}>${Object.entries(FLOOR_FINISHES).map(([value,f])=>`<option value="${value}" ${(zone.floorFinish||'default')===value?'selected':''}>${vspaceEsc(f.label)}</option>`).join('')}</select></label>`).join('');
+        host.insertAdjacentHTML('beforeend',`<div class="vspace-arch-subtitle">Acabados de piso por zona</div>${selections}`);
+        host.querySelectorAll('[data-vs-zone-floor]').forEach(el=>el.onchange=()=>{
+          if(!canWrite())return;
+          const zone=appState.layout.zones.find(z=>z.id===el.dataset.vsZoneFloor);
+          if(!zone)return;
+          recordHistorySnapshot('structure');
+          zone.floorFinish=Object.hasOwn(FLOOR_FINISHES,el.value)?el.value:'default';
+          vspaceCommit(`piso de ${zone.id}`);
+          state.refreshInspector();
+        });
+      }
       host.querySelector('#vsArchUndo')?.addEventListener('click',()=>{if(!canWrite())return;undoHistory('structure');ensureLayoutDecorations();state.refreshInspector();state.render?.(true);});
       host.querySelector('#vsArchRedo')?.addEventListener('click',()=>{if(!canWrite())return;redoHistory('structure');ensureLayoutDecorations();state.refreshInspector();state.render?.(true);});
       host.querySelectorAll('[data-vs-wall]').forEach(btn=>btn.onclick=()=>selectArch(btn.dataset.vsWall));
@@ -16485,7 +16630,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       finally{btn.disabled=false;btn.textContent='Guardar en nube';}
     };
     state.refreshObjects();state.refreshInspector();
-    const destroyBase=()=>{state.destroyed=true;window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
+    const destroyBase=()=>{state.destroyed=true;state.releaseFloorTextures?.();window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
     state.destroy=destroyBase;
     (async()=>{
       try{
@@ -16582,10 +16727,42 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys);
           return [{x:minX,y:minY},{x:maxX,y:minY},{x:maxX,y:maxY},{x:minX,y:maxY}];
         };
-        const addTopSurfaceFromPts = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0) => {
+        const floorTextureCache=new Map();
+        state.releaseFloorTextures=()=>{floorTextureCache.forEach(texture=>texture.dispose());floorTextureCache.clear();};
+        const floorTexture=(key)=>{
+          if(!key || key==='default' || !FLOOR_FINISHES[key])return null;
+          if(floorTextureCache.has(key))return floorTextureCache.get(key);
+          const finish=FLOOR_FINISHES[key];
+          const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;
+          const ctx=canvas.getContext('2d');
+          ctx.fillStyle=finish.color;ctx.fillRect(0,0,256,256);
+          if(key==='marble'){
+            ctx.strokeStyle='rgba(148,158,150,.26)';ctx.lineWidth=2;
+            for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-12,i*90+15);ctx.bezierCurveTo(72,i*90-28,145,i*90+45,270,i*90-12);ctx.stroke();}
+          } else if(key==='wood'){
+            ctx.strokeStyle='rgba(122,91,60,.18)';ctx.lineWidth=2;
+            for(let k=0;k<8;k++){ctx.beginPath();ctx.moveTo(0,k*34);ctx.bezierCurveTo(68,k*34-3,184,k*34+4,256,k*34);ctx.stroke();}
+          } else if(key==='concrete'){
+            ctx.fillStyle='rgba(255,255,255,.035)';
+            for(let i=0;i<100;i++){const px=(i*67)%256,py=(i*113)%256;ctx.fillRect(px,py,2,2);}
+          }
+          ctx.strokeStyle=finish.grout;ctx.globalAlpha=key==='concrete'?.18:.65;
+          ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,253,253);ctx.globalAlpha=1;
+          const texture=new THREE.CanvasTexture(canvas);
+          texture.colorSpace=THREE.SRGBColorSpace;
+          texture.wrapS=THREE.RepeatWrapping;texture.wrapT=THREE.RepeatWrapping;
+          const tileSize=(finish.size||60)/100;
+          texture.repeat.set(1/tileSize,1/tileSize);
+          texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy?.()||4);
+          texture.needsUpdate=true;
+          floorTextureCache.set(key,texture);
+          return texture;
+        };
+        const addTopSurfaceFromPts = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0, floorFinish='default') => {
           if(!Array.isArray(pts) || pts.length < 3) return null;
           const shape = shapeFromLayoutPts(pts);
-          const material = meshMat(color,{metalness:.03,roughness:.92,transparent:opacity < 1,opacity,polygonOffset:true,polygonOffsetFactor:-1-order*.15,polygonOffsetUnits:-1,side:THREE.DoubleSide});
+          const texture=floorTexture(floorFinish);
+          const material = meshMat(texture?0xffffff:color,{map:texture||null,metalness:.03,roughness:floorFinish==='marble'?.57:.92,transparent:opacity < 1,opacity,polygonOffset:true,polygonOffsetFactor:-1-order*.15,polygonOffsetUnits:-1,side:THREE.DoubleSide});
           const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
           mesh.rotation.x = -Math.PI/2;
           mesh.position.y = y;
@@ -16731,7 +16908,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
-            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .97, 4);
+            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .98, 4, zone.floorFinish||'default');
             addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
             addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
           }

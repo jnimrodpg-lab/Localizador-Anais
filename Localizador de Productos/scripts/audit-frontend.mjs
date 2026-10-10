@@ -28,8 +28,8 @@ if (duplicateDeclarations.length || duplicateOverrides.length) {
   process.exit(1);
 }
 
-if (!source.startsWith('/* WMS_V180_ARCHITECTURE_SYNC */')) {
-  console.error('Falta la marca de bundle V180.');
+if (!source.startsWith('/* WMS_V181_CAD_FLOORS_STREETS */')) {
+  console.error('Falta la marca de bundle V181.');
   process.exit(1);
 }
 console.log(`Auditoría frontend OK: ${declarations.size} funciones declaradas, sin overrides protegidos duplicados.`);

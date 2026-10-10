@@ -407,35 +407,60 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const v = Number(appState.layout?.meta?.scaleCmPerUnit);
     return Number.isFinite(v) && v > 0 ? v : 1;
   }
+  function zoneContentBounds(){
+    const zones = Array.isArray(appState.layout?.zones) ? appState.layout.zones : [];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    zones.forEach(z => {
+      (z?.pts || []).forEach(pt => {
+        minX = Math.min(minX, Number(pt?.x || 0));
+        minY = Math.min(minY, Number(pt?.y || 0));
+        maxX = Math.max(maxX, Number(pt?.x || 0));
+        maxY = Math.max(maxY, Number(pt?.y || 0));
+      });
+    });
+    if(!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null;
+    return { minX, minY, maxX, maxY, w:maxX-minX, h:maxY-minY };
+  }
+  function fitSiteBoundaryToZones(force=false){
+    const zb = zoneContentBounds();
+    if(!zb) return false;
+    const meta = appState.layout.meta || (appState.layout.meta = {});
+    if(force || meta.autoFitBoundaryToZones !== false){
+      const padX = Math.max(18, Math.min(42, zb.w * 0.04));
+      const padY = Math.max(18, Math.min(42, zb.h * 0.05));
+      meta.siteBoundary = {
+        id:'AREA-GENERAL',
+        name: meta.siteBoundary?.name || 'Área general',
+        pts:[
+          {x:zb.minX - padX, y:zb.minY - padY},
+          {x:zb.maxX + padX, y:zb.minY - padY},
+          {x:zb.maxX + padX, y:zb.maxY + padY},
+          {x:zb.minX - padX, y:zb.maxY + padY}
+        ]
+      };
+      return true;
+    }
+    return false;
+  }
   function ensureLayoutMeta(){
     if(!appState.layout.meta || typeof appState.layout.meta !== 'object') appState.layout.meta = {};
     if(!Number.isFinite(Number(appState.layout.meta.scaleCmPerUnit)) || Number(appState.layout.meta.scaleCmPerUnit) <= 0) appState.layout.meta.scaleCmPerUnit = 1;
+    if(typeof appState.layout.meta.autoFitBoundaryToZones !== 'boolean') appState.layout.meta.autoFitBoundaryToZones = true;
     if(!appState.layout.meta.siteBoundary || !Array.isArray(appState.layout.meta.siteBoundary.pts) || appState.layout.meta.siteBoundary.pts.length < 4){
-      const zones = Array.isArray(appState.layout?.zones) ? appState.layout.zones : [];
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      zones.forEach(z => {
-        (z?.pts || []).forEach(pt => {
-          minX = Math.min(minX, Number(pt?.x || 0));
-          minY = Math.min(minY, Number(pt?.y || 0));
-          maxX = Math.max(maxX, Number(pt?.x || 0));
-          maxY = Math.max(maxY, Number(pt?.y || 0));
-        });
-      });
-      if(!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)){
-        minX = 80; minY = 80; maxX = 840; maxY = 600;
+      if(!fitSiteBoundaryToZones(true)){
+        appState.layout.meta.siteBoundary = {
+          id:'AREA-GENERAL',
+          name:'Área general',
+          pts:[
+            {x:56, y:56},
+            {x:864, y:56},
+            {x:864, y:624},
+            {x:56, y:624}
+          ]
+        };
       }
-      const padX = Math.max(80, (maxX - minX) * 0.14);
-      const padY = Math.max(80, (maxY - minY) * 0.16);
-      appState.layout.meta.siteBoundary = {
-        id:'AREA-GENERAL',
-        name:'Área general',
-        pts:[
-          {x:minX - padX, y:minY - padY},
-          {x:maxX + padX, y:minY - padY},
-          {x:maxX + padX, y:maxY + padY},
-          {x:minX - padX, y:maxY + padY}
-        ]
-      };
+    } else if(appState.layout.meta.autoFitBoundaryToZones !== false){
+      fitSiteBoundaryToZones(true);
     }
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
     appState.layout.streets = appState.layout.streets.map(street => {
@@ -493,6 +518,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     'concrete':{label:'Vereda de concreto',fill:'#e7dfd1',stroke:'#c9b892',curb:'#c7b18d',texture:'concrete'}
   });
   const STREET_FURNITURE_PRESETS = Object.freeze({
+    'urban-set':{label:'Mobiliario urbano',width:210,depth:72,rotation:0,accent:'#d97759'},
     'bench':{label:'Banca urbana',width:125,depth:42,rotation:0,accent:'#d16f55'},
     'planter':{label:'Macetero',width:58,depth:58,rotation:0,accent:'#6c8d64'},
     'bollard':{label:'Bolardo',width:22,depth:22,rotation:0,accent:'#6e6e70'},
@@ -526,7 +552,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       const fallbackY=street.side==='left'||street.side==='right' ? refBounds.minY + refBounds.h * (0.2 + (index%4)*0.18) : refBounds.minY + refBounds.h * 0.5;
       return {
         id:String(item?.id||nextStreetFurnitureId(street)),
-        type:Object.hasOwn(STREET_FURNITURE_PRESETS,item?.type)?item.type:'bench',
+        type:Object.hasOwn(STREET_FURNITURE_PRESETS,item?.type)?item.type:'urban-set',
         name:String(item?.name||preset.label),
         x:Number.isFinite(nx)?nx:fallbackX,
         y:Number.isFinite(ny)?ny:fallbackY,
@@ -546,15 +572,22 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     if(street?.side==='left') return {x:b.minX+b.w*0.5,y:b.minY+b.h*(0.18+(index%4)*0.2),rotation:90};
     return {x:b.minX+b.w*0.5,y:b.minY+b.h*(0.18+(index%4)*0.2),rotation:-90};
   }
-  function addStreetFurniture(street,type='bench'){
+  function addStreetFurniture(street,type='urban-set'){
     if(!street)return null;
     ensureStreetVisualDefaults(street);
-    const preset=getStreetFurniturePreset(type);
+    const normalized=Object.hasOwn(STREET_FURNITURE_PRESETS,type)?type:'urban-set';
+    const preset=getStreetFurniturePreset(normalized);
     const idx=(street.streetFurniture||[]).length;
     const pos=streetFurnitureDefaultPosition(street,idx);
-    const item={id:nextStreetFurnitureId(street),type:Object.hasOwn(STREET_FURNITURE_PRESETS,type)?type:'bench',name:preset.label,x:pos.x,y:pos.y,rotation:pos.rotation,width:preset.width,depth:preset.depth};
-    street.streetFurniture.push(item);
+    const item={id:nextStreetFurnitureId(street),type:normalized,name:preset.label,x:pos.x,y:pos.y,rotation:pos.rotation,width:preset.width,depth:preset.depth};
+    if(normalized==='urban-set') street.streetFurniture=[item];
+    else street.streetFurniture.push(item);
     return item;
+  }
+  function setStreetFurnitureUrbanSet(street){
+    if(!street) return null;
+    clearStreetFurniture(street);
+    return addStreetFurniture(street,'urban-set');
   }
   function clearStreetFurniture(street){ if(street) street.streetFurniture=[]; }
   function isValidStreetPolygon(pts){

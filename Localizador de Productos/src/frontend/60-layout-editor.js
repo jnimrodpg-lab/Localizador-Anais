@@ -22,6 +22,7 @@
     if(appState.editor.selectedMeasurementId === undefined) appState.editor.selectedMeasurementId = '';
     if(appState.selectedRoomId === undefined) appState.selectedRoomId = '';
     if(appState.selectedStreetId === undefined) appState.selectedStreetId = '';
+    if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
     if(appState.editor.structureClipboard === undefined) appState.editor.structureClipboard = null;
     if(appState.editor.keyboardBoundV111 === undefined) appState.editor.keyboardBoundV111 = false;
     if(appState.editor.wallMergePreview === undefined) appState.editor.wallMergePreview = null;
@@ -1620,7 +1621,7 @@
             <label>Tipo de vereda<select id="rpSidewalkType">${Object.entries(SIDEWALK_SURFACE_PRESETS).map(([v,p])=>`<option value="${v}" ${street.sidewalkType===v?'selected':''}>${p.label}</option>`).join('')}</select></label>
             <label>Esquinas<select id="rpStreetCorner"><option value="right" ${street.cornerStyle!=='diagonal'?'selected':''}>90°</option><option value="diagonal" ${street.cornerStyle==='diagonal'?'selected':''}>Diagonal</option></select></label>
             <label>Editar geometría<select id="rpStreetPart"><option value="roadPts" ${appState.editor.streetVertexPart==='roadPts'?'selected':''}>Calzada</option><option value="sidewalkPts" ${appState.editor.streetVertexPart==='sidewalkPts'?'selected':''}>Vereda interior</option><option value="outerSidewalkPts" ${appState.editor.streetVertexPart==='outerSidewalkPts'?'selected':''}>Vereda exterior</option></select></label>
-            <label>Mobiliario<input value="${(street.streetFurniture||[]).length} elemento(s)" disabled></label>
+            <label>Mobiliario<input value="${(street.streetFurniture||[]).length ? '1 objeto agrupado' : 'Sin mobiliario'}" disabled></label>
             <label>Lado<input value="${escapeHtml(street.side||'')}" disabled></label>
           </div>
           <div class="layout-template-grid" style="margin-top:10px">
@@ -1629,13 +1630,10 @@
             <button type="button" class="seg-btn" id="rpStreetReset">Restablecer vértices</button>
           </div>
           <div class="layout-template-grid" style="margin-top:10px">
-            <button type="button" class="seg-btn" id="rpStreetAddBench">+ Banca</button>
-            <button type="button" class="seg-btn" id="rpStreetAddPlanter">+ Macetero</button>
-            <button type="button" class="seg-btn" id="rpStreetAddBollard">+ Bolardo</button>
-            <button type="button" class="seg-btn" id="rpStreetAddBin">+ Basurero</button>
-            <button type="button" class="seg-btn" id="rpStreetClearFurniture" ${(street.streetFurniture||[]).length?'':'disabled'}>Vaciar mobiliario</button>
+            <button type="button" class="seg-btn" id="rpStreetAddUrban">${(street.streetFurniture||[]).length ? 'Reemplazar mobiliario urbano' : '+ Mobiliario urbano'}</button>
+            <button type="button" class="seg-btn" id="rpStreetClearFurniture" ${(street.streetFurniture||[]).length?'':'disabled'}>Quitar mobiliario</button>
           </div>
-          <div class="tiny muted" style="margin-top:8px">Mantiene las texturas urbanas en 2D y 3D. Arrastra los puntos verdes para editar la calle y usa los presets para cambiar calzada, vereda y mobiliario.</div>
+          <div class="tiny muted" style="margin-top:8px">El mobiliario urbano se trata como un solo objeto agrupado. Puedes seleccionarlo y moverlo con snap en el layout, manteniendo la misma lectura en 2D y en Diseñar espacio 3D.</div>
         </section>`;})() : ''}
         ${structureMode && zone ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Zona</div>
@@ -1766,11 +1764,8 @@
     };
     if($('#rpStreetType')) $('#rpStreetType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,e.target.value)?e.target.value:'drain-covered'; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpSidewalkType')) $('#rpSidewalkType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,e.target.value)?e.target.value:'paver'; persistActiveLayout(); renderLayoutEditor(); };
-    if($('#rpStreetAddBench')) $('#rpStreetAddBench').onclick=()=>{ if(!selectedStreet)return; addStreetFurniture(selectedStreet,'bench'); persistActiveLayout(); renderLayoutEditor(); };
-    if($('#rpStreetAddPlanter')) $('#rpStreetAddPlanter').onclick=()=>{ if(!selectedStreet)return; addStreetFurniture(selectedStreet,'planter'); persistActiveLayout(); renderLayoutEditor(); };
-    if($('#rpStreetAddBollard')) $('#rpStreetAddBollard').onclick=()=>{ if(!selectedStreet)return; addStreetFurniture(selectedStreet,'bollard'); persistActiveLayout(); renderLayoutEditor(); };
-    if($('#rpStreetAddBin')) $('#rpStreetAddBin').onclick=()=>{ if(!selectedStreet)return; addStreetFurniture(selectedStreet,'bin'); persistActiveLayout(); renderLayoutEditor(); };
-    if($('#rpStreetClearFurniture')) $('#rpStreetClearFurniture').onclick=()=>{ if(!selectedStreet)return; clearStreetFurniture(selectedStreet); persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpStreetAddUrban')) $('#rpStreetAddUrban').onclick=()=>{ if(!selectedStreet)return; const item=setStreetFurnitureUrbanSet(selectedStreet); appState.selectedStreetFurnitureId=item?.id||''; persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpStreetClearFurniture')) $('#rpStreetClearFurniture').onclick=()=>{ if(!selectedStreet)return; clearStreetFurniture(selectedStreet); appState.selectedStreetFurnitureId=''; persistActiveLayout(); renderLayoutEditor(); };
     const zone = findZoneById(appState.selectedZoneId);
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
@@ -2376,19 +2371,48 @@
 
     const streetRoadFill = street => `url(#street-road-${(ensureStreetVisualDefaults(street).roadType||'drain-covered')})`;
     const streetSidewalkFill = street => `url(#street-sidewalk-${(ensureStreetVisualDefaults(street).sidewalkType||'paver')})`;
-    const streetFurnitureColor = type => ({ bench:'#c86d56', planter:'#7e9d73', bollard:'#6c7074', bin:'#55595d' }[type] || '#c86d56');
+    const streetFurnitureColor = type => ({ 'urban-set':'#d67b5f', bench:'#c86d56', planter:'#7e9d73', bollard:'#6c7074', bin:'#55595d' }[type] || '#c86d56');
+    const rotateLocalPts = (x,y,rotDeg,pts=[]) => {
+      const r=(Number(rotDeg||0)||0)*Math.PI/180, cos=Math.cos(r), sin=Math.sin(r);
+      return pts.map(([dx,dy])=>({x:x+dx*cos-dy*sin,y:y+dx*sin+dy*cos}));
+    };
     const renderStreetFurniture2D = (street, layer, selected=false) => {
       ensureStreetVisualDefaults(street);
       (street.streetFurniture||[]).forEach(item => {
-        const x=Number(item.x||0), y=Number(item.y||0), rot=(Number(item.rotation||0)||0)*Math.PI/180;
-        const w=Math.max(9, Number(item.width||36)/4), d=Math.max(9, Number(item.depth||22)/4);
-        const cos=Math.cos(rot), sin=Math.sin(rot);
-        const pts=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(([dx,dy])=>({x:x+dx*cos-dy*sin,y:y+dx*sin+dy*cos}));
-        const group=svgEl('g',{'pointer-events':'none'});
-        group.appendChild(svgEl('path',{d:pathFromPts(pts),fill:streetFurnitureColor(item.type),stroke:selected?'#0f4a3f':'rgba(62,63,66,.68)','stroke-width':selected?'1.3':'1'}));
-        if(item.type==='planter') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(4,Math.min(w,d)*.22)),fill:'#557a4f'}));
-        if(item.type==='bench') group.appendChild(svgEl('line',{x1:String(pts[0].x),y1:String((pts[0].y+pts[3].y)/2),x2:String(pts[1].x),y2:String((pts[1].y+pts[2].y)/2),stroke:'rgba(255,244,234,.85)','stroke-width':'1'}));
-        if(item.type==='bollard' || item.type==='bin') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(3.2,Math.min(w,d)*.18)),fill:'rgba(255,250,240,.55)'}));
+        const x=Number(item.x||0), y=Number(item.y||0), rot=Number(item.rotation||0)||0;
+        const w=Math.max(20, Number(item.width||36)), d=Math.max(20, Number(item.depth||22));
+        const isSelected=selected && appState.selectedStreetFurnitureId===item.id;
+        const group=svgEl('g',{'data-street-furniture-id':item.id,style:'cursor:move'});
+        const selectFurniture=evt=>{
+          if(appState.editor.mode!=='select') return;
+          evt.stopPropagation();
+          appState.selectedStreetId=street.id;
+          appState.selectedStreetFurnitureId=item.id;
+          appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId='';
+          startStreetFurnitureDrag(evt, street.id, item.id);
+        };
+        if(item.type==='urban-set'){
+          const slab=rotateLocalPts(x,y,rot,[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]]);
+          const leftBench=rotateLocalPts(x-w*.22*Math.cos(rot*Math.PI/180)+0, y-w*.22*Math.sin(rot*Math.PI/180)+0, rot, [[-w*.18,-d*.12],[-w*.02,-d*.12],[-w*.02,d*.12],[-w*.18,d*.12]]);
+          const rightBench=rotateLocalPts(x+w*.02*Math.cos(rot*Math.PI/180)+0, y+w*.02*Math.sin(rot*Math.PI/180)+0, rot, [[0,-d*.12],[w*.18,-d*.12],[w*.18,d*.12],[0,d*.12]]);
+          const planter=rotateLocalPts(x,y,rot,[[-d*.18,-d*.2],[d*.18,-d*.2],[d*.18,d*.2],[-d*.18,d*.2]]);
+          const bollardA=rotateLocalPts(x,y,rot,[[-w*.43,-d*.18],[-w*.35,-d*.18],[-w*.35,d*.18],[-w*.43,d*.18]]);
+          const bollardB=rotateLocalPts(x,y,rot,[[w*.35,-d*.18],[w*.43,-d*.18],[w*.43,d*.18],[w*.35,d*.18]]);
+          group.appendChild(svgEl('path',{d:pathFromPts(slab),fill:'url(#street-sidewalk-concrete)',stroke:isSelected?'#0f4a3f':'rgba(92,95,98,.75)','stroke-width':isSelected?'2':'1.25'}));
+          group.appendChild(svgEl('path',{d:pathFromPts(leftBench),fill:'#d67b5f',stroke:'rgba(108,67,54,.72)','stroke-width':'1'}));
+          group.appendChild(svgEl('path',{d:pathFromPts(rightBench),fill:'#d67b5f',stroke:'rgba(108,67,54,.72)','stroke-width':'1'}));
+          group.appendChild(svgEl('path',{d:pathFromPts(planter),fill:'#e8e0d2',stroke:'rgba(121,115,107,.88)','stroke-width':'1'}));
+          const c=polygonCentroid(planter); group.appendChild(svgEl('circle',{cx:c.x,cy:c.y,r:String(Math.max(5,d*.12)),fill:'#557a4f'}));
+          group.appendChild(svgEl('path',{d:pathFromPts(bollardA),fill:'#696e72',stroke:'rgba(56,59,61,.82)','stroke-width':'1'}));
+          group.appendChild(svgEl('path',{d:pathFromPts(bollardB),fill:'#696e72',stroke:'rgba(56,59,61,.82)','stroke-width':'1'}));
+        }else{
+          const pts=rotateLocalPts(x,y,rot,[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]]);
+          group.appendChild(svgEl('path',{d:pathFromPts(pts),fill:streetFurnitureColor(item.type),stroke:isSelected?'#0f4a3f':'rgba(62,63,66,.68)','stroke-width':isSelected?'1.5':'1'}));
+          if(item.type==='planter') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(4,Math.min(w,d)*.22)),fill:'#557a4f'}));
+          if(item.type==='bench') group.appendChild(svgEl('line',{x1:String(pts[0].x),y1:String((pts[0].y+pts[3].y)/2),x2:String(pts[1].x),y2:String((pts[1].y+pts[2].y)/2),stroke:'rgba(255,244,234,.85)','stroke-width':'1'}));
+          if(item.type==='bollard' || item.type==='bin') group.appendChild(svgEl('circle',{cx:x,cy:y,r:String(Math.max(3.2,Math.min(w,d)*.18)),fill:'rgba(255,250,240,.55)'}));
+        }
+        group.addEventListener('pointerdown',selectFurniture);
         layer.appendChild(group);
       });
     };
@@ -2404,26 +2428,31 @@
       pat.appendChild(svgEl('path',{d:`M 0 ${tile} V 0 H ${tile}`,fill:'none',stroke:finish.grout,'stroke-width':'1.6',opacity:'.88'}));
       floorDefs.appendChild(pat);
     });
-    const roadPat1=svgEl('pattern',{id:'street-road-drain-covered',patternUnits:'userSpaceOnUse',width:'80',height:'80'});
-    roadPat1.appendChild(svgEl('rect',{width:'80',height:'80',fill:'#90959a'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 0 18 H 80 M 0 62 H 80',stroke:'rgba(255,214,88,.92)','stroke-width':'4.5'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 11 2 V 78 M 69 2 V 78',stroke:'rgba(54,58,61,.58)','stroke-width':'10'}));
-    for(let i=0;i<9;i++) roadPat1.appendChild(svgEl('line',{x1:String(4+i*9),y1:'10',x2:String(10+i*9),y2:'4',stroke:'rgba(233,235,236,.82)','stroke-width':'1.3'}));
-    for(let i=0;i<9;i++) roadPat1.appendChild(svgEl('line',{x1:String(70+i*0),y1:String(8+i*8),x2:String(78),y2:String(2+i*8),stroke:'rgba(233,235,236,.82)','stroke-width':'1.3'}));
+    const roadPat1=svgEl('pattern',{id:'street-road-drain-covered',patternUnits:'userSpaceOnUse',width:'120',height:'120'});
+    roadPat1.appendChild(svgEl('rect',{width:'120',height:'120',fill:'#7f868a'}));
+    roadPat1.appendChild(svgEl('rect',{x:'0',y:'0',width:'120',height:'120',fill:'rgba(255,255,255,.025)'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 0 28 H 120 M 0 92 H 120',stroke:'#f2cb53','stroke-width':'5.5',opacity:'.96'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 13 0 V 120 M 107 0 V 120',stroke:'rgba(87,91,95,.78)','stroke-width':'16'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 22 0 V 120 M 98 0 V 120',stroke:'rgba(198,205,208,.48)','stroke-width':'1.4','stroke-dasharray':'3 10'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 42 96 C 58 86, 74 100, 88 90',stroke:'rgba(59,63,66,.32)','stroke-width':'2',fill:'none'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 38 32 C 48 28, 56 40, 70 34',stroke:'rgba(255,255,255,.12)','stroke-width':'2',fill:'none'}));
     floorDefs.appendChild(roadPat1);
-    const roadPat2=svgEl('pattern',{id:'street-road-plain',patternUnits:'userSpaceOnUse',width:'90',height:'90'});
-    roadPat2.appendChild(svgEl('rect',{width:'90',height:'90',fill:'#a0a2a2'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 0 45 H 90',stroke:'rgba(252,245,228,.42)','stroke-width':'2.2'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 8 64 Q 24 49 36 58 T 72 52',stroke:'rgba(96,98,100,.34)','stroke-width':'1.6',fill:'none'}));
+    const roadPat2=svgEl('pattern',{id:'street-road-plain',patternUnits:'userSpaceOnUse',width:'120',height:'120'});
+    roadPat2.appendChild(svgEl('rect',{width:'120',height:'120',fill:'#8e9396'}));
+    roadPat2.appendChild(svgEl('path',{d:'M 0 60 H 120',stroke:'rgba(244,238,224,.56)','stroke-width':'3'}));
+    roadPat2.appendChild(svgEl('path',{d:'M 14 14 C 34 22, 44 12, 58 20 S 90 32 106 24',stroke:'rgba(255,255,255,.09)','stroke-width':'2',fill:'none'}));
+    roadPat2.appendChild(svgEl('path',{d:'M 8 96 Q 28 82 48 92 T 98 88',stroke:'rgba(70,72,74,.24)','stroke-width':'2',fill:'none'}));
     floorDefs.appendChild(roadPat2);
-    const walkPat1=svgEl('pattern',{id:'street-sidewalk-paver',patternUnits:'userSpaceOnUse',width:'44',height:'22'});
-    walkPat1.appendChild(svgEl('rect',{width:'44',height:'22',fill:'#c98469'}));
-    walkPat1.appendChild(svgEl('path',{d:'M 0 11 H 44 M 0 0 H 44 M 0 22 H 44',stroke:'rgba(120,73,58,.58)','stroke-width':'1'}));
-    walkPat1.appendChild(svgEl('path',{d:'M 11 0 V 11 M 33 0 V 11 M 0 11 V 22 M 22 11 V 22 M 44 11 V 22',stroke:'rgba(120,73,58,.58)','stroke-width':'1'}));
+    const walkPat1=svgEl('pattern',{id:'street-sidewalk-paver',patternUnits:'userSpaceOnUse',width:'56',height:'28'});
+    walkPat1.appendChild(svgEl('rect',{width:'56',height:'28',fill:'#bb7860'}));
+    walkPat1.appendChild(svgEl('path',{d:'M 0 14 H 56 M 0 0 H 56 M 0 28 H 56',stroke:'rgba(106,63,48,.48)','stroke-width':'1'}));
+    walkPat1.appendChild(svgEl('path',{d:'M 14 0 V 14 M 42 0 V 14 M 0 14 V 28 M 28 14 V 28 M 56 14 V 28',stroke:'rgba(106,63,48,.48)','stroke-width':'1'}));
+    walkPat1.appendChild(svgEl('path',{d:'M 0 2 H 56',stroke:'rgba(255,255,255,.07)','stroke-width':'1'}));
     floorDefs.appendChild(walkPat1);
-    const walkPat2=svgEl('pattern',{id:'street-sidewalk-concrete',patternUnits:'userSpaceOnUse',width:'64',height:'64'});
-    walkPat2.appendChild(svgEl('rect',{width:'64',height:'64',fill:'#ece5d9'}));
-    walkPat2.appendChild(svgEl('path',{d:'M 0 0 H 64 V 64',fill:'none',stroke:'rgba(198,182,154,.76)','stroke-width':'1.2'}));
+    const walkPat2=svgEl('pattern',{id:'street-sidewalk-concrete',patternUnits:'userSpaceOnUse',width:'72',height:'72'});
+    walkPat2.appendChild(svgEl('rect',{width:'72',height:'72',fill:'#e6e0d4'}));
+    walkPat2.appendChild(svgEl('path',{d:'M 0 0 H 72 V 72',fill:'none',stroke:'rgba(194,180,153,.78)','stroke-width':'1.15'}));
+    walkPat2.appendChild(svgEl('path',{d:'M 0 36 H 72 M 36 0 V 72',fill:'none',stroke:'rgba(215,207,188,.55)','stroke-width':'0.9'}));
     floorDefs.appendChild(walkPat2);
     svg.appendChild(floorDefs);
     ensureLayoutMeta();
@@ -2431,7 +2460,7 @@
     const boundaryPts = layoutBoundaryPts();
     if(boundaryPts.length >= 4){
       const bd = pathFromPts(boundaryPts);
-      areaLayer.appendChild(svgEl('path',{ d:bd, fill:'rgba(226,221,209,.32)', stroke:'rgba(198,171,128,.96)', 'stroke-width':'2.2', 'stroke-dasharray':'14 8', class:'layout-site-boundary' }));
+      areaLayer.appendChild(svgEl('path',{ d:bd, fill:'rgba(226,221,209,.16)', stroke:'rgba(198,171,128,.58)', 'stroke-width':'1.5', 'stroke-dasharray':'10 8', class:'layout-site-boundary' }));
       const bb = layoutBoundaryBounds();
       const head = svgEl('g',{});
       head.appendChild(svgEl('rect',{ x:bb.minX + 10, y:bb.minY + 10, width:112, height:26, rx:'12', fill:'rgba(7,18,30,.92)', stroke:'rgba(198,171,128,.65)', 'stroke-width':'1.1' }));
@@ -2442,7 +2471,7 @@
     }
     (appState.layout?.streets || []).forEach(street => {
       const selected = appState.selectedStreetId === street.id;
-      const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
+      const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedStreetFurnitureId=''; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
       if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
         const sidewalkPresetOuter=getSidewalkSurfacePreset(street.sidewalkType);
         const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:streetSidewalkFill(street), stroke:selected?'#d2b07a':sidewalkPresetOuter.stroke, 'stroke-width':selected?'1.6':'1.15', opacity:selected?'.99':'.97', 'data-street-id':street.id, 'data-street-part':'outerSidewalkPts', style:'cursor:pointer' });
@@ -3543,7 +3572,7 @@
       return;
     }
     if(appState.editor.mode === 'select' && isPanSurface){
-      closeStackMenu(); appState.selectedOpeningId=''; appState.selectedStreetId='';
+      closeStackMenu(); appState.selectedOpeningId=''; appState.selectedStreetId=''; appState.selectedStreetFurnitureId='';
       if(isStructureLayoutScreen()){ if(!(e.ctrlKey||e.metaKey))v117SetSelectedWallIds([]); appState.selectedWallId=''; }
       startDragSelection(raw,!!(e.ctrlKey||e.metaKey)); renderLayoutSvg(svg); renderLayoutInspector(); renderLayoutSection(); return;
     }
@@ -3602,7 +3631,7 @@
       if(!newZone.pts.every(pt => pointInLayoutBoundary(pt))){ showToast('La zona debe quedar dentro del área general.','warning',2200); return; }
       const collision=findZoneOverlap('',newZone.pts); if(collision){showToast(`No se puede crear aquí: se superpondría con ${collision.name||collision.id}.`,'warning',2400);return;}
       appState.layout.zones.push(newZone); normalizeZoneAndRackIds(); persistActiveLayout();
-      appState.selectedZoneId = id; appState.selectedStreetId = ''; appState.editor.mode = 'select'; renderLayoutEditor(); return;
+      appState.selectedZoneId = id; appState.selectedStreetId = ''; appState.selectedStreetFurnitureId=''; appState.editor.mode = 'select'; renderLayoutEditor(); return;
     }
     if(appState.editor.mode === 'rack' && isRackDistributionScreen()){
       const zone = appState.layout.zones.find(z => pointInPoly(p, z.pts)) || findZoneById(appState.selectedZoneId) || appState.layout.zones[0];
@@ -3717,6 +3746,17 @@
     appState.editor.dragging = { type:'section-guide', axis, zoneId:zone.id, start:p, moved:false, source };
   }
 
+  function startStreetFurnitureDrag(e, streetId, furnitureId){
+    if(!isStructureLayoutScreen() || appState.editor.mode !== 'select') return;
+    e.stopPropagation();
+    const street=(appState.layout?.streets||[]).find(s=>s.id===streetId);
+    const item=(street?.streetFurniture||[]).find(it=>it.id===furnitureId);
+    if(!street||!item) return;
+    const svg = $('#layoutSvg'); const p = svgPoint(e, svg);
+    appState.editor.dragging = { type:'street-furniture', streetId, furnitureId, start:p, original:{ x:Number(item.x||0), y:Number(item.y||0) } };
+    renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
+  }
+
   function startRackDrag(e, rackId){
     if(!isRackDistributionScreen() || appState.editor.mode !== 'select') return;
     e.stopPropagation();
@@ -3818,6 +3858,16 @@
       const collision=findZoneOverlap(zone.id,candidate); clearRackSnapPreview();
       if(collision){d.blockedByZoneCollision=true;setZoneCollisionPreview(zone.id,collision,candidate);}else{zone.pts=candidate;d.blockedByZoneCollision=false;clearZoneCollisionPreview();}
       appState.selectedEdge = { zoneId:d.zoneId, a:d.a, b:d.b }; renderLayoutSvg(svg); renderLayoutSection();
+    } else if(d.type === 'street-furniture'){
+      const street=(appState.layout?.streets||[]).find(s=>s.id===d.streetId);
+      const item=(street?.streetFurniture||[]).find(it=>it.id===d.furnitureId);
+      if(item){
+        const snapped = appState.editor?.snapEnabled===false ? {x:p.x,y:p.y} : {x:snapGrid(p.x),y:snapGrid(p.y)};
+        item.x = d.original.x + (snapped.x - (appState.editor?.snapEnabled===false ? d.start.x : snapGrid(d.start.x)));
+        item.y = d.original.y + (snapped.y - (appState.editor?.snapEnabled===false ? d.start.y : snapGrid(d.start.y)));
+        appState.selectedStreetId=street.id; appState.selectedStreetFurnitureId=item.id;
+        renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
+      }
     } else if(d.type === 'section-guide'){
       const zone = findZoneById(d.zoneId) || appState.layout.zones[0];
       if(zone){

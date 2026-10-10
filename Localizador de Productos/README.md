@@ -47,3 +47,15 @@ Las pruebas de integración V187 y regresión previas pasan. Se probó en Chromi
 - No se validó una escritura efectiva sobre la base de datos D1 remota. Comprueba guardados, cambio de sucursal y recarga en Preview.
 
 Documentación de cambios técnicos: `CAMBIOS_V187.md`.
+
+
+## V189 — Crear mobiliario 3D
+
+1. Acceder con perfil administrador y abrir **Crear mobiliario 3D** en el menú izquierdo.
+2. Elegir **Estante melamina**, **Armario melamina** o **Metal + madera**.
+3. Editar ancho, profundidad, altura, repisas y divisiones; usar el inspector para modificar piezas.
+4. Generar distribuciones equitativas o personalizadas en **Distribución paramétrica**.
+5. Comprobar geometría, guardar el modelo y opcionalmente exportar el despiece CSV.
+6. **Colocar en el almacén** (requiere una zona con espacio disponible) y abrir **Diseñar espacio 3D**; las piezas se renderizan a partir del modelo guardado.
+
+Para publicar en Cloudflare Pages: ejecutar `npm install && npm run build`, seleccionar directorio de salida `public`; preservar la configuración D1 en `wrangler.toml`.

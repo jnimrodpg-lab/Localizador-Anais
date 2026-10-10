@@ -1,5 +1,5 @@
 {
-  "version": "188",
+  "version": "189",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V188: Furniture Builder paramétrico, modelos de melamina y metal/madera, renderizado por piezas en Diseñar espacio 3D, Cloudflare Wrangler/D1 preservados"
+  "notes": "V189: constructor de mobiliario en sidebar, divisiones paramétricas, despiece CSV, validación y modelo por piezas en 3D; Cloudflare D1 conservado."
 }

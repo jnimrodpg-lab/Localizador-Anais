@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const core=fs.readFileSync('src/frontend/30-admin-sync.js','utf8');
+const auth=fs.readFileSync('src/frontend/80-auth-operations.js','utf8');
+const css=fs.readFileSync('public/assets/styles/v171-ui-audit.css','utf8');
+const page=fs.readFileSync('public/index.html','utf8');
+assert.ok(!core.includes('company-brand-card'),'Branding visual redundante sigue expuesto');
+assert.ok(!core.includes('style.setProperty(\'--accent\''),'Branding aún cambia el tema global');
+assert.ok(core.includes('style.removeProperty(key)'),'Debe limpiar acentos de configuraciones anteriores');
+assert.ok(core.includes('class="variant-chip static"'),'Variantes de vista previa deben ser informativas');
+assert.ok(css.includes('zoom:var(--wms-density)'),'Falta densidad de interfaz 80%');
+assert.ok(css.includes('.company-branch-card.expanded .company-branch-body'),'No se protege la expansión de tarjetas');
+assert.ok(css.includes('max-height:none!important'),'No existe regla de expansión vertical');
+assert.ok(css.includes('@media(max-width:680px)'),'No hay adaptación móvil');
+assert.ok(page.includes('wms-home') && page.includes('wms-layers'),'Iconos SVG no disponibles');
+assert.ok(!auth.includes("toggleSidebar.textContent ="),'No se deben destruir iconos del sidebar al colapsar');
+console.log('OK V171: branding desacoplado, tarjetas expansibles, iconografía persistente, chips y 80% responsive.');

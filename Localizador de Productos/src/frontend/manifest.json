@@ -1,5 +1,5 @@
 {
-  "version": "170",
+  "version": "171",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "v170: aplicación avanzada conservada, temas cálidos y biblioteca corregida."
+  "notes": "v171: auditoría UI, conserva funciones Cloudflare, D1 y editores avanzados."
 }

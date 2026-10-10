@@ -1535,9 +1535,10 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const activeViewerIndex = Number(appState.viewerBranchIndex ?? -1);
     host.innerHTML = branches.length ? branches.map((b, i) => {
       const active = appState.screen === 'viewer' && activeViewerIndex === i;
-      return `<div class="menu-item ${active ? 'active' : ''}" data-screen="viewer" data-viewer-branch-menu="${i}">👁 <span>${escapeHtml(b?.name || ('Sucursal ' + (i + 1)))}</span></div>`;
-    }).join('') : '<div class="menu-item active" data-screen="viewer" data-viewer-branch-menu="-1">👁 <span>Visualizar</span></div>';
+      return `<div class="menu-item ${active ? 'active' : ''}" data-screen="viewer" data-viewer-branch-menu="${i}" role="button" tabindex="0"><svg class="wms-icon" aria-hidden="true"><use href="#wms-eye"></use></svg><span>${escapeHtml(b?.name || ('Sucursal ' + (i + 1)))}</span></div>`;
+    }).join('') : '<div class="menu-item active" data-screen="viewer" data-viewer-branch-menu="-1" role="button" tabindex="0"><svg class="wms-icon" aria-hidden="true"><use href="#wms-eye"></use></svg><span>Visualizar</span></div>';
     host.querySelectorAll('[data-viewer-branch-menu]').forEach(item => {
+      item.onkeydown = e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); item.click(); } };
       item.onclick = async () => {
         const idx = Number(item.getAttribute('data-viewer-branch-menu'));
         appState.viewerBranchIndex = idx;
@@ -4162,13 +4163,11 @@ const DEFAULT_GRID_SIZE = 2;
     const companyInfo = appState.admin?.company;
     const companyName = typeof companyInfo === 'string' ? companyInfo : (companyInfo?.name || companyInfo?.company || 'WMS Industrial');
     const brandTitle = document.querySelector('.brand-text b'); if(brandTitle) brandTitle.textContent = companyName || 'WMS Industrial';
-    const brandSub = document.querySelector('.brand-text .muted'); if(brandSub) brandSub.textContent = 'sistema visual cálido • edición clara';
+    const brandSub = document.querySelector('.brand-text .muted'); if(brandSub) brandSub.textContent = 'Gestión de almacenes';
     const box = document.querySelector('.brand-box');
     if(box){ box.innerHTML = appState.admin.logo ? `<img src="${appState.admin.logo}" alt="Logo" style="width:100%;height:100%;object-fit:contain;display:block">` : 'W'; }
-    const accent = getActiveBrandColor();
-    document.documentElement.style.setProperty('--accent', accent);
-    document.documentElement.style.setProperty('--accent-rgb', hexToRgbTriplet(accent));
-    document.documentElement.style.setProperty('--brand-active', accent);
+    // La paleta la definen exclusivamente los tokens claro/oscuro.
+    for(const key of ['--accent','--accent-rgb','--brand-active']) document.documentElement.style.removeProperty(key);
   }
   function getAdminCompanyName(){
     const company = appState.admin?.company;
@@ -4258,8 +4257,6 @@ const DEFAULT_GRID_SIZE = 2;
     const summaryBranches = cfg.branches.length;
     const summaryWarehouses = cfg.branches.reduce((a,b)=>a+(b.warehouses?.length||0),0);
     const companyName = getAdminCompanyName();
-    const brandingColors = cfg.branding.colors || [];
-    const activeColorIdx = Math.max(0, Math.min(Number(cfg.branding.activeColor || 0), brandingColors.length - 1));
     contentTitle.textContent = '';
     contentSubtitle.textContent = '';
     contentStatus.textContent = '';
@@ -4269,24 +4266,17 @@ const DEFAULT_GRID_SIZE = 2;
     detailSubtitle.textContent='';
     detailStatus.textContent='';
     detailChip.textContent='';
-    detailWrap.innerHTML = `
-      <div class="company-summary-v2">
-        <div class="company-summary-head"><b>Resumen</b><span class="company-summary-star">★</span></div>
-        <div class="company-summary-card"><div class="company-summary-icon">⌂</div><div><strong>${summaryBranches}</strong><span>Sucursales</span><small>Total configuradas</small></div></div>
-        <div class="company-summary-card"><div class="company-summary-icon">▣</div><div><strong>${summaryWarehouses}</strong><span>Almacenes</span><small>Total de almacenes</small></div></div>
-        <div class="company-summary-card"><div class="company-summary-icon accent">◔</div><div><span>Última actualización</span><small>${new Date().toLocaleDateString('es-PE', { day:'2-digit', month:'short', year:'numeric'})} • ${appState.auth?.user || 'admin'}</small></div></div>
-        <div class="company-warehouse-illu"><div class="warehouse-floor"></div><div class="warehouse-box warehouse-a"></div><div class="warehouse-box warehouse-b"></div><div class="warehouse-box warehouse-c"></div><div class="warehouse-building"></div><div class="warehouse-door"></div><div class="warehouse-truck"></div><div class="warehouse-pin"></div></div>
-      </div>`;
+    detailWrap.innerHTML = ""; // El tablero ya muestra las métricas; no duplicar el resumen lateral.
     const quickActions = [
-      ['virtual','◈','Diseñar en 3D','Ambiente y mobiliario virtual'],
-      ['viewer','⌕','Buscar productos','Inventario y ubicaciones'],
-      ['layout','▣','Editar layout','Muros, zonas y medidas']
+      ['virtual','box','Diseñar en 3D','Espacio y mobiliario'],
+      ['viewer','search','Buscar productos','Inventario y ubicaciones'],
+      ['layout','map','Editar layout','Muros, zonas y medidas']
     ];
     const advancedActions = [
-      ['sheet','🔗','Vincular datos','Google Sheets y sincronización'],
-      ['distribution','▦','Distribuir racks','Ajustar posiciones'],
-      ['racks','▤','Biblioteca','Modelos reutilizables'],
-      ['rack-builder','⚒','Crear rack','Construcción paramétrica']
+      ['sheet','database','Vincular datos','Google Sheets'],
+      ['distribution','grid','Distribuir racks','Ajustar posiciones'],
+      ['racks','layers','Biblioteca','Modelos reutilizables'],
+      ['rack-builder','tool','Crear rack','Construcción paramétrica']
     ];
     contentWrap.innerHTML = `
       <div class="company-config-v2 company-dashboard-v165">
@@ -4301,33 +4291,28 @@ const DEFAULT_GRID_SIZE = 2;
             </div>
           </div>
           <div class="company-dashboard-actions-grid">
-            ${quickActions.map(([screen,icon,title,desc])=>`<button class="company-quick-card" type="button" data-dashboard-screen="${screen}"><b>${icon}</b><span>${title}</span><small>${desc}</small></button>`).join('')}
+            ${quickActions.map(([screen,icon,title,desc])=>`<button class="company-quick-card" type="button" data-dashboard-screen="${screen}"><b><svg class="wms-icon" aria-hidden="true"><use href="#wms-${icon}"></use></svg></b><span>${title}</span><small>${desc}</small></button>`).join('')}
           </div>
-          <details class="company-dashboard-extra"><summary>Más herramientas <span>Biblioteca, racks y conexión de datos</span></summary>
-            <div class="company-dashboard-extra-grid">${advancedActions.map(([screen,icon,title,desc])=>`<button class="company-quick-card" type="button" data-dashboard-screen="${screen}"><b>${icon}</b><span>${title}</span><small>${desc}</small></button>`).join('')}</div>
+          <details class="company-dashboard-extra"><summary>Más herramientas</summary>
+            <div class="company-dashboard-extra-grid">${advancedActions.map(([screen,icon,title,desc])=>`<button class="company-quick-card" type="button" data-dashboard-screen="${screen}"><b><svg class="wms-icon" aria-hidden="true"><use href="#wms-${icon}"></use></svg></b><span>${title}</span><small>${desc}</small></button>`).join('')}</div>
           </details>
         </section>
-        <div class="company-topbar-v2"><div class="company-title-stack"><h3>Configuración de Empresa</h3><div class="muted">Administrador</div></div><button class="btn secondary company-preview-btn" id="companyPreviewBtn" type="button">Vista previa pública ↗</button></div>
+        <div class="company-topbar-v2"><div class="company-title-stack"><h3>Empresa y sucursales</h3></div><button class="btn secondary company-preview-btn" id="companyPreviewBtn" type="button">Abrir visor ↗</button></div>
         <section class="company-top-grid">
           <article class="company-card company-info-card">
-            ${renderCompanySectionHeader(1, 'Información general', 'Datos principales de la empresa y logo.')}
+            ${renderCompanySectionHeader(1, 'Información general')}
             <div class="grid"><label>Nombre de la Empresa</label><input id="companyNameInput" value="${escapeHtml(companyName)}"></div>
             <div class="company-logo-grid">
               <div class="grid"><label>Logo</label><div class="company-logo-drop"><div class="company-logo-drop-inner">${cfg.logo ? `<img src="${cfg.logo}" alt="Logo actual">` : '<span class="company-logo-mark">⌂</span><span>Logo actual</span>'}</div></div></div>
               <div class="company-upload-card"><input type="file" id="companyLogoInput" accept="image/*" style="display:none"><button class="company-logo-btn" id="companyLogoBtn">☁ Subir logo</button><small>PNG, JPG o SVG.<br>Máx. 2MB</small></div>
             </div>
-            <div class="company-inline-note">ⓘ Los cambios se guardarán de forma inmediata.</div>
-          </article>
-          <article class="company-card company-brand-card">
-            ${renderCompanySectionHeader(2, 'Branding', 'Colores, acentos y vista previa visual.')}
-            <div class="grid"><label>Colores principales</label><div class="company-swatch-row">${brandingColors.map((color, idx)=>`<button class="company-swatch${idx===activeColorIdx?' active':''}" type="button" data-action="branding-color" data-index="${idx}" title="Aplicar color ${escapeHtml(color)}" style="--sw:${escapeHtml(color)}"></button>`).join('')}<button class="company-swatch add" type="button" data-action="branding-add">＋</button></div><div class="company-brand-actions"><input type="color" id="brandingColorPicker" value="${escapeHtml(brandingColors[activeColorIdx] || '#6ff0a8')}"><button class="btn secondary compact" id="brandingApplyBtn" type="button">Aplicar color</button></div></div>
-            <div class="grid"><label>Vista previa</label><div class="company-brand-preview"><span class="company-brand-cube">◫</span><b>${escapeHtml(companyName)}</b></div></div>
+            
           </article>
         </section>
         <section class="company-card company-branches-panel">
-          <div class="company-panel-head sectionized"><div>${renderCompanySectionHeader(3, 'Sucursales y almacenes', 'Organiza sucursales, almacenes y ubicaciones principales.')}</div><button class="btn" id="addBranchBtn">＋ Nueva sucursal</button></div>
+          <div class="company-panel-head sectionized"><div>${renderCompanySectionHeader(2, 'Sucursales y almacenes')}</div><button class="btn" id="addBranchBtn">＋ Nueva sucursal</button></div>
           <div class="company-branch-list">${cfg.branches.map((branch, idx)=>renderAdminBranchCard(branch, idx)).join('')}</div>
-          <div class="company-drag-note">ⓘ Arrastra las sucursales para reordenarlas. La primera sucursal será la principal.</div>
+
         </section>
         <div class="company-save-row"><button class="btn company-save-btn" id="saveCompanyBtn">💾 Guardar configuración</button></div>
       </div>`;
@@ -4352,31 +4337,13 @@ const DEFAULT_GRID_SIZE = 2;
     const previewBtn = $('#companyPreviewBtn');
     if(previewBtn) previewBtn.onclick = () => {
       saveAdminState();
-      showToast('Vista previa pública abierta en modo viewer.', 'success');
+      showToast('Visor abierto.', 'success');
       setScreen('viewer');
-    };
-    const picker = $('#brandingColorPicker');
-    const applyColorBtn = $('#brandingApplyBtn');
-    const applyPickerColor = () => {
-      const value = (picker?.value || '').trim();
-      if(!value) return;
-      const idx = Math.max(0, Math.min(Number(appState.admin.branding.activeColor || 0), appState.admin.branding.colors.length - 1));
-      appState.admin.branding.colors[idx] = value;
-      saveAdminState();
-      renderAdminScreen();
-    };
-    if(applyColorBtn) applyColorBtn.onclick = applyPickerColor;
-    if(picker) picker.oninput = e => {
-      const idx = Math.max(0, Math.min(Number(appState.admin.branding.activeColor || 0), appState.admin.branding.colors.length - 1));
-      appState.admin.branding.colors[idx] = e.target.value;
-      applyBrand();
     };
     contentWrap.querySelectorAll('[data-field="branch-name"]').forEach(el=>{ el.oninput=e=>appState.admin.branches[+e.target.dataset.index].name=e.target.value; el.onchange=()=>saveAdminState(); });
     contentWrap.querySelectorAll('[data-field="branch-type"]').forEach(el=>el.onchange=e=>{ appState.admin.branches[+e.target.dataset.index].type=e.target.value; saveAdminState(); renderAdminScreen(); });
     contentWrap.querySelectorAll('[data-field="branch-main-warehouse"]').forEach(el=>el.onchange=e=>{ appState.admin.branches[+e.target.dataset.index].mainWarehouse=e.target.value; saveAdminState(); renderAdminScreen(); });
     contentWrap.querySelectorAll('[data-field="warehouse-name"]').forEach(el=>{ el.oninput=e=>{ const bi=+e.target.dataset.bindex, wi=+e.target.dataset.windex; const branch = appState.admin.branches[bi]; const oldName = branch.warehouses[wi]; branch.warehouses[wi]=e.target.value; if(norm(branch.mainWarehouse)===norm(oldName)) branch.mainWarehouse=e.target.value; }; el.onchange=()=>saveAdminState(); });
-    contentWrap.querySelectorAll('[data-action="branding-color"]').forEach(el=>el.onclick=e=>{ appState.admin.branding.activeColor = +e.currentTarget.dataset.index; saveAdminState(); renderAdminScreen(); });
-    contentWrap.querySelector('[data-action="branding-add"]')?.addEventListener('click', ()=>{ const next = prompt('Nuevo color HEX para branding:', '#c7d6d2') || '#c7d6d2'; appState.admin.branding.colors.push(/^#[0-9a-f]{6}$/i.test(next.trim()) ? next.trim() : '#c7d6d2'); appState.admin.branding.activeColor = appState.admin.branding.colors.length - 1; saveAdminState(); renderAdminScreen(); });
     contentWrap.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=e=>{
       const a=e.currentTarget.dataset.action, i=+e.currentTarget.dataset.index, bi=+e.currentTarget.dataset.bindex, wi=+e.currentTarget.dataset.windex;
       if(a==='toggle-branch'){
@@ -5214,7 +5181,7 @@ const DEFAULT_GRID_SIZE = 2;
       return `<div class="active-card-custom-field"><span>${escapeHtml(f.label || f.header)}</span><b>${escapeHtml(value)}</b></div>`;
     }).filter(Boolean).join('');
     const thumbs = mediaItems.map((item, index) => `<button class="search-card-thumb ${index===0?'active':''}" type="button" tabindex="-1"><span>${item.type === 'video' ? '▶' : String(index+1).padStart(2,'0')}</span></button>`).join('');
-    const variantsHtml = cfg.showVariants === false ? '' : `<div class="variant-groups"><div class="variant-group"><div class="variant-group-label">Talla</div><div class="variant-strip">${sizeValue ? `<button class="variant-chip active" type="button">${escapeHtml(sizeValue)}</button>` : '<span class="muted tiny">Sin talla detectada</span>'}</div></div><div class="variant-group"><div class="variant-group-label">Color</div><div class="variant-strip">${colorValue ? `<button class="variant-chip active" type="button">${escapeHtml(colorValue)}</button>` : '<span class="muted tiny">Sin color detectado</span>'}</div></div></div>`;
+    const variantsHtml = cfg.showVariants === false ? '' : `<div class="variant-groups"><div class="variant-group"><div class="variant-group-label">Talla</div><div class="variant-strip">${sizeValue ? `<span class="variant-chip static">${escapeHtml(sizeValue)}</span>` : '<span class="muted tiny">Sin talla detectada</span>'}</div></div><div class="variant-group"><div class="variant-group-label">Color</div><div class="variant-strip">${colorValue ? `<span class="variant-chip static">${escapeHtml(colorValue)}</span>` : '<span class="muted tiny">Sin color detectado</span>'}</div></div></div>`;
     const actionsHtml = cfg.showActions === false ? '' : `<div class="search-card-actions-row"><button class="action-btn secondary search-card-action" type="button">Ver ubicación</button><button class="action-btn primary search-card-action" type="button">Abrir visor</button></div>`;
     const metaHtml = cfg.showDefaultLocation === false ? '' : `<div class="search-card-meta"><div class="search-meta-block"><span class="search-meta-label">Ubicación</span><span class="search-meta-value">${escapeHtml(locationValue)}</span></div><div class="search-meta-block"><span class="search-meta-label">Ubicación en almacén</span><span class="search-meta-value store">${escapeHtml(storeValue)}</span></div></div>`;
     const layout = getCardLayoutConfig(cfg);
@@ -17217,7 +17184,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
 
   toggleSidebar.addEventListener('click', () => {
     appRoot.classList.toggle('sidebar-collapsed');
-    toggleSidebar.textContent = appRoot.classList.contains('sidebar-collapsed') ? '❯' : '❮';
+    toggleSidebar.setAttribute('aria-label', appRoot.classList.contains('sidebar-collapsed') ? 'Expandir menú' : 'Contraer menú');
     if(appState && appState.screen) setScreen(appState.screen);
   });
 

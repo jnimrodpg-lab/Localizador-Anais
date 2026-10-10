@@ -1,56 +1,35 @@
-# Edición actual: V160
+# WMS Industrial V171 — Auditoría visual y responsive
 
-Para las funcionalidades del ambiente virtual, modelos 3D y ubicación por nivel, consulta [README_V160.md](README_V160.md). El documento siguiente describe la arquitectura base histórica.
+**Base:** V170 original del usuario, con la arquitectura de administración, importación de productos, Google Sheets, layout CAD, rack builder, espacio virtual y visualizador de productos conservada. Esta es una corrección incremental, no una reconstrucción simplificada.
 
-# WMS Industrial — v107 Modular Source
+## Cambios aplicados
 
-v107 conserva la estabilización de v106 y agrega una capa de arquitectura mantenible para el frontend. El comportamiento publicado sigue usando un único bundle, pero su fuente ahora está dividida por subsistemas y se genera de forma reproducible.
+- Workspace con densidad de interfaz equivalente a 80% de zoom sobre escritorio (CSS `zoom: .8`, ajustando dimensiones para cubrir toda la ventana). Los diálogos fuera del workspace conservan el tamaño del viewport.
+- Sidebar renovado: iconografía vectorial consistente, menú accesible con teclado, colapso que conserva iconos, selector de tema más discreto y sin indicador online ficticio.
+- Paleta cálida clara/oscura regida por `tokens.css`. Se quitó el bloque de **Branding** que sobrescribía variables cromáticas sin sincronizarse con los estados de los botones; se mantienen nombre y logo de empresa, y los datos antiguos de branding se leen sin afectar la apariencia.
+- Dashboard administrativo ocupa el área central completa. Se retiró el panel lateral duplicado de resumen, manteniendo métricas en la portada.
+- Expandir sucursales ya no recorta la ficha: los subpaneles crecen en el scroll principal en vez de desbordar el cuadro padre.
+- Chips informativos no se muestran como botones: variantes de la previsualización sin acciones son `span` y el CSS de etiquetas está neutralizado. Los chips que sí tienen interacción (filtros reales, variantes de producto operativas) se mantienen.
+- Breakpoints para móvil/tablet: navegación horizontal, tarjetas fluidas, formulario apilado, vista de layout con canvas antes del inspector y barras de herramientas que se redistribuyen.
+- Textos de ayuda redundantes compactados. No se elimina ninguna operación de D1, Wrangler ni los editores avanzados.
 
-## Estructura activa
+## Despliegue Cloudflare Pages
 
-- `public/` — única salida estática publicada por Cloudflare Pages.
-- `functions/api/[[path]].js` — única implementación de la API.
-- `migrations/0001_init.sql` — esquema base de D1.
-- `wrangler.toml` — configuración de Pages/D1.
+1. Subir el contenido del proyecto a GitHub manteniendo `wrangler.toml`, `functions/api/[[path]].js`, `migrations/` y `src/`.
+2. Configurar Pages: **Build command** `npm run build`, **Build output directory** `public`. Instalará dependencias con npm según `package-lock.json`.
+3. La base D1 ya tiene su binding `DB` y su identificador en `wrangler.toml`; al reutilizar la base existente **no debes crear otra**. Comprobar en los ajustes del proyecto de Cloudflare Pages que el binding D1 se llama `DB` tanto en producción como en vista previa si corresponde.
+4. Si es la primera instalación de la base: `npx wrangler d1 migrations apply DB --remote`. **No vuelvas a ejecutar migraciones destructivas ni borres una base con datos activos.** Verificar antes sobre una base de prueba.
 
-Ya no existen copias paralelas de `index.html`, `assets/` ni APIs TypeScript antiguas en `functions/api/`.
-
-## Cambios v106
-
-- Eliminadas rutas API antiguas que competían con `functions/api/[[path]].js`.
-- `GET /api/app-state` ahora exige sesión válida y nunca cae por defecto en `company_id = 1`.
-- Registro de viewer corregido para usar `POST /api/register` con `mode: viewer`.
-- Eliminada la lectura de cookies `HttpOnly` desde el frontend.
-- Eliminado el precalentamiento incorrecto a `/healthz` y reducidos los reintentos de sesión.
-- Eliminada una carga remota duplicada durante el bootstrap.
-- Al cerrar sesión se limpia el caché local privado de inventario, layouts y configuración empresarial.
-- Un usuario sin sesión ya no rehidrata inventario privado desde `localStorage`; solo ve datos demo.
-- Eliminadas credenciales `admin/admin123` de `wrangler.toml`.
-- Hash de contraseñas nuevo con PBKDF2-SHA256; hashes antiguos se validan y migran automáticamente al iniciar sesión.
-- Endpoints auxiliares de Google Sheets requieren rol administrador.
-- Al eliminar una sucursal también se limpian layout, configuración de hoja y links viewer asociados.
-- Respuestas API ya no exponen datos internos de routing/debug.
-
-## Credenciales iniciales
-
-La aplicación permite crear una cuenta administradora desde la pantalla de registro. No hay una contraseña de producción incluida en el repositorio.
-
-Si una instalación existente ya tiene usuarios en D1, continúan funcionando. Su hash de contraseña antiguo se migra automáticamente a PBKDF2 después de un inicio de sesión válido.
-
-Las variables `ADMIN_USERNAME` y `ADMIN_PASSWORD` siguen siendo opcionales en el backend únicamente para instalaciones heredadas que quieran sembrar un administrador en la empresa por defecto. Si se usan, deben configurarse como variables/secretos del entorno de Cloudflare, nunca dentro del repositorio.
-
-## Comprobación rápida
+## Pruebas
 
 ```bash
+npm ci
+npm run build
 npm run check
 ```
 
-Esto valida sintaxis del backend y del bundle principal del frontend.
+Incluye pruebas de sincronía del frontend, compatibilidad de auth, geometría 3D, CSS y verificaciones de la nueva UI. Los smoke-tests locales con Chromium no sustituyen pruebas de interacción en producción con datos y permisos reales. Los scripts `tests/visual-smoke.py` y `tests/visual-audit-v171.py` son opcionales: requieren Python + Playwright + Chromium; algunas vistas 3D pueden necesitar cargar Three.js por CDN.
 
-## Desarrollo frontend desde v107
+## Limitaciones de verificación
 
-Edita `src/frontend/`, ejecuta `npm run build:frontend` y finalmente `npm run check`. El bundle bajo `public/assets/` es generado y no debe editarse manualmente.
-
-## Siguiente etapa recomendada
-
-La v108 puede normalizar productos en D1 y aplicar paginación/búsqueda SQL sin mezclar ese cambio de datos con la refactorización del frontend.
+Las pruebas de Node terminaron correctamente, y se revisaron visualmente el tablero en escritorio y móvil y el editor de layout en móvil. No se validaron conexiones reales a Google Sheets / Cloudflare D1 ni todos los flujos WebGL con datos de producción. Antes de sustituir el despliegue activo, conviene publicarlo en Preview y comprobar permisos y escenas 3D allí.

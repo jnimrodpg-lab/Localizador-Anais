@@ -883,7 +883,7 @@
 
   toggleSidebar.addEventListener('click', () => {
     appRoot.classList.toggle('sidebar-collapsed');
-    toggleSidebar.textContent = appRoot.classList.contains('sidebar-collapsed') ? '❯' : '❮';
+    toggleSidebar.setAttribute('aria-label', appRoot.classList.contains('sidebar-collapsed') ? 'Expandir menú' : 'Contraer menú');
     if(appState && appState.screen) setScreen(appState.screen);
   });
 

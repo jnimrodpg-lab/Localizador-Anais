@@ -7,7 +7,7 @@ const imports=Array.from(main.matchAll(/@import url\(['"]\.\/styles\/([^'"\)]+)[
 assert.ok(imports.length>=10,'Se esperan módulos CSS: tokens, base, dashboard, viewer, CAD y responsive');
 for(const name of imports) assert.ok(fs.existsSync(path.join(base,'styles',name)),`Falta CSS importado: ${name}`);
 assert.equal(imports[0],'tokens.css','Tokens deben cargarse primero');
-assert.equal(imports[imports.length-1],'responsive.css','Responsive debe cargarse último');
+assert.equal(imports[imports.length-1],'v171-ui-audit.css','Capa de auditoría responsiva debe cargarse al final');
 for(const n of ['legacy-core.css','layout-cad.css']){
  const text=fs.readFileSync(path.join(base,'styles',n),'utf8');
  assert.ok(!/body\.theme-(?:light|dark)/.test(text),`${n} conserva reglas duplicadas de modo visual`);
@@ -27,4 +27,4 @@ for(const t of ['light','dark']){
  assert.ok(contrast(ink,surface)>=7,`${t}: contraste títulos menor de 7:1`);
  assert.ok(contrast(soft,surface)>=4.5,`${t}: contraste textos secundarios menor de 4.5:1`);
 }
-console.log('OK visual CSS: 12 importaciones, temas centralizados, contraste WCAG AA y sin reglas de tema legadas.');
+console.log(`OK visual CSS: ${imports.length} importaciones, tokens unificados, contraste WCAG AA y auditoría responsive.`);

@@ -520,9 +520,10 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const activeViewerIndex = Number(appState.viewerBranchIndex ?? -1);
     host.innerHTML = branches.length ? branches.map((b, i) => {
       const active = appState.screen === 'viewer' && activeViewerIndex === i;
-      return `<div class="menu-item ${active ? 'active' : ''}" data-screen="viewer" data-viewer-branch-menu="${i}">👁 <span>${escapeHtml(b?.name || ('Sucursal ' + (i + 1)))}</span></div>`;
-    }).join('') : '<div class="menu-item active" data-screen="viewer" data-viewer-branch-menu="-1">👁 <span>Visualizar</span></div>';
+      return `<div class="menu-item ${active ? 'active' : ''}" data-screen="viewer" data-viewer-branch-menu="${i}" role="button" tabindex="0"><svg class="wms-icon" aria-hidden="true"><use href="#wms-eye"></use></svg><span>${escapeHtml(b?.name || ('Sucursal ' + (i + 1)))}</span></div>`;
+    }).join('') : '<div class="menu-item active" data-screen="viewer" data-viewer-branch-menu="-1" role="button" tabindex="0"><svg class="wms-icon" aria-hidden="true"><use href="#wms-eye"></use></svg><span>Visualizar</span></div>';
     host.querySelectorAll('[data-viewer-branch-menu]').forEach(item => {
+      item.onkeydown = e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); item.click(); } };
       item.onclick = async () => {
         const idx = Number(item.getAttribute('data-viewer-branch-menu'));
         appState.viewerBranchIndex = idx;

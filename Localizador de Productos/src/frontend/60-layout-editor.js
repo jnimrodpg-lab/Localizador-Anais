@@ -2344,7 +2344,12 @@
         sw.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
         streetsLayer.appendChild(sw);
       }
-      const labelPts = street.sidewalkPts?.length ? street.sidewalkPts : street.roadPts;
+      if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
+        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(242,238,228,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.5':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
+        sw2.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
+        streetsLayer.appendChild(sw2);
+      }
+      const labelPts = street.roadPts?.length ? street.roadPts : (street.sidewalkPts?.length ? street.sidewalkPts : street.outerSidewalkPts);
       if(Array.isArray(labelPts) && labelPts.length){
         const c = polygonCentroid(labelPts);
         const txt = svgEl('text',{ x:c.x, y:c.y+4, 'text-anchor':'middle', style:'font-size:10px;font-weight:800;fill:rgba(48,54,60,.95);pointer-events:none' });

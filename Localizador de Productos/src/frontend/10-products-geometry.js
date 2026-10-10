@@ -438,6 +438,17 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       };
     }
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    appState.layout.streets = appState.layout.streets.map(street => {
+      if(street && street.side && (!Array.isArray(street.outerSidewalkPts) || street.outerSidewalkPts.length < 4)){
+        const rebuilt = buildStreetGeometry(street.side, {
+          sidewalkWidth: street.sidewalkWidth,
+          roadWidth: street.roadWidth,
+          cornerStyle: street.cornerStyle || appState.layout.meta.defaultStreetCornerStyle || 'right'
+        });
+        return { ...street, ...rebuilt, id: street.id || nextStreetId(), name: street.name || `Calle ${street.side}` };
+      }
+      return street;
+    });
     if(!appState.layout.meta.defaultStreetCornerStyle) appState.layout.meta.defaultStreetCornerStyle = 'right';
     return appState.layout.meta;
   }
@@ -485,21 +496,25 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const sidewalk = Math.max(20, Number(opts.sidewalkWidth || 42) || 42);
     const road = Math.max(26, Number(opts.roadWidth || 92) || 92);
     const bevel = String(opts.cornerStyle || getStreetCornerStyle()) === 'diagonal' ? Math.max(16, Math.min(42, sidewalk * .6)) : 0;
-    let sidewalkPts = [], roadPts = [];
+    let sidewalkPts = [], roadPts = [], outerSidewalkPts = [];
     if(side === 'top'){
       sidewalkPts = [{x:b.minX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY},{x:b.minX,y:b.minY}];
       roadPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}] : [{x:b.minX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}];
+      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.minX+bevel,y:b.minY-sidewalk-road}] : [{x:b.minX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.minX,y:b.minY-sidewalk-road}];
     }else if(side === 'bottom'){
       sidewalkPts = [{x:b.minX,y:b.maxY},{x:b.maxX,y:b.maxY},{x:b.maxX,y:b.maxY+sidewalk},{x:b.minX,y:b.maxY+sidewalk}];
       roadPts = bevel ? [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.minX+bevel,y:b.maxY+sidewalk+road}] : [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.minX,y:b.maxY+sidewalk+road}];
+      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX+bevel,y:b.maxY+sidewalk+road+sidewalk}] : [{x:b.minX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX,y:b.maxY+sidewalk+road+sidewalk}];
     }else if(side === 'left'){
       sidewalkPts = [{x:b.minX-sidewalk,y:b.minY},{x:b.minX,y:b.minY},{x:b.minX,y:b.maxY},{x:b.minX-sidewalk,y:b.maxY}];
       roadPts = bevel ? [{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY}];
+      outerSidewalkPts = bevel ? [{x:b.minX-sidewalk-road-sidewalk,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.maxY-bevel},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road-sidewalk,y:b.minY},{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk-road,y:b.maxY},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY}];
     }else{
       sidewalkPts = [{x:b.maxX,y:b.minY},{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk,y:b.maxY},{x:b.maxX,y:b.maxY}];
       roadPts = bevel ? [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel},{x:b.maxX+sidewalk,y:b.maxY}] : [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road,y:b.maxY},{x:b.maxX+sidewalk,y:b.maxY}];
+      outerSidewalkPts = bevel ? [{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY-bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel}] : [{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY},{x:b.maxX+sidewalk+road,y:b.maxY}];
     }
-    return { side, sidewalkPts, roadPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: bevel ? 'diagonal' : 'right' };
+    return { side, sidewalkPts, roadPts, outerSidewalkPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: bevel ? 'diagonal' : 'right' };
   }
   function addStreetFromPoint(point, opts={}){
     ensureLayoutMeta();

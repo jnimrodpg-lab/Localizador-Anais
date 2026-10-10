@@ -1453,6 +1453,17 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       };
     }
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    appState.layout.streets = appState.layout.streets.map(street => {
+      if(street && street.side && (!Array.isArray(street.outerSidewalkPts) || street.outerSidewalkPts.length < 4)){
+        const rebuilt = buildStreetGeometry(street.side, {
+          sidewalkWidth: street.sidewalkWidth,
+          roadWidth: street.roadWidth,
+          cornerStyle: street.cornerStyle || appState.layout.meta.defaultStreetCornerStyle || 'right'
+        });
+        return { ...street, ...rebuilt, id: street.id || nextStreetId(), name: street.name || `Calle ${street.side}` };
+      }
+      return street;
+    });
     if(!appState.layout.meta.defaultStreetCornerStyle) appState.layout.meta.defaultStreetCornerStyle = 'right';
     return appState.layout.meta;
   }
@@ -1500,21 +1511,25 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const sidewalk = Math.max(20, Number(opts.sidewalkWidth || 42) || 42);
     const road = Math.max(26, Number(opts.roadWidth || 92) || 92);
     const bevel = String(opts.cornerStyle || getStreetCornerStyle()) === 'diagonal' ? Math.max(16, Math.min(42, sidewalk * .6)) : 0;
-    let sidewalkPts = [], roadPts = [];
+    let sidewalkPts = [], roadPts = [], outerSidewalkPts = [];
     if(side === 'top'){
       sidewalkPts = [{x:b.minX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY},{x:b.minX,y:b.minY}];
       roadPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}] : [{x:b.minX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}];
+      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.minX+bevel,y:b.minY-sidewalk-road}] : [{x:b.minX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.minX,y:b.minY-sidewalk-road}];
     }else if(side === 'bottom'){
       sidewalkPts = [{x:b.minX,y:b.maxY},{x:b.maxX,y:b.maxY},{x:b.maxX,y:b.maxY+sidewalk},{x:b.minX,y:b.maxY+sidewalk}];
       roadPts = bevel ? [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.minX+bevel,y:b.maxY+sidewalk+road}] : [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.minX,y:b.maxY+sidewalk+road}];
+      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX+bevel,y:b.maxY+sidewalk+road+sidewalk}] : [{x:b.minX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX,y:b.maxY+sidewalk+road+sidewalk}];
     }else if(side === 'left'){
       sidewalkPts = [{x:b.minX-sidewalk,y:b.minY},{x:b.minX,y:b.minY},{x:b.minX,y:b.maxY},{x:b.minX-sidewalk,y:b.maxY}];
       roadPts = bevel ? [{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY}];
+      outerSidewalkPts = bevel ? [{x:b.minX-sidewalk-road-sidewalk,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.maxY-bevel},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road-sidewalk,y:b.minY},{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk-road,y:b.maxY},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY}];
     }else{
       sidewalkPts = [{x:b.maxX,y:b.minY},{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk,y:b.maxY},{x:b.maxX,y:b.maxY}];
       roadPts = bevel ? [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel},{x:b.maxX+sidewalk,y:b.maxY}] : [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road,y:b.maxY},{x:b.maxX+sidewalk,y:b.maxY}];
+      outerSidewalkPts = bevel ? [{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY-bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel}] : [{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY},{x:b.maxX+sidewalk+road,y:b.maxY}];
     }
-    return { side, sidewalkPts, roadPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: bevel ? 'diagonal' : 'right' };
+    return { side, sidewalkPts, roadPts, outerSidewalkPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: bevel ? 'diagonal' : 'right' };
   }
   function addStreetFromPoint(point, opts={}){
     ensureLayoutMeta();
@@ -11859,7 +11874,12 @@ function getSheetBranchOpenMap(){
         sw.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
         streetsLayer.appendChild(sw);
       }
-      const labelPts = street.sidewalkPts?.length ? street.sidewalkPts : street.roadPts;
+      if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
+        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(242,238,228,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.5':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
+        sw2.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
+        streetsLayer.appendChild(sw2);
+      }
+      const labelPts = street.roadPts?.length ? street.roadPts : (street.sidewalkPts?.length ? street.sidewalkPts : street.outerSidewalkPts);
       if(Array.isArray(labelPts) && labelPts.length){
         const c = polygonCentroid(labelPts);
         const txt = svgEl('text',{ x:c.x, y:c.y+4, 'text-anchor':'middle', style:'font-size:10px;font-weight:800;fill:rgba(48,54,60,.95);pointer-events:none' });
@@ -16031,6 +16051,9 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
     const zoneBounds=[];(appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>zoneBounds.push(p)));
+    const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
+    sitePts.forEach(p=>zoneBounds.push(p));
+    (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>zoneBounds.push(p)));
     if(!zoneBounds.length)(appState.layout.racks||[]).forEach(r=>zoneBounds.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
     let mx=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.x)))+Math.max(...zoneBounds.map(p=>Number(p.x))))/2:200;
     let my=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.y)))+Math.max(...zoneBounds.map(p=>Number(p.y))))/2:180;
@@ -16275,6 +16298,35 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             materials.forEach(m=>{if(m?.isSpriteMaterial){m.map?.dispose();m.dispose();}else if(m&&!Object.values(shared).includes(m))m.dispose();});
           });});world.clear();state.objects.clear();
         };
+        const shapeFromLayoutPts = (pts=[]) => {
+          const shape = new THREE.Shape();
+          pts.forEach((pt,i)=>{ const p=coord(pt); if(i===0) shape.moveTo(p.x,-p.z); else shape.lineTo(p.x,-p.z); });
+          shape.closePath();
+          return shape;
+        };
+        const addOutlineFromPts = (pts=[], color=0xb99261, y=.026, opacity=.98) => {
+          const outlinePts = pts.map(pt => coord(pt));
+          if(outlinePts.length < 2) return;
+          const arr=[];
+          outlinePts.forEach((pt,i)=>{ arr.push(pt.x, y, pt.z); const nx=outlinePts[(i+1)%outlinePts.length]; arr.push(nx.x, y, nx.z); });
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+          const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent:true, opacity }));
+          world.add(line);
+        };
+        const addStreetBand = (pts=[], color=0x8a8f92, y=0, depth=.02, outlineColor=0xe9dcc2) => {
+          if(!Array.isArray(pts) || pts.length < 3) return;
+          const shape = shapeFromLayoutPts(pts);
+          const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:false}), meshMat(color,{metalness:.03,roughness:.92}));
+          mesh.rotation.x = -Math.PI/2; mesh.position.y = y - depth; mesh.receiveShadow = true; mesh.castShadow = false; world.add(mesh);
+          addOutlineFromPts(pts, outlineColor, y + .02, .92);
+        };
+        const addStreetLabel = (street, pts=[]) => {
+          if(!Array.isArray(pts) || !pts.length) return;
+          const c = { x:pts.reduce((v,p)=>v+Number(p.x||0),0)/pts.length, y:pts.reduce((v,p)=>v+Number(p.y||0),0)/pts.length };
+          const tag = labelSprite(`Calle ${street.side}`, 1.2);
+          const cc = coord(c); tag.position.set(cc.x, .065, cc.z); world.add(tag);
+        };
         const addFurniture=r=>{
           const spec=vspaceSpec(r);
           const group=new THREE.Group();group.userData={furnitureId:r.id};
@@ -16290,6 +16342,22 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         const rebuild=()=>{
           clearWorld();
           const zones=appState.layout.zones||[];
+          const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
+          const streets = Array.isArray(appState.layout?.streets) ? appState.layout.streets : [];
+          if(siteBoundary.length >= 3){
+            const siteShape = shapeFromLayoutPts(siteBoundary);
+            const siteFloor = new THREE.Mesh(new THREE.ExtrudeGeometry(siteShape,{depth:.12,bevelEnabled:false}),[
+              meshMat(0xeee6d6,{metalness:0,roughness:.96}),meshMat(0xd7c8ae,{metalness:0,roughness:.98})]);
+            siteFloor.rotation.x=-Math.PI/2; siteFloor.position.y=-.12; siteFloor.receiveShadow=true; world.add(siteFloor);
+            addOutlineFromPts(siteBoundary, 0xa9855f, .042, .98);
+            addOutlineFromPts(siteBoundary, 0xe8d4b7, .058, .82);
+          }
+          streets.forEach(street => {
+            addStreetBand(street.outerSidewalkPts, 0xe7dece, .014, 0xd9c8aa);
+            addStreetBand(street.roadPts, 0x8c9398, .008, 0xf7efe0);
+            addStreetBand(street.sidewalkPts, 0xe7dece, .014, 0xd9c8aa);
+            addStreetLabel(street, street.roadPts || street.sidewalkPts || street.outerSidewalkPts);
+          });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
             const shape=new THREE.Shape();
@@ -16297,16 +16365,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             const floor=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.15,bevelEnabled:false}),[
               meshMat(0xe9d7bb,{metalness:0,roughness:.9}),meshMat(0xbba48a,{metalness:0,roughness:.95})]);
             floor.rotation.x=-Math.PI/2;floor.position.y=-.15;floor.receiveShadow=true;world.add(floor);
-            const outlinePts = pts.map(pt => coord(pt));
-            if(outlinePts.length >= 2){
-              const lineMat = new THREE.LineBasicMaterial({ color:0xbca17d, transparent:true, opacity:.96 });
-              const arr = [];
-              outlinePts.forEach((pt,i) => { arr.push(pt.x, .018, pt.z); const nx = outlinePts[(i+1)%outlinePts.length]; arr.push(nx.x, .018, nx.z); });
-              const geo = new THREE.BufferGeometry();
-              geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
-              const line = new THREE.LineSegments(geo, lineMat);
-              world.add(line);
-            }
+            addOutlineFromPts(pts, 0x2f7b6e, .03, .96);
+            addOutlineFromPts(pts, 0xe6d5b5, .04, .78);
             if(state.wallVisible){
               const center={x:pts.reduce((v,p)=>v+Number(p.x),0)/pts.length,y:pts.reduce((v,p)=>v+Number(p.y),0)/pts.length};
               const midpoint=coord(center);

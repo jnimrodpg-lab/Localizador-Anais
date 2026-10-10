@@ -226,6 +226,9 @@
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
     const zoneBounds=[];(appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>zoneBounds.push(p)));
+    const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
+    sitePts.forEach(p=>zoneBounds.push(p));
+    (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>zoneBounds.push(p)));
     if(!zoneBounds.length)(appState.layout.racks||[]).forEach(r=>zoneBounds.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
     let mx=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.x)))+Math.max(...zoneBounds.map(p=>Number(p.x))))/2:200;
     let my=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.y)))+Math.max(...zoneBounds.map(p=>Number(p.y))))/2:180;
@@ -470,6 +473,35 @@
             materials.forEach(m=>{if(m?.isSpriteMaterial){m.map?.dispose();m.dispose();}else if(m&&!Object.values(shared).includes(m))m.dispose();});
           });});world.clear();state.objects.clear();
         };
+        const shapeFromLayoutPts = (pts=[]) => {
+          const shape = new THREE.Shape();
+          pts.forEach((pt,i)=>{ const p=coord(pt); if(i===0) shape.moveTo(p.x,-p.z); else shape.lineTo(p.x,-p.z); });
+          shape.closePath();
+          return shape;
+        };
+        const addOutlineFromPts = (pts=[], color=0xb99261, y=.026, opacity=.98) => {
+          const outlinePts = pts.map(pt => coord(pt));
+          if(outlinePts.length < 2) return;
+          const arr=[];
+          outlinePts.forEach((pt,i)=>{ arr.push(pt.x, y, pt.z); const nx=outlinePts[(i+1)%outlinePts.length]; arr.push(nx.x, y, nx.z); });
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+          const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent:true, opacity }));
+          world.add(line);
+        };
+        const addStreetBand = (pts=[], color=0x8a8f92, y=0, depth=.02, outlineColor=0xe9dcc2) => {
+          if(!Array.isArray(pts) || pts.length < 3) return;
+          const shape = shapeFromLayoutPts(pts);
+          const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:false}), meshMat(color,{metalness:.03,roughness:.92}));
+          mesh.rotation.x = -Math.PI/2; mesh.position.y = y - depth; mesh.receiveShadow = true; mesh.castShadow = false; world.add(mesh);
+          addOutlineFromPts(pts, outlineColor, y + .02, .92);
+        };
+        const addStreetLabel = (street, pts=[]) => {
+          if(!Array.isArray(pts) || !pts.length) return;
+          const c = { x:pts.reduce((v,p)=>v+Number(p.x||0),0)/pts.length, y:pts.reduce((v,p)=>v+Number(p.y||0),0)/pts.length };
+          const tag = labelSprite(`Calle ${street.side}`, 1.2);
+          const cc = coord(c); tag.position.set(cc.x, .065, cc.z); world.add(tag);
+        };
         const addFurniture=r=>{
           const spec=vspaceSpec(r);
           const group=new THREE.Group();group.userData={furnitureId:r.id};
@@ -485,6 +517,22 @@
         const rebuild=()=>{
           clearWorld();
           const zones=appState.layout.zones||[];
+          const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
+          const streets = Array.isArray(appState.layout?.streets) ? appState.layout.streets : [];
+          if(siteBoundary.length >= 3){
+            const siteShape = shapeFromLayoutPts(siteBoundary);
+            const siteFloor = new THREE.Mesh(new THREE.ExtrudeGeometry(siteShape,{depth:.12,bevelEnabled:false}),[
+              meshMat(0xeee6d6,{metalness:0,roughness:.96}),meshMat(0xd7c8ae,{metalness:0,roughness:.98})]);
+            siteFloor.rotation.x=-Math.PI/2; siteFloor.position.y=-.12; siteFloor.receiveShadow=true; world.add(siteFloor);
+            addOutlineFromPts(siteBoundary, 0xa9855f, .042, .98);
+            addOutlineFromPts(siteBoundary, 0xe8d4b7, .058, .82);
+          }
+          streets.forEach(street => {
+            addStreetBand(street.outerSidewalkPts, 0xe7dece, .014, 0xd9c8aa);
+            addStreetBand(street.roadPts, 0x8c9398, .008, 0xf7efe0);
+            addStreetBand(street.sidewalkPts, 0xe7dece, .014, 0xd9c8aa);
+            addStreetLabel(street, street.roadPts || street.sidewalkPts || street.outerSidewalkPts);
+          });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
             const shape=new THREE.Shape();
@@ -492,16 +540,8 @@
             const floor=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.15,bevelEnabled:false}),[
               meshMat(0xe9d7bb,{metalness:0,roughness:.9}),meshMat(0xbba48a,{metalness:0,roughness:.95})]);
             floor.rotation.x=-Math.PI/2;floor.position.y=-.15;floor.receiveShadow=true;world.add(floor);
-            const outlinePts = pts.map(pt => coord(pt));
-            if(outlinePts.length >= 2){
-              const lineMat = new THREE.LineBasicMaterial({ color:0xbca17d, transparent:true, opacity:.96 });
-              const arr = [];
-              outlinePts.forEach((pt,i) => { arr.push(pt.x, .018, pt.z); const nx = outlinePts[(i+1)%outlinePts.length]; arr.push(nx.x, .018, nx.z); });
-              const geo = new THREE.BufferGeometry();
-              geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
-              const line = new THREE.LineSegments(geo, lineMat);
-              world.add(line);
-            }
+            addOutlineFromPts(pts, 0x2f7b6e, .03, .96);
+            addOutlineFromPts(pts, 0xe6d5b5, .04, .78);
             if(state.wallVisible){
               const center={x:pts.reduce((v,p)=>v+Number(p.x),0)/pts.length,y:pts.reduce((v,p)=>v+Number(p.y),0)/pts.length};
               const midpoint=coord(center);

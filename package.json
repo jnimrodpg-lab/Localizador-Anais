@@ -1,21 +1,22 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.7.3-ui-structural",
+  "version": "1.7.4-layout-cleanup",
   "private": true,
-  "description": "WMS Industrial V173: saneamiento estructural CAD/3D/Sheets y auditoría multipantalla.",
+  "description": "WMS Industrial V174: limpieza de editor CAD y acceso redundante 3D eliminado",
   "type": "module",
   "scripts": {
     "build:frontend": "node scripts/build-frontend.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
     "audit:frontend": "node scripts/audit-frontend.mjs",
-    "check": "npm run verify:frontend && npm run audit:frontend && npm run test:visual-css && npm run test:ui-v171 && npm run test:ui-v173 && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js",
+    "check": "npm run verify:frontend && npm run audit:frontend && npm run test:visual-css && npm run test:ui-v171 && npm run test:ui-v173 && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js && npm run test:ui-v174",
     "build": "npm run build:frontend",
     "test:virtual": "node tests/virtual-space.test.mjs && node tests/furniture-v161.test.mjs",
     "test:auth": "node tests/auth-compat.test.mjs",
     "test:visual-css": "node tests/visual-css.test.mjs",
     "test:ui-v171": "node tests/ui-audit-v171.test.mjs",
     "test:ui-v173": "node tests/ui-workspace-v173.test.mjs",
-    "test:visual-browser": "python tests/visual-v173.py"
+    "test:visual-browser": "python tests/visual-v173.py",
+    "test:ui-v174": "node tests/ui-layout-v174.test.mjs"
   },
   "dependencies": {
     "three": "0.160.0"

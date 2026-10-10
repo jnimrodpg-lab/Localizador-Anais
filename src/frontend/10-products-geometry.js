@@ -645,6 +645,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       else if(screen === 'racks') renderRackModels();
       else if(screen === 'rack-builder') renderRackConstructionWorkspace();
       else renderMapView();
+      if(contentStatus.textContent === 'Cargando vista…') contentStatus.textContent = '';
     }catch(err){
       console.error('Error al cambiar de pantalla:', err);
       contentTitle.textContent = 'Error de navegación';

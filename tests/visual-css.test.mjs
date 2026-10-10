@@ -7,7 +7,7 @@ const imports=Array.from(main.matchAll(/@import url\(['"]\.\/styles\/([^'"\)]+)[
 assert.ok(imports.length>=10,'Se esperan módulos CSS: tokens, base, dashboard, viewer, CAD y responsive');
 for(const name of imports) assert.ok(fs.existsSync(path.join(base,'styles',name)),`Falta CSS importado: ${name}`);
 assert.equal(imports[0],'tokens.css','Tokens deben cargarse primero');
-assert.equal(imports[imports.length-1],'v173-workspace.css','Workspace V173 debe cargarse al final');
+assert.equal(imports[imports.length-1],'v174-workspace.css','Workspace V174 debe cargarse al final');
 for(const n of ['legacy-core.css','layout-cad.css']){
  const text=fs.readFileSync(path.join(base,'styles',n),'utf8');
  assert.ok(!/body\.theme-(?:light|dark)/.test(text),`${n} conserva reglas duplicadas de modo visual`);

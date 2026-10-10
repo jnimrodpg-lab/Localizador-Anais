@@ -1,5 +1,5 @@
 {
-  "version": "173",
+  "version": "174",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "v173: reconstrucción de pantallas 3D, Sheets y CAD manteniendo Cloudflare D1 y funciones."
+  "notes": "v174: retirar botón redundante del editor y pulir secciones, cotas y controles, sin afectar espacios 3D."
 }

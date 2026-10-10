@@ -1660,6 +1660,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       else if(screen === 'racks') renderRackModels();
       else if(screen === 'rack-builder') renderRackConstructionWorkspace();
       else renderMapView();
+      if(contentStatus.textContent === 'Cargando vista…') contentStatus.textContent = '';
     }catch(err){
       console.error('Error al cambiar de pantalla:', err);
       contentTitle.textContent = 'Error de navegación';
@@ -10945,7 +10946,7 @@ function getSheetBranchOpenMap(){
     const structureMode = !rackMode;
     return `
       <div class="layout-right-head">
-        <div><b>Inspector del layout</b><small>Opciones contextualizadas según tu selección.</small></div>
+        <div><b>Inspector del layout</b></div>
         <span class="layout-type-pill">${summary.type === 'rack' ? 'Rack' : summary.type === 'zone' ? 'Zona' : summary.type === 'wall' ? 'Muro' : summary.type === 'opening' ? 'Opening' : summary.type === 'measure' ? 'Medida' : summary.type === 'room' ? 'Recinto' : 'Plano'}</span>
       </div>
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
@@ -10953,12 +10954,7 @@ function getSheetBranchOpenMap(){
           <div class="layout-prop-title">Selección</div>
           <div class="layout-selected-title">${escapeHtml(summary.title)}</div>
           <div class="tiny muted">Modo: ${escapeHtml(appState.editor.mode || 'select')}</div>
-          <div class="layout-compact-help">
-            <span class="layout-help-chip">${rackMode ? 'Edita racks sin tocar la estructura' : 'Edita muros, zonas y vanos'}</span>
-            <span class="layout-help-chip">Cambios sincronizados con la vista 3D</span>
-          </div>
         </section>
-        ${appState.editor.beginnerMode ? `<section class="layout-prop-card beginner-guide-card"><div class="layout-prop-title">Guía rápida</div><div class="layout-compact-help">${rackMode ? '<span class="layout-help-chip">1. Selecciona o mueve racks</span><span class="layout-help-chip">2. Usa snap para alinear</span><span class="layout-help-chip">3. Guarda al terminar</span>' : '<span class="layout-help-chip">1. Dibuja zonas y muros</span><span class="layout-help-chip">2. Agrega puertas o aberturas</span><span class="layout-help-chip">3. Guarda el layout</span>'}</div></section>` : ''}
         <section class="layout-prop-card">
           <div class="layout-prop-title">Vista</div>
           <div class="layout-layer-grid">
@@ -11316,7 +11312,7 @@ function getSheetBranchOpenMap(){
     if(selectionType==='rack' && selectedRack){
       contextTitle = `Rack activo: ${selectedRack.id}`;
       contextHint = 'Acciones rápidas para distribución y revisión visual.';
-      contextActions = [['ctx-duplicate-rack','Duplicar'],['ctx-open-3d','Ver en 3D'],['ctx-delete','Eliminar']];
+      contextActions = [['ctx-duplicate-rack','Duplicar'],['ctx-delete','Eliminar']];
     }else if(selectionType==='zone' && selectedZone){
       contextTitle = `Zona activa: ${selectedZone.name || selectedZone.id}`;
       contextHint = 'Ajusta geometría, duplica la zona o agrega muros.';
@@ -11415,7 +11411,6 @@ function getSheetBranchOpenMap(){
             <button class="seg-btn v172-sections-switch ${appState.editor.sectionVisible ? 'is-active' : ''}" id="btnToggleSections" type="button" aria-pressed="${!!appState.editor.sectionVisible}" title="Mostrar u ocultar cortes X e Y">${appState.editor.sectionVisible ? '◉ Ocultar secciones' : '◫ Mostrar secciones'}</button>
             <button class="seg-btn v165-inspector-toggle" data-layout-tag-action="toggle-right-props" type="button">${appState.editor.rightPanelOpen === false ? 'Mostrar inspector' : 'Ocultar inspector'}</button>
             <button class="seg-btn v165-presentation-toggle" id="btnPresentationMode" type="button">${appState.editor.presentationMode ? 'Salir de solo espacio' : 'Solo espacio'}</button>
-            <button class="seg-btn v134-open-3d" id="btnOpenLayout3D" type="button" title="Abrir el mismo modelo en 3D">◈ Ver en 3D</button>
             <button class="btn primary v90-save-layout-btn" id="btnSaveLayoutVisible" type="button">${rackMode ? 'Guardar racks' : 'Guardar layout'}</button>
             <span id="layoutSaveStatus" class="v99-save-status local">Local</span>
             <span id="layoutQualityBadge" class="v99-quality-badge ok">OK</span>
@@ -11438,13 +11433,10 @@ function getSheetBranchOpenMap(){
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='rack'?'active':''}" data-emode="rack"><span class="v80-tool-ico">▤</span><b>Rack</b></button>
                     <button class="v80-tool-btn seg-btn" id="btnDuplicateRackRail"><span class="v80-tool-ico">⧉</span><b>Duplicar</b></button>
                     `}
-                    <button class="v80-tool-btn seg-btn" data-layout-tag-action="toggle-dims"><span class="v80-tool-ico">↔</span><b>Cotas</b></button>
                   </div>
                   ${appState.editor.showMiniMap !== false ? `<div class="v80-minimap-card"><div class="v80-minimap-title">Layout mini</div>${renderLayoutMiniMapMarkup()}</div>` : ''}
                   <div class="v80-canvas-footer">
-                    <span>Vista layout</span><span>Sucursal activa</span>
-                    <span>Rejilla: <b>${formatUnitNumber(getSnapSize() / Math.max(1, getSnapSize()) * 0.25)} m</b></span>
-                    <button class="seg-btn" id="btnZoomOut">−</button><span class="zoom-chip" id="zoomLabel">100%</span><button class="seg-btn" id="btnZoomIn">+</button>
+                    <button class="seg-btn" id="btnZoomOut" title="Alejar" aria-label="Alejar plano">−</button><span class="zoom-chip" id="zoomLabel">100%</span><button class="seg-btn" id="btnZoomIn" title="Acercar" aria-label="Acercar plano">+</button>
                   </div>
                   <button class="v90-floating-save-layout" id="btnSaveLayoutFloat" type="button">${rackMode ? 'Guardar distribución' : 'Guardar estructura'}</button>
                   ${structureMode && appState.editor.mode==='wall' && appState.editor.pendingWallPoint ? `<div class="wall-length-hud"><span>Longitud</span><input id="wallLengthInput" type="number" min="1" step="1" placeholder="cm" value="${escapeHtml(String(appState.editor.wallLengthDraft||''))}"><b>cm</b><small>Enter fija · ESC termina</small></div>` : ''}
@@ -11824,8 +11816,8 @@ function getSheetBranchOpenMap(){
         guideLayer.appendChild(rHandle);
         const rLabel = svgEl('text',{x:rangeLimit+10,y:zb.minY-14,class:'section-range-label',fill:color}); rLabel.textContent='Límite X'; guideLayer.appendChild(rLabel);
       }
-      const label = svgEl('text',{ x:isY ? (zb.minX + zb.maxX)/2 : linePos + 18, y:isY ? linePos - 10 : (zb.minY + zb.maxY)/2, fill:color, 'font-size':'11', 'font-weight':'800', 'text-anchor':'middle', style:'paint-order:stroke;stroke:#05101c;stroke-width:4px;stroke-linejoin:round;pointer-events:none;' });
-      label.textContent = isY ? 'Línea de corte Y' : 'Línea de corte X';
+      const label = svgEl('text',{ x:isY ? zb.minX+16 : linePos+12, y:isY ? linePos-12 : zb.maxY-18, fill:color, 'font-size':'10', 'font-weight':'700', 'text-anchor':'start', style:'pointer-events:none;' });
+      label.textContent = isY ? 'Corte Y' : 'Corte X';
       guideLayer.appendChild(label);
       const dir = cut.dir === -1 ? -1 : 1;
       const mkArrow = (pts) => {
@@ -11892,11 +11884,6 @@ function getSheetBranchOpenMap(){
         badge.appendChild(badgeSub);
       }
       zoneLayer.appendChild(badge);
-      if(appState.selectedZoneId===zone.id && appState.editor.showLabels !== false){
-        const centerLabel = svgEl('text',{x:c.x,y:c.y,class:'ortho-label','text-anchor':'middle',style:'opacity:.28;pointer-events:none'});
-        centerLabel.textContent = zoneSub || zoneTitle;
-        zoneLayer.appendChild(centerLabel);
-      }
       if(appState.editor.showDims) drawZoneEdgeDimensions(edgeLayer, zone);
 
       if(appState.selectedZoneId===zone.id){
@@ -12468,16 +12455,17 @@ function getSheetBranchOpenMap(){
 
   function renderSectionAxisSvg(svg, zone, racks, axis){
     if(!svg) return;
-    const mountWidth = Math.max(320, Math.floor((svg.parentElement?.clientWidth || 520) - 4));
-    const width = mountWidth, height = 260, groundY = 220;
-    const padX = 24;
+    const mountWidth = Math.max(230, Math.floor((svg.parentElement?.clientWidth || 520) - 12));
+    const width = mountWidth, height = Math.max(116, Math.min(156, Math.round(width * .24)));
+    const groundY = height - 20;
+    const padX = 20;
     svg.innerHTML = '';
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.appendChild(svgEl('rect',{x:0,y:0,width,height,rx:18,fill:'rgba(6,16,28,.98)'}));
     svg.appendChild(svgEl('line',{x1:padX,y1:groundY,x2:width-padX,y2:groundY,class:'section-ground'}));
     if(!zone || !racks.length){
-      const txt = svgEl('text',{x:width/2,y:height/2,class:'section-text','text-anchor':'middle'});
-      txt.textContent = 'Selecciona una zona con racks para ver la sección.';
+      const txt = svgEl('text',{x:width/2,y:height/2,class:'section-text','text-anchor':'middle',style:'font-size:11px'});
+      txt.textContent = 'Sin racks en esta zona';
       svg.appendChild(txt);
       return;
     }
@@ -12490,13 +12478,13 @@ function getSheetBranchOpenMap(){
     const displaySpan = Math.max(1, displayMax - displayMin);
     const innerWidth = Math.max(120, width - padX * 2);
     if(!visible.length){
-      const txt = svgEl('text',{x:width/2,y:height/2,class:'section-text','text-anchor':'middle'});
-      txt.textContent = 'No hay racks visibles desde esta línea de sección.';
+      const txt = svgEl('text',{x:width/2,y:height/2,class:'section-text','text-anchor':'middle',style:'font-size:11px'});
+      txt.textContent = 'Sin racks en este corte';
       svg.appendChild(txt);
       return;
     }
     const maxTop = Math.max(...visible.map(r => (Number(r.baseHeight||0) + Number(r.rackHeight || rackModel(r.modelId).height || 238))), 240);
-    const usableHeight = 160;
+    const usableHeight = Math.max(62, height - 53);
     const rackHeightScale = usableHeight / maxTop;
     const ordered = visible.slice().sort((a,b)=> ((a[displayAxisKey] || 0) - (b[displayAxisKey] || 0)) || ((a.baseHeight||0)-(b.baseHeight||0)) || (a.id > b.id ? 1 : -1));
     const sectionItems = ordered.map(r => {
@@ -12534,7 +12522,7 @@ function getSheetBranchOpenMap(){
       const label = svgEl('text',{x:rx+rw/2,y:ry+rh/2+6,class:'section-text','text-anchor':'middle'});
       label.textContent = `${r.id} · N${getRackStackLevel(r)}`;
       svg.appendChild(label);
-      const baseText = svgEl('text',{x:rx+rw/2,y:ry+rh+16,class:'section-text','text-anchor':'middle',style:'font-size:11px;fill:#9db8d4'});
+      const baseText = svgEl('text',{x:rx+rw/2,y:ry+rh+11,class:'section-text','text-anchor':'middle',style:'font-size:9px;fill:#9db8d4'});
       baseText.textContent = `Base ${formatDistanceShort(baseHeight)}`;
       svg.appendChild(baseText);
     });
@@ -12551,12 +12539,11 @@ function getSheetBranchOpenMap(){
       <div class="layout-section-wrap layout-section-panel">
         <div class="layout-section-head">
           <div>
-            <div class="layout-section-title">Vista de sección</div>
+            <div class="layout-section-title">Secciones X / Y</div>
             <div class="layout-section-sub">Revisa cortes X e Y lado a lado sin tapar el plano principal.</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div class="section-stack-chip">${zone ? zone.id : 'Sin zona'} • ${racks.length} racks</div>
-            <button class="seg-btn" id="btnToggleSectionVisibility" type="button">Ocultar secciones</button>
           </div>
         </div>
         <div class="layout-section-body layout-section-grid">
@@ -12580,7 +12567,6 @@ function getSheetBranchOpenMap(){
     renderSectionAxisSvg($('#layoutSectionSvgY'), zone, racks, 'y');
     $('#btnFlipSectionX').onclick = () => { const cut = getSectionCut('x', zone); cut.dir *= -1; persistActiveLayout(); renderLayoutEditor(); };
     $('#btnFlipSectionY').onclick = () => { const cut = getSectionCut('y', zone); cut.dir *= -1; persistActiveLayout(); renderLayoutEditor(); };
-    $('#btnToggleSectionVisibility').onclick = () => { appState.editor.sectionVisible = false; renderLayoutEditor(); };
   }
 
   function hexToRgba(hex, a){ const h = hex.replace('#',''); const r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16); return `rgba(${r},${g},${b},${a})`; }
@@ -12666,7 +12652,6 @@ function getSheetBranchOpenMap(){
     $$('[data-layout-context-action]').forEach(btn=>btn.onclick = () => {
       const action = btn.getAttribute('data-layout-context-action');
       if(action === 'ctx-duplicate-rack') return duplicateSelectedRack();
-      if(action === 'ctx-open-3d') return (persistActiveLayout(), openNavigable3DModal(appState.selectedProduct || null));
       if(action === 'ctx-delete') return deleteLayoutSelection();
       if(action === 'ctx-duplicate-zone') return duplicateSelectedZone();
       if(action === 'ctx-mode-wall'){ appState.editor.mode = 'wall'; appState.editor.pendingWallPoint = null; return renderLayoutEditor(); }
@@ -12674,7 +12659,6 @@ function getSheetBranchOpenMap(){
       if(action === 'ctx-add-window'){ const sw=findWallById(appState.selectedWallId); if(!sw) return; createOpeningOnWall(sw.id, 'window'); persistActiveLayout(); return renderLayoutEditor(); }
       if(action === 'ctx-duplicate-opening'){ const op=findOpeningById(appState.selectedOpeningId); if(!op) return; duplicateOpening(op); persistActiveLayout(); return renderLayoutEditor(); }
     });
-    if($('#btnOpenLayout3D')) $('#btnOpenLayout3D').onclick = () => { persistActiveLayout(); openNavigable3DModal(appState.selectedProduct || null); };
     if($('#btnZoomIn')) $('#btnZoomIn').onclick = () => { markLayoutManualInteraction(); zoomLayout(0.86); };
     if($('#btnZoomOut')) $('#btnZoomOut').onclick = () => { markLayoutManualInteraction(); zoomLayout(1.16); };
     if($('#btnZoomFit')) $('#btnZoomFit').onclick = () => { 

@@ -71,6 +71,38 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       else carton(bx,surfaceY+.027,z,bw,capH,bd,l,s,filled?shared.cardboard:shared.cardboardLight);
     }
   };
+  // Modelos diseñados en Furniture Builder: mismas piezas y cotas en espacio 3D.
+  const customModel=(appState.models||[]).find(m=>m.id===rack.modelId);
+  if(customModel?.furniture?.enabled && Array.isArray(customModel.furniture.pieces) && customModel.furniture.pieces.length){
+    const f=customModel.furniture;
+    const finishColors={oak:0xcda579,white:0xe9e8e2,walnut:0x826046,graphite:0x4f5357};
+    const board=new THREE.MeshStandardMaterial({color:finishColors[f.finish]||finishColors.oak,roughness:.76,metalness:.025});
+    const powder=new THREE.MeshStandardMaterial({color:0x59656c,roughness:.49,metalness:.65});
+    const renderPieces=customModel.furniture.pieces;
+    const mw=Math.max(1,Number(customModel.width||spec.width)),md=Math.max(1,Number(customModel.depth||spec.depth));
+    const physicalScaleX=spec.width/mw,physicalScaleD=spec.depth/md,physicalScaleH=spec.height/Math.max(1,Number(customModel.height||spec.height));
+    renderPieces.forEach(p=>{
+      const px=Number(p.x||0),py=Number(p.y||0),pz=Number(p.z||0),pw=Math.max(.1,Number(p.w||1)),pd=Math.max(.1,Number(p.d||1)),ph=Math.max(.1,Number(p.h||1));
+      const metalPiece=f.material==='metal'||(f.material==='metal-wood' && ['post','beam','brace'].includes(p.type));
+      const mat=metalPiece?powder:board;
+      const cx=((px+pw/2)*physicalScaleX-spec.width/2)/100;
+      const cy=((pz+ph/2)*physicalScaleH)/100;
+      const cz=((py+pd/2)*physicalScaleD-spec.depth/2)/100;
+      if(p.type==='brace'){
+        const ex=Number.isFinite(Number(p.x2))?Number(p.x2):px+pw, ez=Number.isFinite(Number(p.z2))?Number(p.z2):pz+ph;
+        const dx=(ex-px)*physicalScaleX/100,dy=(ez-pz)*physicalScaleH/100;
+        const length=Math.max(.01,Math.hypot(dx,dy));
+        const midX=((px+ex)/2*physicalScaleX-spec.width/2)/100;
+        const midY=((pz+ez)/2*physicalScaleH)/100;
+        const mesh=part(midX,midY,cz,length,Math.max(.008,pd/100),Math.max(.008,pd/100),powder);
+        mesh.rotation.z=Math.atan2(dy,dx);
+      }else{
+        part(cx,cy,cz,Math.max(.004,pw*physicalScaleX/100),Math.max(.004,ph*physicalScaleH/100),Math.max(.004,pd*physicalScaleD/100),mat);
+      }
+    });
+    if(selected)sign(spec.title,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
+    return;
+  }
   const frame=Math.max(.023,Math.min(.047,w*.025));
   if(spec.kind==='rack'){
     // Industrial shelving: powder-coated posts, cross-bracing and oak decks.

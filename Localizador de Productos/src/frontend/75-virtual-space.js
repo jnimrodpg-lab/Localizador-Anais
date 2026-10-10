@@ -224,7 +224,7 @@
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
       <div class="vspace-toolbar-right"><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active">Muros</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
-      <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
+      <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
       <section class="vspace-stage"><canvas id="vspaceCanvas" aria-label="Visualizador tridimensional interactivo del almacén"></canvas>
@@ -564,6 +564,18 @@
       state.refreshInspector();state.render(false);
     };
     root.querySelectorAll('[data-vspace-add]').forEach(b=>b.onclick=()=>vspaceCreate(b.dataset.vspaceAdd));
+    root.querySelector('#vspaceAddSavedModel')?.addEventListener('click',()=>{
+      const modelId=root.querySelector('#vspaceSavedModel')?.value;
+      const model=(appState.models||[]).find(m=>m.id===modelId && m?.furniture?.enabled);
+      if(!model) return vspaceToast('Selecciona un modelo del constructor.',true);
+      const rack=placeFurnitureModelInLayout(model);
+      if(!rack) return;
+      state.selectedId=rack.id;
+      state.selectedLevel=1;state.selectedSlot=1;
+      vspaceCommit('mueble paramétrico añadido');
+      state.refreshInspector();
+      state.setCamera?.('iso');
+    });
     root.querySelector('#vspaceObjects').addEventListener('click',e=>{
       const b=e.target.closest('[data-vspace-select]');if(b)state.select(b.dataset.vspaceSelect);
     });

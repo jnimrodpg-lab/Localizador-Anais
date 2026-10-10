@@ -1,5 +1,5 @@
 {
-  "version": "187",
+  "version": "188",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V187: CAD vértices de área, división de zonas, urbanismo y movimientos de muros 3D, Cloudflare Wrangler/D1 preservados"
+  "notes": "V188: Furniture Builder paramétrico, modelos de melamina y metal/madera, renderizado por piezas en Diseñar espacio 3D, Cloudflare Wrangler/D1 preservados"
 }

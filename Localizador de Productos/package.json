@@ -1,14 +1,14 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.8.7-cad-urbanism",
+  "version": "1.8.8-furniture-builder",
   "private": true,
-  "description": "WMS Industrial V187: editor CAD y construcción 3D sincronizados, urbanismo, vértices y divisiones",
+  "description": "WMS Industrial V188: mobiliario paramétrico de melamina y metal/madera, sincronizado con espacio 3D",
   "type": "module",
   "scripts": {
     "build:frontend": "node scripts/build-frontend.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
     "audit:frontend": "node scripts/audit-frontend.mjs",
-    "check": "npm run build && npm run verify:frontend && npm run audit:frontend && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js && npm run test:architecture && npm run test:ui-v176 && npm run test:regression-v181",
+    "check": "npm run build && npm run verify:frontend && npm run audit:frontend && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js && npm run test:architecture && npm run test:ui-v176 && npm run test:regression-v181 && npm run test:furniture-v188",
     "build": "npm run build:frontend && npm run build:css",
     "test:virtual": "node tests/virtual-space.test.mjs && node tests/furniture-v161.test.mjs",
     "test:auth": "node tests/auth-compat.test.mjs",
@@ -21,6 +21,7 @@
     "build:css": "node scripts/build-css.mjs",
     "test:ui-v176": "node tests/ui-v176.test.mjs",
     "test:architecture": "node tests/architecture-v180.test.mjs",
+    "test:furniture-v188": "node tests/furniture-v188.test.mjs",
     "test:regression-v181": "node tests/regression-v181.test.mjs",
     "test:v187": "node tests/integration-v187.test.mjs"
   },

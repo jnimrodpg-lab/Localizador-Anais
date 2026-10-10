@@ -15564,8 +15564,10 @@ function getSheetBranchOpenMap(){
     const f=model.furniture;
     f.version=1;
     f.enabled=!!f.enabled;
-    f.material = ['melamine','wood','metal'].includes(f.material) ? f.material : (normalizeRackStyle(model.style)==='metallic'?'metal':normalizeRackStyle(model.style)==='wood'?'wood':'melamine');
-    f.thickness = Math.max(.3, Number(f.thickness || (f.material==='metal'?4:1.8)) || 1.8);
+    f.material = ['melamine','wood','metal','metal-wood'].includes(f.material) ? f.material : (normalizeRackStyle(model.style)==='metallic'?'metal':normalizeRackStyle(model.style)==='wood'?'wood':'melamine');
+    f.thickness = Math.max(.3, Number(f.thickness || (['metal','metal-wood'].includes(f.material)?4:1.8)) || 1.8);
+    f.finish = ['white','oak','walnut','graphite'].includes(f.finish) ? f.finish : 'oak';
+    f.template = ['shelf','cabinet','display','metal-wood'].includes(f.template) ? f.template : 'shelf';
     f.backThickness = Math.max(.2, Number(f.backThickness || .3) || .3);
     f.snap = Math.max(.1, Number(f.snap || 1) || 1);
     f.pieces = Array.isArray(f.pieces) ? f.pieces : [];
@@ -15593,12 +15595,14 @@ function getSheetBranchOpenMap(){
   }
 
   function furniturePieceLabel(piece){
-    const map={side:'Lateral',top:'Tapa superior',base:'Base',shelf:'Repisa',divider:'División',back:'Fondo',brace:'Refuerzo',post:'Poste',beam:'Viga',panel:'Panel'};
+    const map={side:'Lateral',top:'Tapa superior',base:'Base',shelf:'Repisa',divider:'División',back:'Fondo',brace:'Refuerzo',post:'Poste',beam:'Viga',panel:'Panel',door:'Puerta',drawer:'Cajón'};
     return map[String(piece?.type||'panel')]||'Pieza';
   }
 
-  function furnitureMaterialLabel(material){ return material==='metal'?'Metal':material==='wood'?'Madera':'Melamina'; }
-  function furnitureMaterialStyle(material){ return material==='metal'?'metallic':material==='wood'?'wood':'melamine'; }
+  function furnitureMaterialLabel(material){ return material==='metal-wood'?'Metal + madera':material==='metal'?'Metal':material==='wood'?'Madera':'Melamina'; }
+  function furnitureMaterialStyle(material){ return ['metal','metal-wood'].includes(material)?'metallic':material==='wood'?'wood':'melamine'; }
+  function furnitureIsMetalFrame(material){return material==='metal'||material==='metal-wood';}
+  function furniturePieceFinish(model,piece){const f=model?.furniture||{};return f.material==='metal-wood' ? (['post','beam','brace'].includes(piece.type)?'metal':'wood') : f.material;}
 
   function furnitureMakePiece(type, props={}){
     return { id:furnitureId(type), type, name:props.name||furniturePieceLabel({type}), x:0,y:0,z:0,w:1,d:1,h:1,join:'flush',autoFit:'',...props };
@@ -15610,7 +15614,7 @@ function getSheetBranchOpenMap(){
     const t=Math.max(.3,Number(f.thickness||1.8));
     const custom=keepCustom?f.pieces.filter(p=>!p.carcass):[];
     const pieces=[];
-    if(f.material==='metal'){
+    if(furnitureIsMetalFrame(f.material)){
       const post=Math.max(2,Math.min(8,t));
       [[0,0],[W-post,0],[0,D-post],[W-post,D-post]].forEach(([x,y],i)=>pieces.push(furnitureMakePiece('post',{name:`Poste ${i+1}`,x,y,z:0,w:post,d:post,h:H,carcass:true,join:'bolted'})));
       const beam=Math.max(2,Math.min(8,t));
@@ -15724,6 +15728,65 @@ function getSheetBranchOpenMap(){
 
 
   function isRackConstructionScreen(){ return appState.screen === 'rack-builder'; }
+
+  // Plantillas paramétricas: cada pieza se guarda en appState.models y se comparte con CAD/3D.
+  function createFurnitureTemplate(kind='melamine-shelf'){
+    const modes={
+      'melamine-shelf':{name:'Estante de melamina',material:'melamine',template:'shelf',width:120,depth:40,height:200,thickness:1.8},
+      'melamine-cabinet':{name:'Armario de melamina',material:'melamine',template:'cabinet',width:120,depth:55,height:205,thickness:1.8},
+      'metal-wood':{name:'Estante de metal y madera',material:'metal-wood',template:'metal-wood',width:150,depth:55,height:220,thickness:4}
+    };
+    const opt=modes[kind]||modes['melamine-shelf'];
+    recordHistorySnapshot('racks');
+    const m={id:'fb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5),name:opt.name,levels:3,width:opt.width,depth:opt.depth,height:opt.height,clearance:0,slots:2,beam:2,style:furnitureMaterialStyle(opt.material),furniture:{enabled:true,version:1,material:opt.material,template:opt.template,finish:'oak',thickness:opt.thickness,backThickness:.3,snap:1,pieces:[],logicalSlots:{},selectedPieceId:'',selectedPieceIds:[],roofMode:'flat',leftHeight:opt.height,rightHeight:opt.height,showSlots:true,showDims:true}};
+    appState.models.unshift(m);appState.selectedModelId=m.id;
+    furnitureCreateCarcass(m,{keepCustom:false});
+    if(kind==='melamine-cabinet'){
+      const t=m.furniture.thickness;
+      m.furniture.pieces.push(furnitureMakePiece('back',{name:'Fondo',x:t,y:0,z:t,w:m.width-2*t,d:.35,h:m.height-2*t,join:'inset'}));
+      m.furniture.pieces.push(furnitureMakePiece('divider',{name:'Separador central',x:m.width/2-t/2,y:t,z:t,w:t,d:m.depth-t,h:m.height-2*t,join:'between'}));
+      m.furniture.pieces.push(furnitureMakePiece('door',{name:'Puerta izquierda',x:t,y:m.depth-t,z:t,w:(m.width-3*t)/2,d:t,h:m.height-2*t,join:'hinged'}));
+      m.furniture.pieces.push(furnitureMakePiece('door',{name:'Puerta derecha',x:m.width/2+t/2,y:m.depth-t,z:t,w:(m.width-3*t)/2,d:t,h:m.height-2*t,join:'hinged'}));
+    }else{
+      for(let i=1;i<=3;i++){
+        const t=m.furniture.thickness;
+        const z=(m.height-2*t)*i/4;
+        m.furniture.pieces.push(furnitureMakePiece('shelf',{name:`Repisa ${i}`,x:furnitureIsMetalFrame(opt.material)?t/2:t,y:0,z,w:Math.max(1,m.width-(furnitureIsMetalFrame(opt.material)?t:2*t)),d:m.depth,h:furnitureIsMetalFrame(opt.material)?2.5:t,autoFit:furnitureIsMetalFrame(opt.material)?'':'shelf'}));
+      }
+    }
+    furnitureRefitModel(m);syncFurnitureModelToLegacy(m);saveRackModels();
+    if(typeof disposeRackFurniture3DEngine==='function')disposeRackFurniture3DEngine();
+    renderRackConstructionWorkspace();
+    return m;
+  }
+  function addFurnitureFrontPiece(model,type='door'){
+    ensureRackFurnitureModel(model);
+    const f=model.furniture,t=Math.max(.3,Number(f.thickness||1.8));
+    const door=type==='door';
+    const existing=f.pieces.filter(p=>p.type===type).length;
+    const w=door?Math.max(12,model.width*.46):Math.max(15,model.width*.7);
+    const h=door?Math.max(20,model.height-t*3):Math.max(12,model.height*.18);
+    const z=door?t:Math.min(model.height-h-t,t+(existing+1)*(h+4));
+    if(z+h>model.height-t){showToast('No queda altura para otro frente.','warning',2200);return null;}
+    const piece=furnitureMakePiece(type,{name:`${door?'Puerta':'Cajón'} ${existing+1}`,x:door?(existing%2===0?t:model.width-w-t):Math.max(t,(model.width-w)/2),y:Math.max(0,model.depth-t),z,w,d:t,h,join:door?'hinged':'slides'});
+    f.pieces.push(piece);f.selectedPieceId=piece.id;f.selectedPieceIds=[piece.id];
+    furnitureRefitModel(model);syncFurnitureModelToLegacy(model);saveRackModels();
+    renderRackConstructionWorkspace();return piece;
+  }
+  function placeFurnitureModelInLayout(model){
+    if(!model||!model.furniture?.enabled)return;
+    if(typeof vspaceIsEditable==='function'&&!vspaceIsEditable())return showToast('Necesitas permisos de administrador para colocar muebles.','warning',2400);
+    if(typeof vspaceFindPosition!=='function')return showToast('El espacio 3D no está disponible.','warning',2000);
+    const scale=Math.max(.01,getScaleCmPerUnit()),width=Number(model.width||120),depth=Number(model.depth||40);
+    const rack={id:'M-'+Date.now().toString(36).toUpperCase(),zoneId:appState.layout?.zones?.[0]?.id||'',modelId:model.id,x:0,y:0,w:width/scale,h:depth/scale,rot:0,baseHeight:0,rackHeight:Number(model.height||200),virtualName:model.name,virtualType:'',virtual:{width,depth,height:Number(model.height||200),levels:Number(model.levels||1),slots:Number(model.slots||1)},virtualPlacements:[],virtualContainers:[],customFurniture:true};
+    const spot=vspaceFindPosition(rack);
+    if(!spot)return showToast('No hay espacio libre para este mueble. Amplía la zona o reduce sus medidas.','warning',3300);
+    recordHistorySnapshot('structure');
+    appState.layout.racks.push({...rack,...spot});
+    appState.selectedRackLayoutId=rack.id;saveRackModels();persistActiveLayout();
+    showToast('Mueble colocado. Abre «Diseñar espacio 3D» para verlo y moverlo.','success',2700);
+    return rack;
+  }
 
   function createNewFurnitureModelForConstruction(){
     recordHistorySnapshot('racks');
@@ -15840,14 +15903,17 @@ function getSheetBranchOpenMap(){
       <header class="rack-cad-projectbar">
         <div class="rack-cad-project-main"><select id="rackConstructionModelSelect">${modelOptions}</select><input id="rackConstructionName" value="${escapeHtml(model.name||'')}" aria-label="Nombre del rack"></div>
         <div class="rack-cad-project-meta"><span>${round1(model.width)} × ${round1(model.depth)} × ${round1(model.height)} cm</span><span>${furnitureMaterialLabel(f.material)} · ${round1(f.thickness)} cm</span><span>${levels.length} niveles · ${totalSlots} slots</span></div>
-        <div class="rack-cad-project-actions"><button class="mini-btn" id="rackConstructionNew">Nuevo</button><button class="mini-btn" id="rackConstructionDuplicate">Duplicar</button><button class="btn" id="rackConstructionSave">Guardar</button></div>
+        <div class="rack-cad-project-actions"><button class="mini-btn" id="rackConstructionNew">Nuevo</button><button class="mini-btn" id="rackConstructionDuplicate">Duplicar</button><button class="btn" id="rackConstructionSave">Guardar</button><button class="btn rack-builder-primary" id="rackConstructionPlace" ${enabled?'':'disabled'}>Colocar en espacio 3D</button></div>
       </header>
+      <section class="fb-template-bar"><div><b>Constructor de mobiliario</b><small>Elige el sistema constructivo para generar piezas editables.</small></div><div class="fb-template-actions"><button id="fbNewMelamineShelf" class="mini-btn">+ Estante melamina</button><button id="fbNewCabinet" class="mini-btn">+ Armario melamina</button><button id="fbNewMetalWood" class="mini-btn">+ Metal + madera</button></div></section>
       ${enabled?`<div class="rack-cad-main">
         <aside class="rack-cad-toolrail">
           ${tool('select','↖','Seleccionar')}
           ${tool('shelf','▬','Repisa')}
           ${tool('divider','│','División')}
           ${tool('back','▤','Fondo')}
+          <button type="button" class="rack-cad-tool" id="fbAddDoor"><i>▯</i><span>Puerta</span></button>
+          <button type="button" class="rack-cad-tool" id="fbAddDrawer"><i>▣</i><span>Cajón</span></button>
           <div class="rack-cad-toolrail-sep"></div>
           <button type="button" class="rack-cad-tool" data-furniture-action="duplicate-piece" data-mid="${model.id}"><i>⧉</i><span>Duplicar</span></button>
           <button type="button" class="rack-cad-tool" data-furniture-action="distribute-shelves" data-mid="${model.id}"><i>↕</i><span>Distribuir</span></button>
@@ -15864,7 +15930,8 @@ function getSheetBranchOpenMap(){
           <section class="rack-cad-inspector-card"><div class="rack-panel-title"><div><b>Propiedades</b><span id="rackCadInspectorHint">Contexto de la selección</span></div></div><div id="rackBuilderInspector" class="rack-builder-inspector rack-3d-inspector"></div></section>
           <section class="rack-cad-inspector-card rack-cad-general"><div class="rack-panel-title"><div><b>Mueble</b><span>Dimensiones y material</span></div></div>
             <div class="construction-grid-2"><label class="construction-field">Ancho<input type="number" min="30" step="1" data-furniture-model-field="width" data-mid="${model.id}" value="${round1(model.width)}"></label><label class="construction-field">Profundidad<input type="number" min="20" step="1" data-furniture-model-field="depth" data-mid="${model.id}" value="${round1(model.depth)}"></label><label class="construction-field">Alto<input type="number" min="60" step="1" data-furniture-model-field="height" data-mid="${model.id}" value="${round1(model.height)}"></label><label class="construction-field">Grosor<input type="number" min=".3" step=".1" data-furniture-field="thickness" data-mid="${model.id}" value="${round1(f.thickness)}"></label></div>
-            <label class="construction-field">Material<select data-furniture-field="material" data-mid="${model.id}"><option value="melamine" ${f.material==='melamine'?'selected':''}>Melamina</option><option value="wood" ${f.material==='wood'?'selected':''}>Madera</option><option value="metal" ${f.material==='metal'?'selected':''}>Metal</option></select></label>
+            <label class="construction-field">Material<select data-furniture-field="material" data-mid="${model.id}"><option value="melamine" ${f.material==='melamine'?'selected':''}>Melamina</option><option value="wood" ${f.material==='wood'?'selected':''}>Madera</option><option value="metal" ${f.material==='metal'?'selected':''}>Metal</option><option value="metal-wood" ${f.material==='metal-wood'?'selected':''}>Metal + madera</option></select></label>
+            <label class="construction-field">Acabado<select data-furniture-field="finish" data-mid="${model.id}"><option value="oak" ${f.finish==='oak'?'selected':''}>Roble natural</option><option value="white" ${f.finish==='white'?'selected':''}>Blanco</option><option value="walnut" ${f.finish==='walnut'?'selected':''}>Nogal</option><option value="graphite" ${f.finish==='graphite'?'selected':''}>Grafito</option></select></label>
             <label class="construction-field">Forma superior<select data-furniture-field="roofMode" data-mid="${model.id}"><option value="flat" ${f.roofMode==='flat'?'selected':''}>Recto</option><option value="slope" ${f.roofMode==='slope'?'selected':''}>Pendiente</option></select></label>
             ${f.roofMode==='slope'?`<div class="construction-grid-2"><label class="construction-field">Altura izq.<input type="number" min="20" step="1" data-furniture-field="leftHeight" data-mid="${model.id}" value="${round1(f.leftHeight)}"></label><label class="construction-field">Altura der.<input type="number" min="20" step="1" data-furniture-field="rightHeight" data-mid="${model.id}" value="${round1(f.rightHeight)}"></label></div>`:''}
           </section>
@@ -15877,6 +15944,12 @@ function getSheetBranchOpenMap(){
     document.getElementById('rackConstructionNew')?.addEventListener('click',createNewFurnitureModelForConstruction);
     document.getElementById('rackConstructionDuplicate')?.addEventListener('click',duplicateFurnitureModelForConstruction);
     document.getElementById('rackConstructionSave')?.addEventListener('click',saveFurnitureConstructionModel);
+    document.getElementById('rackConstructionPlace')?.addEventListener('click',()=>placeFurnitureModelInLayout(model));
+    document.getElementById('fbNewMelamineShelf')?.addEventListener('click',()=>createFurnitureTemplate('melamine-shelf'));
+    document.getElementById('fbNewCabinet')?.addEventListener('click',()=>createFurnitureTemplate('melamine-cabinet'));
+    document.getElementById('fbNewMetalWood')?.addEventListener('click',()=>createFurnitureTemplate('metal-wood'));
+    document.getElementById('fbAddDoor')?.addEventListener('click',()=>{recordHistorySnapshot('racks');addFurnitureFrontPiece(model,'door');});
+    document.getElementById('fbAddDrawer')?.addEventListener('click',()=>{recordHistorySnapshot('racks');addFurnitureFrontPiece(model,'drawer');});
     $$('[data-rack-cad-tool]').forEach(btn=>btn.onclick=()=>{rb.cadTool=btn.getAttribute('data-rack-cad-tool')||'select';$$('[data-rack-cad-tool]').forEach(x=>x.classList.toggle('active',x.getAttribute('data-rack-cad-tool')===rb.cadTool));const hint=document.getElementById('rackCadModeHint');if(hint)hint.textContent=rb.cadTool==='select'?'Selecciona una pieza o un espacio interno.':rb.cadTool==='shelf'?'Haz clic dentro de un espacio para insertar una repisa a esa altura.':rb.cadTool==='divider'?'Haz clic dentro de un espacio para dividirlo verticalmente.':'Haz clic para agregar o seleccionar el fondo.';});
     $$('[data-rack-view]').forEach(btn=>btn.onclick=()=>{rb.viewMode=btn.getAttribute('data-rack-view')||'3d';$$('[data-rack-view]').forEach(x=>x.classList.toggle('active',x.getAttribute('data-rack-view')===rb.viewMode));document.getElementById('rackFurniture3D')?.classList.toggle('is-hidden',rb.viewMode!=='3d');document.querySelector('.rack-cad-front')?.classList.toggle('is-hidden',rb.viewMode!=='front');if(rb.viewMode==='3d')renderRackFurniture3D(model.id);});
     document.getElementById('rackCadAutoLevels')?.addEventListener('click',()=>{recordHistorySnapshot('racks');furnitureDistributeShelves(model);syncFurnitureModelToLegacy(model);saveRackModels();renderRackConstructionWorkspace();});
@@ -15978,7 +16051,7 @@ function getSheetBranchOpenMap(){
       else if(a==='reset-3d-camera'){resetRackFurniture3DCamera(m.id);return;}
       else if(a==='clear'){m.furniture.pieces=[];m.furniture.selectedPieceId='';m.furniture.selectedPieceIds=[];m.furniture.logicalSlots={};}
       syncFurnitureModelToLegacy(m);saveRackModels();if(isRackConstructionScreen())renderRackConstructionWorkspace();else rerenderRackEditorPreservingState({focusId:id});};});
-    $$('[data-furniture-field]').forEach(el=>{const apply=()=>{const m=rackModel(el.getAttribute('data-mid'));if(!m)return;ensureRackFurnitureModel(m);const field=el.getAttribute('data-furniture-field');if(field==='material'){m.furniture.material=el.value;m.style=furnitureMaterialStyle(el.value);if(el.value==='metal'&&Number(m.furniture.thickness)<2)m.furniture.thickness=4;}else if(field==='roofMode'){m.furniture.roofMode=el.value==='slope'?'slope':'flat';if(m.furniture.roofMode==='flat')m.furniture.rightHeight=m.furniture.leftHeight;}else if(field==='leftHeight'||field==='rightHeight'){m.furniture[field]=Math.max(20,Number(el.value||m.height||200));if(m.furniture.roofMode==='flat')m.furniture.leftHeight=m.furniture.rightHeight=m.furniture[field];m.height=Math.max(60,m.furniture.leftHeight,m.furniture.rightHeight);}else m.furniture[field]=Math.max(field==='snap'?.1:.2,Number(el.value||1));furnitureRefitModel(m);syncFurnitureModelToLegacy(m);renderRackFurnitureBuilder(m.id);renderRackFurniture3D(m.id);renderRackModelPreview();};el.oninput=apply;el.onchange=apply;});
+    $$('[data-furniture-field]').forEach(el=>{const apply=()=>{const m=rackModel(el.getAttribute('data-mid'));if(!m)return;ensureRackFurnitureModel(m);const field=el.getAttribute('data-furniture-field');if(field==='material'){recordHistorySnapshot('racks');const oldMaterial=m.furniture.material;m.furniture.material=el.value;m.style=furnitureMaterialStyle(el.value);if(furnitureIsMetalFrame(el.value)&&Number(m.furniture.thickness)<2)m.furniture.thickness=4;if(furnitureIsMetalFrame(oldMaterial)!==furnitureIsMetalFrame(el.value)) furnitureCreateCarcass(m,{keepCustom:true});}else if(field==='finish'){m.furniture.finish=el.value;}else if(field==='roofMode'){m.furniture.roofMode=el.value==='slope'?'slope':'flat';if(m.furniture.roofMode==='flat')m.furniture.rightHeight=m.furniture.leftHeight;}else if(field==='leftHeight'||field==='rightHeight'){m.furniture[field]=Math.max(20,Number(el.value||m.height||200));if(m.furniture.roofMode==='flat')m.furniture.leftHeight=m.furniture.rightHeight=m.furniture[field];m.height=Math.max(60,m.furniture.leftHeight,m.furniture.rightHeight);}else m.furniture[field]=Math.max(field==='snap'?.1:.2,Number(el.value||1));furnitureRefitModel(m);syncFurnitureModelToLegacy(m);renderRackFurnitureBuilder(m.id);renderRackFurniture3D(m.id);renderRackModelPreview();};el.oninput=apply;el.onchange=apply;});
     $$('[data-furniture-model-field]').forEach(el=>{const apply=()=>{const m=rackModel(el.getAttribute('data-mid'));if(!m)return;const field=el.getAttribute('data-furniture-model-field'),value=Math.max(field==='height'?60:field==='depth'?20:30,Number(el.value||m[field]||100));if(isRackConstructionScreen())resizeFurnitureIntoVolume(m,field,value);else{m[field]=value;furnitureRefitModel(m);syncFurnitureModelToLegacy(m);}renderRackFurnitureBuilder(m.id);renderRackFurniture3D(m.id);renderRackModelPreview();};if(isRackConstructionScreen())el.onchange=apply;else el.oninput=apply;});
     [['rackBuilderShelfZ','shelfZ'],['rackBuilderDividerX','dividerX'],['rackBuilderDividerFrom','dividerFrom'],['rackBuilderDividerTo','dividerTo']].forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.oninput=()=>{appState.ui.rackBuilder[key]=Number(el.value||0);};});
   }
@@ -16209,10 +16282,12 @@ function getSheetBranchOpenMap(){
     resetRackFurniture3DCamera(model.id);return e;
   }
 
-  function rackFurnitureMaterialSet(THREE,material,selected=false){
+  function rackFurnitureMaterialSet(THREE,material,selected=false,finish='oak'){
     const constructionMode=isRackConstructionScreen();
     const palette=constructionMode?(material==='metal'?{main:0x8aaac0}:material==='wood'?{main:0xca9360}:{main:0xe7edf3}):(material==='metal'?{main:0x607f98}:material==='wood'?{main:0xb77d43}:{main:0xdce5ed});
-    return new THREE.MeshStandardMaterial({color:selected?0x55f3af:palette.main,roughness:material==='metal'?(constructionMode ? .28 : .38):(constructionMode ? .62 : .72),metalness:material==='metal'?(constructionMode ? .72 : .65):.05,emissive:selected?0x0c3f2c:(constructionMode?0x071019:0x000000),emissiveIntensity:selected?.55:(constructionMode ? .08 : 0)});
+    const finishes={white:0xf2f0e8,oak:0xd2af85,walnut:0x86603f,graphite:0x4b5055};
+    const actualColor=material==='metal'?palette.main:(finishes[finish]||palette.main);
+    return new THREE.MeshStandardMaterial({color:selected?0x55f3af:actualColor,roughness:material==='metal'?(constructionMode ? .28 : .38):(constructionMode ? .62 : .72),metalness:material==='metal'?(constructionMode ? .72 : .65):.05,emissive:selected?0x0c3f2c:(constructionMode?0x071019:0x000000),emissiveIntensity:selected?.55:(constructionMode ? .08 : 0)});
   }
 
   function clearRackFurniture3DRoot(e){
@@ -16224,9 +16299,9 @@ function getSheetBranchOpenMap(){
     const pieces=getFurnitureRenderPieces(model);
     const topPiece=pieces.find(p=>p.type==='top'&&p.slopeTop&&f.roofMode==='slope');
     pieces.forEach(p=>{
-      if(p===topPiece){const lh=Number(f.leftHeight||H),rh=Number(f.rightHeight||H),dx=Math.max(1,W-2*f.thickness),dh=rh-lh,len=Math.sqrt(dx*dx+dh*dh),angle=Math.atan2(dh,dx);const geom=new THREE.BoxGeometry(len,Math.max(.1,p.h),D);const mat=rackFurnitureMaterialSet(THREE,f.material,selectedIds.has(p.id));const mesh=new THREE.Mesh(geom,mat);mesh.position.set(W/2,(lh+rh)/2-f.thickness/2,D/2);mesh.rotation.z=angle;mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);return;}
-      if(p.type==='brace'){const x1=Number(p.x||0),z1=Number(p.z||0),x2=Number(p.x2||p.x+p.w||0),z2=Number(p.z2||p.z+p.h||0),dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);const geom=new THREE.BoxGeometry(len,Math.max(.5,Number(p.d||1)),Math.max(.5,Number(p.d||1)));const mat=rackFurnitureMaterialSet(THREE,f.material,selectedIds.has(p.id));const mesh=new THREE.Mesh(geom,mat);mesh.position.set((x1+x2)/2,(z1+z2)/2,D*.05);mesh.rotation.z=Math.atan2(dz,dx);mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);return;}
-      const geom=new THREE.BoxGeometry(Math.max(.1,p.w),Math.max(.1,p.h),Math.max(.1,p.d));const mat=rackFurnitureMaterialSet(THREE,f.material,selectedIds.has(p.id));const mesh=new THREE.Mesh(geom,mat);mesh.position.set(Number(p.x||0)+p.w/2,Number(p.z||0)+p.h/2,Number(p.y||0)+p.d/2);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);
+      if(p===topPiece){const lh=Number(f.leftHeight||H),rh=Number(f.rightHeight||H),dx=Math.max(1,W-2*f.thickness),dh=rh-lh,len=Math.sqrt(dx*dx+dh*dh),angle=Math.atan2(dh,dx);const geom=new THREE.BoxGeometry(len,Math.max(.1,p.h),D);const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set(W/2,(lh+rh)/2-f.thickness/2,D/2);mesh.rotation.z=angle;mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);return;}
+      if(p.type==='brace'){const x1=Number(p.x||0),z1=Number(p.z||0),x2=Number(p.x2||p.x+p.w||0),z2=Number(p.z2||p.z+p.h||0),dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);const geom=new THREE.BoxGeometry(len,Math.max(.5,Number(p.d||1)),Math.max(.5,Number(p.d||1)));const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set((x1+x2)/2,(z1+z2)/2,D*.05);mesh.rotation.z=Math.atan2(dz,dx);mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);return;}
+      const geom=new THREE.BoxGeometry(Math.max(.1,p.w),Math.max(.1,p.h),Math.max(.1,p.d));const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set(Number(p.x||0)+p.w/2,Number(p.z||0)+p.h/2,Number(p.y||0)+p.d/2);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);
       if(selectedIds.has(p.id)){const edges=new THREE.EdgesGeometry(geom);const line=new THREE.LineSegments(edges,new THREE.LineBasicMaterial({color:0x75ffc2}));line.position.copy(mesh.position);line.rotation.copy(mesh.rotation);e.root.add(line);}
     });
     // espacios internos seleccionables en el constructor visual
@@ -16354,6 +16429,38 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       else carton(bx,surfaceY+.027,z,bw,capH,bd,l,s,filled?shared.cardboard:shared.cardboardLight);
     }
   };
+  // Modelos diseñados en Furniture Builder: mismas piezas y cotas en espacio 3D.
+  const customModel=(appState.models||[]).find(m=>m.id===rack.modelId);
+  if(customModel?.furniture?.enabled && Array.isArray(customModel.furniture.pieces) && customModel.furniture.pieces.length){
+    const f=customModel.furniture;
+    const finishColors={oak:0xcda579,white:0xe9e8e2,walnut:0x826046,graphite:0x4f5357};
+    const board=new THREE.MeshStandardMaterial({color:finishColors[f.finish]||finishColors.oak,roughness:.76,metalness:.025});
+    const powder=new THREE.MeshStandardMaterial({color:0x59656c,roughness:.49,metalness:.65});
+    const renderPieces=customModel.furniture.pieces;
+    const mw=Math.max(1,Number(customModel.width||spec.width)),md=Math.max(1,Number(customModel.depth||spec.depth));
+    const physicalScaleX=spec.width/mw,physicalScaleD=spec.depth/md,physicalScaleH=spec.height/Math.max(1,Number(customModel.height||spec.height));
+    renderPieces.forEach(p=>{
+      const px=Number(p.x||0),py=Number(p.y||0),pz=Number(p.z||0),pw=Math.max(.1,Number(p.w||1)),pd=Math.max(.1,Number(p.d||1)),ph=Math.max(.1,Number(p.h||1));
+      const metalPiece=f.material==='metal'||(f.material==='metal-wood' && ['post','beam','brace'].includes(p.type));
+      const mat=metalPiece?powder:board;
+      const cx=((px+pw/2)*physicalScaleX-spec.width/2)/100;
+      const cy=((pz+ph/2)*physicalScaleH)/100;
+      const cz=((py+pd/2)*physicalScaleD-spec.depth/2)/100;
+      if(p.type==='brace'){
+        const ex=Number.isFinite(Number(p.x2))?Number(p.x2):px+pw, ez=Number.isFinite(Number(p.z2))?Number(p.z2):pz+ph;
+        const dx=(ex-px)*physicalScaleX/100,dy=(ez-pz)*physicalScaleH/100;
+        const length=Math.max(.01,Math.hypot(dx,dy));
+        const midX=((px+ex)/2*physicalScaleX-spec.width/2)/100;
+        const midY=((pz+ez)/2*physicalScaleH)/100;
+        const mesh=part(midX,midY,cz,length,Math.max(.008,pd/100),Math.max(.008,pd/100),powder);
+        mesh.rotation.z=Math.atan2(dy,dx);
+      }else{
+        part(cx,cy,cz,Math.max(.004,pw*physicalScaleX/100),Math.max(.004,ph*physicalScaleH/100),Math.max(.004,pd*physicalScaleD/100),mat);
+      }
+    });
+    if(selected)sign(spec.title,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
+    return;
+  }
   const frame=Math.max(.023,Math.min(.047,w*.025));
   if(spec.kind==='rack'){
     // Industrial shelving: powder-coated posts, cross-bracing and oak decks.
@@ -16715,7 +16822,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
       <div class="vspace-toolbar-right"><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active">Muros</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
-      <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
+      <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
       <section class="vspace-stage"><canvas id="vspaceCanvas" aria-label="Visualizador tridimensional interactivo del almacén"></canvas>
@@ -17055,6 +17162,18 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       state.refreshInspector();state.render(false);
     };
     root.querySelectorAll('[data-vspace-add]').forEach(b=>b.onclick=()=>vspaceCreate(b.dataset.vspaceAdd));
+    root.querySelector('#vspaceAddSavedModel')?.addEventListener('click',()=>{
+      const modelId=root.querySelector('#vspaceSavedModel')?.value;
+      const model=(appState.models||[]).find(m=>m.id===modelId && m?.furniture?.enabled);
+      if(!model) return vspaceToast('Selecciona un modelo del constructor.',true);
+      const rack=placeFurnitureModelInLayout(model);
+      if(!rack) return;
+      state.selectedId=rack.id;
+      state.selectedLevel=1;state.selectedSlot=1;
+      vspaceCommit('mueble paramétrico añadido');
+      state.refreshInspector();
+      state.setCamera?.('iso');
+    });
     root.querySelector('#vspaceObjects').addEventListener('click',e=>{
       const b=e.target.closest('[data-vspace-select]');if(b)state.select(b.dataset.vspaceSelect);
     });

@@ -7360,3 +7360,19 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
 #appRoot.app .layout-cad-v80 .layout-cad-shell-v80{grid-template-rows:auto auto auto minmax(0,1fr)!important}
 #appRoot.app .layout-cad-v80 .layout-cad-shell-v80:has(.layout-placement-prompt){grid-template-rows:auto auto auto auto minmax(0,1fr)!important}
 
+/* V201 — auditoría responsive: el inspector y los cortes no deben desbordar
+   lateralmente cuando la ventana no puede mostrar dos columnas CAD. */
+@media (max-width:1150px){
+  body[data-screen="layout"] #appRoot.app .content-wrap,
+  body[data-screen="distribution"] #appRoot.app .content-wrap{overflow-y:auto!important;overflow-x:hidden!important}
+  #appRoot.app .layout-cad-v80{height:auto!important;max-height:none!important;overflow:visible!important}
+  #appRoot.app .layout-cad-v80 .layout-cad-shell-v80{height:auto!important;max-height:none!important;overflow:visible!important;grid-template-rows:auto auto auto auto!important}
+  #appRoot.app .layout-cad-v80 .layout-cad-shell-v80:has(.layout-placement-prompt){grid-template-rows:auto auto auto auto auto!important}
+  #appRoot.app .layout-cad-v80 .layout-cad-workspace-v80{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto auto!important;height:auto!important;overflow:visible!important;min-width:0!important}
+  #appRoot.app .layout-cad-v80 .v80-main-stage{grid-template-rows:470px auto!important;height:auto!important;min-height:0!important;min-width:0!important;overflow:hidden!important}
+  #appRoot.app .layout-cad-v80 .v80-canvas-wrap{height:470px!important;min-height:470px!important;min-width:0!important}
+  #appRoot.app .layout-cad-v80 #layoutRightPanel{width:100%!important;max-height:470px!important;min-height:250px!important;min-width:0!important;overflow:hidden!important}
+  #appRoot.app .layout-cad-v80 .layout-right-scroll{overflow-x:hidden!important;overflow-y:auto!important}
+  #appRoot.app .layout-cad-v80 .layout-v200-tabs{max-width:100%!important;overflow-x:hidden!important}
+}
+

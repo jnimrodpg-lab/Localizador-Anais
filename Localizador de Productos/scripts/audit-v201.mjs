@@ -1,0 +1,27 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const layout=read('src/frontend/60-layout-editor.js');
+const three=read('src/frontend/50-viewer-3d.js');
+const html=read('public/index.html');
+const css=read('public/assets/app.css');
+const vars=layout.slice(layout.indexOf('  function renderLayoutEditor(){'),layout.indexOf('    contentTitle.textContent',layout.indexOf('  function renderLayoutEditor(){')));
+assert.match(vars,/const rackMode\s*=\s*isRackDistributionScreen\(\)/, 'Distribución debe identificarse exclusivamente por pantalla distribution.');
+assert.match(vars,/const architectureMode\s*=/, 'Falta declarar architectureMode antes de renderizar.');
+assert.match(vars,/const urbanismMode\s*=/, 'Falta declarar urbanismMode antes de renderizar.');
+for(const name of ['architecture','urbanism','distribution']) assert.ok(layout.includes(`[\'${name}\'`) || layout.includes(`'${name}'`),`No existe el modo ${name}`);
+assert.match(layout,/function rackVisibleAtLevel\(/);
+assert.match(layout,/function layoutLevelSelector\(/);
+assert.match(layout,/function renderLayoutRightPanelMarkup\(/);
+assert.match(three,/response\.headers\.get\('content-type'\)/,'Debe comprobarse el tipo MIME antes de importar Three.js.');
+assert.match(three,/window\.__threeRuntimePromise=null/,'Si falla WebGL debe permitir reintento.');
+assert.match(read('scripts/build-frontend.mjs'),/CF_PAGES/,'Cloudflare debe bloquear builds incompletos sin Three.js.');
+assert.match(html,/WMS V201/,'Identificación de versión incorrecta.');
+assert.match(css,/V201/,'CSS de la auditoría no desplegado.');
+assert.match(read('wrangler.toml'),/binding\s*=\s*"DB"/,'Falta el binding de Cloudflare D1.');
+for(const sql of ['migrations/0001_init.sql','migrations/0002_products.sql']) assert.ok(fs.existsSync(path.join(root,sql)),`Falta migración ${sql}`);
+console.log('V201 OK: Arquitectura/Urbanismo/Distribución, filtros, Three.js, CSS responsive y D1.');

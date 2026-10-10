@@ -1,15 +1,16 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "2.0.0-modos-layout-unificados",
+  "version": "2.0.1-auditoria-integral",
   "private": true,
-  "description": "WMS Industrial V200: Arquitectura, Urbanismo, Distribución, niveles NPT, nomenclatura y validación de cambios",
+  "description": "WMS Industrial V201: Arquitectura, Urbanismo, Distribución, niveles NPT, nomenclatura y validación de cambios",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",
     "build:frontend": "node scripts/build-frontend.mjs",
     "build:css": "node scripts/build-css.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
-    "check": "npm run build && npm run verify:frontend && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js"
+    "test:regression": "node scripts/audit-v201.mjs",
+    "check": "npm run build && npm run verify:frontend && npm run test:regression && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js"
   },
   "dependencies": {
     "three": "0.160.0"

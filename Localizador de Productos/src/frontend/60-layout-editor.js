@@ -2222,7 +2222,12 @@
     const __layoutRightScrollBefore = document.querySelector('#layoutRightPanel .layout-right-scroll')?.scrollTop ?? appState.editor?.rightPanelScrollTop ?? 0;
     ensureLayoutEditorState();
     appState.editor.rightPanelScrollTop = __layoutRightScrollBefore;
-    const rackMode = isLayoutWorkspaceScreen();
+    // Los tres modos comparten un lienzo, pero deben decidirse antes de construir
+    // etiquetas, barras e inspectores. No declarar estos flags aquí provocaba
+    // ReferenceError: architectureMode is not defined al abrir Editar layout.
+    const rackMode = isRackDistributionScreen();
+    const urbanismMode = !rackMode && activeLayoutWorkspace() === 'urbanism';
+    const architectureMode = !rackMode && !urbanismMode;
     const workspaceHistory = rackMode ? 'distribution' : 'structure';
     if(!(getHistoryBucket(workspaceHistory)?.undoStack?.length)) recordHistorySnapshot(workspaceHistory);
     ensureRackProps();

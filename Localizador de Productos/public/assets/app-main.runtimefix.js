@@ -6505,13 +6505,20 @@ function getSheetBranchOpenMap(){
     if(window.THREE) return window.THREE;
     if(window.__threeRuntimePromise) return window.__threeRuntimePromise;
     window.__threeRuntimePromise = (async () => {
-      const localUrl = './vendor/three.module.js?v=wms-v161-isometric';
+      const localUrl = new URL('./vendor/three.module.js?v=wms-v201-auditoria', document.baseURI).href;
       try{
+        // Cloudflare Pages puede responder index.html ante una ruta estática que
+        // falta. Verificar el MIME antes del import evita el error de módulo HTML.
+        const response = await fetch(localUrl, { cache:'no-store' });
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        if(!response.ok || !/(?:javascript|ecmascript)/.test(contentType)){
+          throw new Error(`Three.js local ausente o MIME incorrecto (${response.status}, ${contentType || 'sin MIME'}). Ejecuta npm ci && npm run build.`);
+        }
         const THREE = await import(localUrl);
         window.THREE = THREE;
         return THREE;
       }catch(localError){
-        console.warn('Three.js local no disponible; usando respaldo CDN.', localError);
+        console.warn('Three.js local no disponible; comprobando fuente alternativa.', localError?.message || localError);
         const cdnSources=[
           'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
           'https://unpkg.com/three@0.160.0/build/three.module.js',
@@ -12148,7 +12155,12 @@ function getSheetBranchOpenMap(){
     const __layoutRightScrollBefore = document.querySelector('#layoutRightPanel .layout-right-scroll')?.scrollTop ?? appState.editor?.rightPanelScrollTop ?? 0;
     ensureLayoutEditorState();
     appState.editor.rightPanelScrollTop = __layoutRightScrollBefore;
-    const rackMode = isLayoutWorkspaceScreen();
+    // Los tres modos comparten un lienzo, pero deben decidirse antes de construir
+    // etiquetas, barras e inspectores. No declarar estos flags aquí provocaba
+    // ReferenceError: architectureMode is not defined al abrir Editar layout.
+    const rackMode = isRackDistributionScreen();
+    const urbanismMode = !rackMode && activeLayoutWorkspace() === 'urbanism';
+    const architectureMode = !rackMode && !urbanismMode;
     const workspaceHistory = rackMode ? 'distribution' : 'structure';
     if(!(getHistoryBucket(workspaceHistory)?.undoStack?.length)) recordHistorySnapshot(workspaceHistory);
     ensureRackProps();

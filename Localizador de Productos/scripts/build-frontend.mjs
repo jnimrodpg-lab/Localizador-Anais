@@ -20,7 +20,11 @@ if (threeSource) {
   fs.copyFileSync(threeSource, threeTarget);
   console.log('Three.js r160 incorporado al despliegue desde npm.');
 } else if (!fs.existsSync(threeTarget)) {
-  console.warn('AVISO: falta Three.js local. Ejecuta npm install antes del build; la aplicación conserva el respaldo CDN.');
+  const message = 'No se encontró Three.js local. Instala dependencias con npm ci antes de compilar (Cloudflare Pages: npm ci && npm run build).';
+  if (process.env.CF_PAGES === '1' || process.env.WMS_REQUIRE_LOCAL_THREE === '1') {
+    throw new Error(message + ' Se canceló el despliegue para evitar un visor 3D roto.');
+  }
+  console.warn('AVISO:', message, 'El entorno de pruebas podrá utilizar el respaldo CDN.');
 }
 const source = manifest.files.map(file => fs.readFileSync(path.join(srcRoot, file), 'utf8')).join('');
 fs.mkdirSync(path.dirname(output), { recursive: true });

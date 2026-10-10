@@ -17493,6 +17493,89 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     });
     return collision?{ok:false,msg:`Colisión detectada con ${collision.virtualName||collision.id}.`}:{ok:true,msg:''};
   }
+  // V196: apilamiento interactivo sin perder la identidad ni las piezas de los muebles.
+  function vspaceStackHeight(r){ return Math.max(1, Number(r?.rackHeight||vspaceSpec(r).height||200)); }
+  function vspaceStackFamily(rootId){
+    const rows=appState.layout?.racks||[];
+    const seen=new Set(), result=[], queue=[rootId];
+    while(queue.length){
+      const id=queue.shift();
+      if(!id||seen.has(id))continue;
+      seen.add(id);
+      const r=rows.find(item=>item.id===id);
+      if(!r)continue;
+      result.push(r);
+      rows.filter(item=>item.stackedOnId===id&&!seen.has(item.id)).forEach(item=>queue.push(item.id));
+    }
+    return result;
+  }
+  function vspaceStackIntersect(a,b){
+    const az=Number(a.baseHeight||0),bz=Number(b.baseHeight||0);
+    if(az+vspaceStackHeight(a)<=bz+.5||bz+vspaceStackHeight(b)<=az+.5)return false;
+    const ap=vspaceBounds(a),bp=vspaceBounds(b);
+    return ap.left<bp.right-1 && ap.right>bp.left+1 && ap.top<bp.bottom-1 && ap.bottom>bp.top+1;
+  }
+  function vspaceValidateRackProposals(changes){
+    const ids=new Set(changes.map(r=>r.id));
+    const others=(appState.layout?.racks||[]).filter(r=>!ids.has(r.id));
+    for(const p of changes){
+      const zone=(appState.layout?.zones||[]).find(z=>z.id===p.zoneId);
+      if(!zone||!vspaceCorners(p).every(pt=>vspacePointInZone(pt,zone)))return {ok:false,msg:`${p.id} no cabe en la zona.`};
+      const crash=others.find(r=>r.zoneId===p.zoneId&&vspaceStackIntersect(p,r));
+      if(crash)return {ok:false,msg:`Interferencia con ${crash.virtualName||crash.id}.`};
+    }
+    for(let i=0;i<changes.length;i++)for(let j=i+1;j<changes.length;j++){
+      if(changes[i].zoneId===changes[j].zoneId&&vspaceStackIntersect(changes[i],changes[j]))return {ok:false,msg:`Los módulos ${changes[i].id} y ${changes[j].id} se superponen.`};
+    }
+    const proposedMap=new Map(changes.map(item=>[item.id,item]));
+    for(const child of changes){
+      if(!child.stackedOnId)continue;
+      const parent=proposedMap.get(child.stackedOnId)||(appState.layout?.racks||[]).find(r=>r.id===child.stackedOnId);
+      if(!parent)return {ok:false,msg:`No se encontró el soporte vinculado de ${child.id}.`};
+      const top=Number(parent.baseHeight||0)+vspaceStackHeight(parent),bottom=Number(child.baseHeight||0);
+      if(child.zoneId!==parent.zoneId||Math.abs(top-bottom)>.51)return {ok:false,msg:`La cota de ${child.id} no coincide con la superficie de su soporte.`};
+      const c=vspaceBounds(child),p=vspaceBounds(parent);
+      if(c.left<p.left-1||c.right>p.right+1||c.top<p.top-1||c.bottom>p.bottom+1)return {ok:false,msg:`${child.id} sobresale de su soporte. Reduce sus medidas o desvincúlalo.`};
+    }
+    return {ok:true,msg:''};
+  }
+  function vspaceFollowAttachedModules(original,next){
+    const family=vspaceStackFamily(original.id);
+    const dx=Number(next.x||0)-Number(original.x||0),dy=Number(next.y||0)-Number(original.y||0);
+    const dz=(Number(next.baseHeight||0)+vspaceStackHeight(next))-(Number(original.baseHeight||0)+vspaceStackHeight(original));
+    return family.map(r=>r.id===original.id?next:{...r,x:Number(r.x||0)+dx,y:Number(r.y||0)+dy,baseHeight:Number(r.baseHeight||0)+dz,zoneId:next.zoneId});
+  }
+  function vspaceStackOnTop(sourceId,targetId){
+    const racks=appState.layout?.racks||[];
+    const source=racks.find(r=>r.id===sourceId),target=racks.find(r=>r.id===targetId);
+    if(!source||!target)return {ok:false,msg:'No se encontró el mueble seleccionado.'};
+    if(sourceId===targetId)return {ok:false,msg:'Debes seleccionar otro mueble como soporte.'};
+    if(source.stackGroupId)return {ok:false,msg:'El módulo pertenece a un conjunto modular. Sepáralo desde layout antes de colocarlo encima.'};
+    if(source.zoneId!==target.zoneId && !racks.some(r=>r.zoneId===target.zoneId))return {ok:false,msg:'El soporte no tiene una zona válida.'};
+    const family=vspaceStackFamily(sourceId);
+    if(family.some(r=>r.id===targetId))return {ok:false,msg:'No se puede colocar un mueble sobre uno de sus propios módulos dependientes.'};
+    const topLeftX=Number(target.x||0)+(Number(target.w||0)-Number(source.w||0))/2;
+    const topLeftY=Number(target.y||0)+(Number(target.h||0)-Number(source.h||0))/2;
+    const targetBounds=vspaceBounds(target);
+    const candidate={...source,x:topLeftX,y:topLeftY,zoneId:target.zoneId,baseHeight:Number(target.baseHeight||0)+vspaceStackHeight(target),stackedOnId:target.id};
+    const childBounds=vspaceBounds(candidate);
+    const epsilon=1;
+    if(childBounds.left<targetBounds.left-epsilon||childBounds.right>targetBounds.right+epsilon||childBounds.top<targetBounds.top-epsilon||childBounds.bottom>targetBounds.bottom+epsilon){
+      return {ok:false,msg:'La base del mueble superior sobresale del soporte. Usa un soporte mayor o reduce el módulo.'};
+    }
+    const dx=candidate.x-Number(source.x||0),dy=candidate.y-Number(source.y||0),dz=candidate.baseHeight-Number(source.baseHeight||0);
+    const proposals=family.map(r=>r.id===sourceId?candidate:{...r,x:Number(r.x||0)+dx,y:Number(r.y||0)+dy,baseHeight:Number(r.baseHeight||0)+dz,zoneId:target.zoneId});
+    const valid=vspaceValidateRackProposals(proposals);
+    if(!valid.ok)return valid;
+    return {ok:true,changes:proposals,source,target,npt:candidate.baseHeight};
+  }
+  function vspaceStackCommit(plan){
+    if(!plan?.ok)return false;
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot('structure');
+    plan.changes.forEach(next=>{const rack=(appState.layout?.racks||[]).find(r=>r.id===next.id);if(!rack)return;Object.assign(rack,{x:next.x,y:next.y,zoneId:next.zoneId,baseHeight:next.baseHeight});if(next.stackedOnId)rack.stackedOnId=next.stackedOnId;});
+    persistActiveLayout();
+    return true;
+  }
   function vspaceFindPosition(template){
     const zones=appState.layout.zones||[];
     for(const zone of zones){
@@ -17562,13 +17645,18 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       cloneRack.w=nextW;cloneRack.h=nextH;
     }
     cloneRack.rackHeight=spec.height;
+    if(rack.stackedOnId && (Math.abs(Number(cloneRack.x||0)-Number(rack.x||0))>.01 || Math.abs(Number(cloneRack.y||0)-Number(rack.y||0))>.01 || Math.abs(Number(cloneRack.baseHeight||0)-Number(rack.baseHeight||0))>.01)){
+      return vspaceToast('Este módulo está apoyado sobre otro. Para desplazarlo libremente usa «Desvincular soporte», o mueve el conjunto desde su base.',true);
+    }
     // No dejar ubicaciones con SKU o cajas invisibles tras reducir los niveles.
     const invalid=(rack.virtualPlacements||[]).some(a=>Number(a.level)>spec.levels||Number(a.slot)>spec.slots)
       ||(rack.virtualContainers||[]).some(a=>a.kind!=='none'&&Number(a.count)>0&&(Number(a.level)>spec.levels||Number(a.slot)>spec.slots));
     if(invalid){vspaceToast('Hay productos o cajas en niveles que desaparecerían. Reubícalos antes de reducirlos.',true);vspaceActive?.refreshInspector();return;}
-    const fitting=vspaceFits(cloneRack,rack.id);
+    const proposals=vspaceFollowAttachedModules(rack,cloneRack);
+    const fitting=vspaceValidateRackProposals(proposals);
     if(!fitting.ok){vspaceToast(fitting.msg,true);vspaceActive?.refreshInspector();return;}
-    Object.assign(rack,cloneRack);
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot('structure');
+    proposals.forEach(next=>{const current=(appState.layout.racks||[]).find(item=>item.id===next.id);if(current)Object.assign(current,next);});
     // Actualizar modelo compartido sin cambiar la identidad del rack.
     const model=appState.models.find(m=>m.id===rack.modelId);
     if(model && rack.virtualType)Object.assign(model,{name:rack.virtualName,width:spec.width,depth:spec.depth,height:spec.height,levels:spec.levels,slots:spec.slots});
@@ -17620,11 +17708,11 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     const typelist=Object.entries(VSPACE_TYPES).map(([id,p])=>`<button type="button" class="vspace-catalog-btn" data-vspace-add="${id}" ${canEdit?'':'disabled'}><b>${p.icon}</b><span>${vspaceEsc(p.name)}</span><small>${p.levels} niveles</small></button>`).join('');
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
-      <div class="vspace-toolbar-right"><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active">Muros</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
+      <div class="vspace-toolbar-right"><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active">Muros</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
       <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
-      <section class="vspace-stage"><canvas id="vspaceCanvas" aria-label="Visualizador tridimensional interactivo del almacén"></canvas>
+      <section class="vspace-stage"><canvas id="vspaceCanvas" aria-label="Visualizador tridimensional interactivo del almacén"></canvas><div id="vspaceStackPrompt" class="vspace-stack-prompt" hidden><span id="vspaceStackPromptText">Selecciona un mueble de soporte.</span><button type="button" id="vspaceStackCancel">Cancelar · Esc</button></div>
       <details class="vspace-help"><summary title="Controles de navegación 3D" aria-label="Mostrar ayuda de navegación">? Ayuda</summary><div>Arrastrar: orbitar · Shift + arrastrar: desplazar · Rueda: zoom · Doble clic: enfocar · F: enfocar · 1/2/3: vistas</div></details>
       <div class="vspace-compass">ISO</div><div class="vspace-loading" id="vspaceLoading">Preparando el espacio tridimensional…</div></section>
       <aside class="vspace-inspector"><h4 id="vspaceInspectorHeading">Inspector de ubicaciones</h4>
@@ -17640,10 +17728,55 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       `;document.head.appendChild(style);
     }
     const root=document.getElementById('vspaceRoot'),canvas=root.querySelector('#vspaceCanvas');
-    const state={root,canvas,selectedId:appState.selectedRackLayoutId||(appState.layout?.racks||[])[0]?.id||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
+    const state={root,canvas,selectedId:appState.selectedRackLayoutId||(appState.layout?.racks||[])[0]?.id||'',stackSourceId:'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
     vspaceActive=state;
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
+    const stackButton=root.querySelector('[data-vspace-action="stack"]');
+    const stackPrompt=root.querySelector('#vspaceStackPrompt');
+    const syncStackPrompt=()=>{
+      const armed=!!state.stackSourceId;
+      if(stackPrompt)stackPrompt.hidden=!armed;
+      if(stackButton){stackButton.classList.toggle('active',armed);stackButton.textContent=armed?'Cancelar apilamiento':'Colocar encima';stackButton.setAttribute('aria-pressed',String(armed));}
+      root.classList.toggle('vspace-stacking-mode',armed);
+      const source=(appState.layout?.racks||[]).find(r=>r.id===state.stackSourceId);
+      const label=root.querySelector('#vspaceStackPromptText');
+      if(label)label.textContent=`Mueble superior: ${source?.virtualName||source?.id||'—'}. Ahora haz clic en el mueble inferior (soporte).`;
+      root.querySelectorAll('[data-vspace-select]').forEach(btn=>btn.classList.toggle('stack-source',armed&&btn.dataset.vspaceSelect===state.stackSourceId));
+    };
+    const cancelStackMode=(quiet=false)=>{if(!state.stackSourceId)return;state.stackSourceId='';syncStackPrompt();if(!quiet)vspaceToast('Colocación encima cancelada.');};
+    const startStackMode=()=>{
+      if(!canWrite())return;
+      if(state.stackSourceId){cancelStackMode();return;}
+      const selected=getRack();if(!selected)return vspaceToast('Selecciona primero el mueble que irá arriba.',true);
+      if(selected.stackGroupId)return vspaceToast('Separa primero el módulo del conjunto modular desde Editar layout.',true);
+      state.inspectorMode='furniture';state.archDrawMode=false;state.drawWallStart=null;
+      root.querySelectorAll('[data-vspace-panel]').forEach(btn=>btn.classList.toggle('active',btn.dataset.vspacePanel==='furniture'));
+      const inspectorHeading=root.querySelector('#vspaceInspectorHeading');if(inspectorHeading)inspectorHeading.textContent='Inspector de ubicaciones';
+      state.stackSourceId=selected.id;
+      state.move=false;
+      const moveBtn=root.querySelector('[data-vspace-action="move"]');if(moveBtn){moveBtn.textContent='Mover: OFF';moveBtn.classList.remove('active');}
+      syncStackPrompt();vspaceToast(`Ahora selecciona el soporte de ${selected.virtualName||selected.id} en el visor 3D o en «Muebles ubicados».`);
+    };
+    const finishStackMode=targetId=>{
+      if(!state.stackSourceId)return false;
+      const sourceId=state.stackSourceId;
+      const plan=vspaceStackOnTop(sourceId,targetId);
+      if(!plan.ok){vspaceToast(plan.msg,true);syncStackPrompt();return false;}
+      if(!vspaceStackCommit(plan))return false;
+      cancelStackMode(true);
+      state.selectedId=sourceId;appState.selectedRackLayoutId=sourceId;appState.selectedRack=sourceId;
+      state.refreshInspector();state.render?.(true);
+      vspaceToast(`«${plan.source.virtualName||sourceId}» colocado sobre «${plan.target.virtualName||targetId}» · NPT +${Math.round(plan.npt)} cm. Guarda en nube para sincronizar.`);
+      state.modified=true;
+      return true;
+    };
+    stackButton?.addEventListener('click',startStackMode);
+    root.querySelector('#vspaceStackCancel')?.addEventListener('click',()=>cancelStackMode());
+    state.stackEscapeHandler=e=>{
+      if(e.key==='Escape'&&state.stackSourceId){cancelStackMode();e.preventDefault();e.stopImmediatePropagation();}
+    };
+    window.addEventListener('keydown',state.stackEscapeHandler);
     const collectScenePoints=()=>{
       const pts=[];
       (appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>pts.push(p)));
@@ -17684,6 +17817,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       }).join('')||'<p class="vspace-muted">No hay muebles. Añade uno desde la biblioteca.</p>';
       const assigned=vspaceAllAssignments();
       root.querySelector('#vspaceStats').textContent=`${(appState.layout.racks||[]).length} muebles · ${assigned.length} ubicaciones`;
+      syncStackPrompt();
     };
     const archUnit = () => Math.max(.0001,getScaleCmPerUnit());
     const wallLen = wall => Math.hypot(Number(wall.x2)-Number(wall.x1),Number(wall.y2)-Number(wall.y1));
@@ -17887,6 +18021,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       });
     };
     root.querySelectorAll('[data-vspace-panel]').forEach(btn=>btn.addEventListener('click',()=>{
+      if(state.stackSourceId && btn.dataset.vspacePanel!=='furniture')cancelStackMode(true);
       state.inspectorMode=btn.dataset.vspacePanel;state.archDrawMode=false;state.drawWallStart=null;
       root.querySelectorAll('[data-vspace-panel]').forEach(b=>b.classList.toggle('active',b===btn));
       root.querySelector('#vspaceInspectorHeading').textContent=state.inspectorMode==='architecture'?'Inspector arquitectónico':state.inspectorMode==='urban'?'Inspector de urbanismo':'Inspector de ubicaciones';
@@ -17916,7 +18051,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         <div class="vspace-grid-2"><label class="vspace-field">Niveles<input id="vsLevels" type="number" min="1" max="12" value="${sp.levels}" ${lock}></label><label class="vspace-field">Posiciones / nivel<input id="vsSlots" type="number" min="1" max="12" value="${sp.slots}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">X plano<input id="vsX" type="number" value="${Math.round(rack.x)}" ${lock}></label><label class="vspace-field">Y plano<input id="vsY" type="number" value="${Math.round(rack.y)}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">NPT — altura desde el piso (cm)<input id="vsNpt" type="number" min="0" max="20000" step="1" value="${Math.round(Number(rack.baseHeight||0))}" ${lock}></label><div class="vspace-field"><small class="vspace-muted">Cota superior</small><b>+${Math.round(Number(rack.baseHeight||0)+Number(rack.rackHeight||sp.height))} cm</b></div></div>
-        <button class="vspace-primary" id="vsUpdate" ${lock}>Aplicar medidas y posición</button><div class="vspace-divider"></div>
+        <button class="vspace-primary" id="vsUpdate" ${lock}>Aplicar medidas y posición</button><div class="vspace-stack-controls"><button type="button" id="vsPlaceOnTop" ${lock}>Colocar encima de otro mueble</button>${rack.stackedOnId?`<small class="vspace-muted">Sobre: ${vspaceEsc((appState.layout.racks||[]).find(r=>r.id===rack.stackedOnId)?.virtualName||rack.stackedOnId)}</small><button type="button" id="vsReleaseStack" ${lock}>Desvincular soporte</button>`:''}</div><div class="vspace-divider"></div>
         <h4>Asignación por nivel</h4><small class="vspace-muted">Nivel: de abajo hacia arriba · P: de izquierda a derecha</small>
         <div class="vspace-numbers">${levels}</div><div class="vspace-numbers vspace-slots">${slots}</div>
         <div class="vspace-loc-code">${vspaceEsc(rack.id)}-N${state.selectedLevel}-S${state.selectedSlot}</div>
@@ -17933,8 +18068,15 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         <div class="vspace-divider"></div><div class="vspace-grid-2"><button id="vsDuplicate" ${lock}>Duplicar mueble</button><button id="vsDelete" class="vspace-danger" ${lock}>Eliminar mueble</button></div>`;
       host.querySelectorAll('[data-vs-modular]').forEach(btn=>btn.onclick=()=>{const target=findRackById(btn.dataset.vsModular);if(target)state.select(target.id);});
       host.querySelector('#vsEditModularLayout')?.addEventListener('click',()=>{appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;appState.editor.stackViewMode='expanded';setScreen('distribution');});
-      host.querySelectorAll('[data-vspace-level]').forEach(b=>b.onclick=()=>{state.selectedLevel=Number(b.dataset.vspaceLevel);state.refreshInspector();state.render(false);});
-      host.querySelectorAll('[data-vspace-slot]').forEach(b=>b.onclick=()=>{state.selectedSlot=Number(b.dataset.vspaceSlot);state.refreshInspector();state.render(false);});
+      host.querySelectorAll('[data-vspace-level]').forEach(b=>b.onclick=()=>{state.selectedLevel=Number(b.dataset.vspaceLevel);state.refreshInspector();state.render?.(false);});
+      host.querySelectorAll('[data-vspace-slot]').forEach(b=>b.onclick=()=>{state.selectedSlot=Number(b.dataset.vspaceSlot);state.refreshInspector();state.render?.(false);});
+      host.querySelector('#vsPlaceOnTop')?.addEventListener('click',startStackMode);
+      host.querySelector('#vsReleaseStack')?.addEventListener('click',()=>{
+        if(!canWrite()||!rack.stackedOnId)return;
+        if(typeof recordHistorySnapshot==='function')recordHistorySnapshot('structure');
+        delete rack.stackedOnId;
+        vspaceCommit('soporte desvinculado');state.refreshInspector();
+      });
       host.querySelector('#vsUpdate')?.addEventListener('click',()=>{
         vspaceUpdateRack(rack,{name:host.querySelector('#vsName').value,width:host.querySelector('#vsWidth').value,depth:host.querySelector('#vsDepth').value,
           height:host.querySelector('#vsHeight').value,levels:host.querySelector('#vsLevels').value,slots:host.querySelector('#vsSlots').value,
@@ -17944,6 +18086,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       host.querySelector('#vsAssign')?.addEventListener('click',()=>vspaceAssign(rack,state.selectedLevel,state.selectedSlot,host.querySelector('#vsSku').value,host.querySelector('#vsQty').value));
       host.querySelector('#vsRemoveAssignment')?.addEventListener('click',()=>vspaceAssign(rack,state.selectedLevel,state.selectedSlot,''));
       host.querySelector('#vsDelete')?.addEventListener('click',()=>{
+        if((appState.layout?.racks||[]).some(r=>r.stackedOnId===rack.id))return vspaceToast('No puedes eliminar un soporte que sostiene otros módulos. Desvincula primero los muebles superiores.',true);
         if(!confirm(`¿Eliminar ${sp.title} y sus asignaciones?`))return;
         appState.layout.racks=appState.layout.racks.filter(r=>r.id!==rack.id);
         state.selectedId=appState.layout.racks[0]?.id||'';
@@ -17951,7 +18094,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       });
       host.querySelector('#vsDuplicate')?.addEventListener('click',()=>{
         const cloneRack=JSON.parse(JSON.stringify(rack));cloneRack.id=`${rack.id}-C${Date.now().toString(36).slice(-4).toUpperCase()}`;
-        cloneRack.virtualName=`${sp.title} (copia)`;cloneRack.x+=20;cloneRack.y+=20;
+        cloneRack.virtualName=`${sp.title} (copia)`;delete cloneRack.stackedOnId;cloneRack.x+=20;cloneRack.y+=20;
         const found=vspaceFindPosition(cloneRack);if(!found)return vspaceToast('No queda espacio disponible para duplicar.',true);
         Object.assign(cloneRack,found);
         const sourceModel=appState.models.find(m=>m.id===rack.modelId);
@@ -17967,7 +18110,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       state.selectedId=id;appState.selectedRackLayoutId=id;appState.selectedRack=id;
       if(level!=null)state.selectedLevel=Number(level)||1;
       if(slot!=null)state.selectedSlot=Number(slot)||1;
-      state.refreshInspector();state.render(false);
+      state.refreshInspector();state.render?.(false);
     };
     root.querySelectorAll('[data-vspace-add]').forEach(b=>b.onclick=()=>vspaceCreate(b.dataset.vspaceAdd));
     root.querySelector('#vspaceAddSavedModel')?.addEventListener('click',()=>{
@@ -17983,7 +18126,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       state.setCamera?.('iso');
     });
     root.querySelector('#vspaceObjects').addEventListener('click',e=>{
-      const b=e.target.closest('[data-vspace-select]');if(b)state.select(b.dataset.vspaceSelect);
+      const b=e.target.closest('[data-vspace-select]');if(b){if(state.stackSourceId)finishStackMode(b.dataset.vspaceSelect);else state.select(b.dataset.vspaceSelect);}
     });
     root.querySelectorAll('[data-vspace-mode]').forEach(btn=>btn.addEventListener('click',()=>state.applyEditMode(btn.dataset.vspaceMode)));
     const findSku=async()=>{
@@ -18024,6 +18167,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     root.querySelector('[data-vspace-action="fit"]').onclick=()=>state.setCamera(state.mode||'iso');
     root.querySelector('[data-vspace-action="focus"]').onclick=()=>state.focusSelected();
     root.querySelector('[data-vspace-action="move"]').onclick=e=>{
+      if(state.stackSourceId)cancelStackMode(true);
       state.move=!state.move;e.currentTarget.textContent=`Mover: ${state.move?'ON':'OFF'}`;e.currentTarget.classList.toggle('active',state.move);
       vspaceToast(state.move?'Arrastra un mueble sobre el suelo. Se impedirán las colisiones.':'Modo órbita activado.');
     };
@@ -18062,7 +18206,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       finally{btn.disabled=false;btn.textContent='Guardar en nube';}
     };
     state.refreshObjects();state.refreshInspector();
-    const destroyBase=()=>{state.destroyed=true;state.releaseFloorTextures?.();window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
+    const destroyBase=()=>{state.destroyed=true;state.releaseFloorTextures?.();window.removeEventListener('keydown',state.stackEscapeHandler);window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
     state.destroy=destroyBase;
     (async()=>{
       try{
@@ -18477,7 +18621,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         state.focusSelected=()=>{
           const r=getRack();if(!r)return;
           const c=coord({x:Number(r.x)+Number(r.w)/2,y:Number(r.y)+Number(r.h)/2});
-          orbit.target.set(c.x,vspaceSpec(r).height/200,c.z);
+          orbit.target.set(c.x,Number(r.baseHeight||0)/100+vspaceSpec(r).height/200,c.z);
           orbit.radius=vspaceClamp(Math.max(vspaceSpec(r).width,vspaceSpec(r).depth)/55+3,3,12);orbit.phi=.94;state.requestRender();
           root.querySelector('.vspace-compass').textContent='SEL';
         };
@@ -18488,13 +18632,13 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const hit=opening||hits[0];
           return hit?{wallId:hit.object.userData.wallId||'',openingId:hit.object.userData.openingId||''}:null;
         };
-        const intersectFurniture=e=>{
+        const intersectFurniture=(e,excludeRackId='')=>{
           applyPointer(e);
           const intersections=raycaster.intersectObjects([...state.objects.values()],true);
           for(const hit of intersections){
             let obj=hit.object;
             while(obj && !obj.userData?.furnitureId) obj=obj.parent;
-            if(obj?.userData?.furnitureId) return {rackId:obj.userData.furnitureId,level:hit.object.userData?.level||0,slot:hit.object.userData?.slot||0};
+            if(obj?.userData?.furnitureId && obj.userData.furnitureId!==excludeRackId) return {rackId:obj.userData.furnitureId,level:hit.object.userData?.level||0,slot:hit.object.userData?.slot||0};
           }
           return null;
         };
@@ -18526,6 +18670,13 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             }
             e.preventDefault();return;
           }
+          // V196: el segundo clic resuelve el soporte sin cambiar la selección del mueble superior.
+          if(state.stackSourceId&&e.button===0&&!e.shiftKey){
+            const target=intersectFurniture(e,state.stackSourceId);
+            if(target)finishStackMode(target.rackId);
+            else vspaceToast('Haz clic sobre el mueble inferior o selecciónalo desde la lista izquierda.',true);
+            e.preventDefault();return;
+          }
           const archHit=state.inspectorMode==='architecture'?intersectArchitecture(e):null;
           const urbanHit=state.inspectorMode==='urban'?intersectUrban(e):null;
           const hit=state.inspectorMode==='furniture'&&!archHit&&!urbanHit?intersectFurniture(e):null;
@@ -18534,9 +18685,10 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           else if(hit){state.select(hit.rackId,hit.level||state.selectedLevel,hit.slot||state.selectedSlot);}
           const point=state.move&&canWrite()?groundPoint(e):null;
           const rack=hit && appState.layout.racks.find(r=>r.id===hit.rackId);
+          if(rack?.stackedOnId&&state.move&&e.button===0){vspaceToast('Este módulo está sobre otro. Desvincúlalo antes de moverlo individualmente.',true);}
           const urbanItem=urbanHit?(appState.layout.streets||[]).find(s=>s.id===urbanHit.streetId)?.streetFurniture?.find(item=>item.id===urbanHit.furnitureId):null;
           const wantsPan = e.button===1 || e.button===2 || e.shiftKey;
-          gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&urbanItem&&!e.shiftKey)?'move-urban':(e.button===0&&state.move&&canWrite()&&rack&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',urbanId:urbanHit?.furnitureId||'',streetId:urbanHit?.streetId||'',
+          gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&urbanItem&&!e.shiftKey)?'move-urban':(e.button===0&&state.move&&canWrite()&&rack&&!rack.stackedOnId&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',urbanId:urbanHit?.furnitureId||'',streetId:urbanHit?.streetId||'',
             initialX:Number(rack?.x||0),initialY:Number(rack?.y||0),urbanStartX:Number(urbanItem?.x||0),urbanStartY:Number(urbanItem?.y||0),groundStart:point,moved:false};
           try{canvas.setPointerCapture(e.pointerId);}catch(_){}
         });
@@ -18567,7 +18719,15 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             const rack=appState.layout.racks.find(r=>r.id===gesture.rackId),current=groundPoint(e);
             if(rack&&current&&gesture.groundStart){
               const candidate={...rack,x:Math.round(gesture.initialX+current.x-gesture.groundStart.x),y:Math.round(gesture.initialY+current.y-gesture.groundStart.y)};
-              if(vspaceFits(candidate,rack.id).ok){rack.x=candidate.x;rack.y=candidate.y;const group=state.objects.get(rack.id);if(group){const cp=coord({x:rack.x+rack.w/2,y:rack.y+rack.h/2});group.position.x=cp.x;group.position.z=cp.z;} state.refreshMiniLayout();}
+              const drafts=vspaceFollowAttachedModules(rack,candidate);
+              if(vspaceValidateRackProposals(drafts).ok){
+                drafts.forEach(next=>{
+                  const current=(appState.layout.racks||[]).find(item=>item.id===next.id);if(!current)return;
+                  current.x=next.x;current.y=next.y;current.baseHeight=next.baseHeight;
+                  const group=state.objects.get(current.id);
+                  if(group){const cp=coord({x:current.x+current.w/2,y:current.y+current.h/2});group.position.x=cp.x;group.position.z=cp.z;group.position.y=Number(current.baseHeight||0)/100;}
+                });state.refreshMiniLayout();
+              }
             }
           }
           gesture.x=e.clientX;gesture.y=e.clientY;state.requestRender();
@@ -18585,12 +18745,13 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           if(state.destroyed) return;
           const tag=(document.activeElement?.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea'||tag==='select') return;
           const step=Math.max(.18,orbit.radius*.05);
-          if(e.key==='Escape'&&state.archDrawMode){state.archDrawMode=false;state.drawWallStart=null;state.refreshInspector();e.preventDefault();}
+          if(e.key==='Escape'&&state.stackSourceId){cancelStackMode();e.preventDefault();}
+          else if(e.key==='Escape'&&state.archDrawMode){state.archDrawMode=false;state.drawWallStart=null;state.refreshInspector();e.preventDefault();}
           else if(e.key==='1'){state.setCamera('iso');e.preventDefault();}
           else if(e.key==='2'){state.setCamera('top');e.preventDefault();}
           else if(e.key==='3'){state.setCamera('front');e.preventDefault();}
           else if(e.key.toLowerCase()==='f'){state.focusSelected();e.preventDefault();}
-          else if(e.key.toLowerCase()==='m'&&canWrite()){state.move=!state.move;root.querySelector('[data-vspace-action="move"]').textContent=`Mover: ${state.move?'ON':'OFF'}`;root.querySelector('[data-vspace-action="move"]').classList.toggle('active',state.move);e.preventDefault();}
+          else if(e.key.toLowerCase()==='m'&&canWrite()){if(state.stackSourceId)cancelStackMode(true);state.move=!state.move;root.querySelector('[data-vspace-action="move"]').textContent=`Mover: ${state.move?'ON':'OFF'}`;root.querySelector('[data-vspace-action="move"]').classList.toggle('active',state.move);e.preventDefault();}
           else if(e.key==='ArrowUp'||e.key.toLowerCase()==='w'){orbit.target.z-=step;state.requestRender();e.preventDefault();}
           else if(e.key==='ArrowDown'||e.key.toLowerCase()==='s'){orbit.target.z+=step;state.requestRender();e.preventDefault();}
           else if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a'){orbit.target.x-=step;state.requestRender();e.preventDefault();}

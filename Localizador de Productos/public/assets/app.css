@@ -6876,6 +6876,17 @@ body.theme-dark .vspace-inspector .vspace-arch-entry.selected{background:var(--s
   #appRoot.app .layout-cad-v80 .v80-canvas-card{width:100%;min-width:0;}
 }
 
+/* V196 — herramienta contextual de apilamiento en el espacio 3D */
+.vspace-stack-prompt{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:11;max-width:calc(100% - 24px);display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff9ed;color:#203d33;border:1px solid #d9c89e;border-radius:12px;padding:10px 13px;box-shadow:0 8px 24px rgba(32,36,29,.14);font-size:12px;font-weight:650;pointer-events:auto}
+.vspace-stack-prompt[hidden]{display:none!important}
+.vspace-stack-prompt button{border-radius:9px;padding:7px 10px;border:1px solid #c9b89d;background:#f0e4d1;color:#543f2a;font-weight:650}
+.vspace-stacking-mode .vspace-stage canvas{cursor:crosshair!important}
+.vspace-stack-controls{display:grid;gap:8px;margin-top:8px}
+.vspace-stack-controls>button{min-height:35px;border:1px solid #84a18d!important;background:#e8f3ea!important;color:#28654e!important;border-radius:9px;font-weight:750!important}
+.vspace-stack-controls small{color:var(--ink-soft,#756b5b)}
+.vspace-object.stack-source{border-color:#309c79!important;box-shadow:inset 3px 0 #309c79}
+@media(max-width:650px){.vspace-stack-prompt{top:8px;left:8px;right:8px;transform:none}.vspace-toolbar-right [data-vspace-action="stack"]{font-size:11px}}
+
 
 /* ===================================================================
    WMS Industrial V176 · WORKSPACE SYSTEM

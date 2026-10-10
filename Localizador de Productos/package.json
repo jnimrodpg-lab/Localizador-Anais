@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.9.5-apilamiento-modular-232",
+  "version": "1.9.6-colocar-encima-3d",
   "private": true,
-  "description": "WMS Industrial V195: conjuntos de apilamiento 2-3-2, vista de niveles y visualización 3D por NPT",
+  "description": "WMS Industrial V196: interacción Colocar encima, soporte vinculado, NPT automático y validación 3D",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",

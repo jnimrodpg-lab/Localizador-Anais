@@ -1,0 +1,22 @@
+{
+  "name": "wms-industrial-cloudflare",
+  "version": "1.7.1-ui-audit",
+  "private": true,
+  "description": "WMS Industrial V171: auditoría visual, densidad 80%, sidebar, controles y responsive conservando funcionalidades.",
+  "type": "module",
+  "scripts": {
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "verify:frontend": "node scripts/verify-frontend.mjs",
+    "audit:frontend": "node scripts/audit-frontend.mjs",
+    "check": "npm run verify:frontend && npm run audit:frontend && npm run test:visual-css && npm run test:ui-v171 && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js",
+    "build": "npm run build:frontend",
+    "test:virtual": "node tests/virtual-space.test.mjs && node tests/furniture-v161.test.mjs",
+    "test:auth": "node tests/auth-compat.test.mjs",
+    "test:visual-css": "node tests/visual-css.test.mjs",
+    "test:ui-v171": "node tests/ui-audit-v171.test.mjs",
+    "test:visual-browser": "python tests/visual-smoke.py"
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  }
+}

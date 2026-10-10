@@ -1,0 +1,140 @@
+/* V160 — ambiente virtual: plano, inventario y muebles 3D en una sola estación */
+.vspace-root{display:flex;flex-direction:column;min-height:580px;height:calc(100vh - 146px);max-height:1200px;overflow:hidden;color:#e6edf4;background:#101d29;border:1px solid #30485a;border-radius:15px;box-sizing:border-box;font-family:inherit}
+.vspace-root *{box-sizing:border-box}
+.vspace-toolbar{min-height:58px;padding:10px 13px;display:flex;align-items:center;gap:11px;flex-wrap:wrap;border-bottom:1px solid #304354;background:#152635}
+.vspace-toolbar>strong{font-size:15px;font-weight:750;letter-spacing:-.2px}
+.vspace-chip{font-size:11px;color:#98b6c8;padding:4px 9px;border:1px solid #344c5d;border-radius:50px;background:#1b3040;white-space:nowrap}
+.vspace-toolbar-right{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end;margin-left:auto}
+.vspace-toolbar button,.vspace-root button{font-family:inherit;cursor:pointer}
+.vspace-toolbar-right button,.vspace-inspector button:not(.vspace-primary),.vspace-search button{border:1px solid #3e5a6c;background:#23394b;color:#d5e7f0;padding:7px 10px;border-radius:8px;font-size:11px;font-weight:600;transition:background .12s,border-color .12s}
+.vspace-toolbar-right button:hover,.vspace-root button:hover:not(:disabled){border-color:#31c7b7}
+.vspace-toolbar-right button.active{background:#176d69;color:white;border-color:#38dac8}
+.vspace-toolbar-right .vspace-save,.vspace-primary{background:#13b49e!important;color:#072522!important;border:1px solid #2de0c8!important;font-weight:750!important}
+.vspace-root button:disabled{opacity:.4;cursor:not-allowed!important}
+.vspace-main{display:grid;grid-template-columns:235px minmax(0,1fr) 275px;flex:1;min-height:0}
+.vspace-left{overflow:auto;background:#152535;border-right:1px solid #314659;padding:12px 10px;display:flex;flex-direction:column;gap:12px}
+.vspace-sidebar-section{padding:10px;background:#1b3040;border:1px solid #324a5b;border-radius:11px}
+.vspace-sidebar-section h4,.vspace-inspector h4{font-size:12px;letter-spacing:.12px;color:#e7f3fa;margin:0 0 8px;font-weight:700}
+.vspace-sidebar-section p,.vspace-muted{font-size:11px;color:#8eabba;line-height:1.5}
+.vspace-catalog{display:grid;gap:6px}
+.vspace-catalog-btn{display:grid;grid-template-columns:24px 1fr;grid-template-rows:auto auto;gap:1px 8px;align-items:center;text-align:left;border:1px solid #3c5463;border-radius:8px;background:#223a4d;padding:8px!important;color:#e1eff4}
+.vspace-catalog-btn b{font-size:20px;grid-row:1/3;color:#54d8c7;text-align:center}
+.vspace-catalog-btn span{font-size:11px;font-weight:700}
+.vspace-catalog-btn small{font-size:10px;color:#9dbccc}
+.vspace-search{display:flex;gap:5px}
+.vspace-search input{min-width:0;flex:1;background:#122435;border:1px solid #3f5b6e;border-radius:7px;color:#f0fcff;padding:8px;font-size:11px}
+.vspace-hits{max-height:140px;overflow:auto;display:flex;flex-direction:column;gap:3px;margin-top:8px}
+.vspace-hits button{padding:7px;text-align:left;border:1px solid #3c5367;border-radius:7px;background:#254056;color:#eef7ff;display:flex;flex-direction:column;gap:3px;font-size:10px}
+.vspace-hits small{color:#a8d0d9}
+.vspace-object-list{display:flex;flex-direction:column;gap:5px;max-height:280px;overflow:auto}
+.vspace-object{width:100%;text-align:left;display:flex;flex-direction:column;gap:3px;border:1px solid #304b5d;border-radius:7px;padding:8px;background:#1a3143;color:#d6eaf4}
+.vspace-object.active{background:#124a4f;border-color:#2bd9c4}
+.vspace-object b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vspace-object small{font-size:10px;color:#9db9ca}
+.vspace-stage{position:relative;min-height:300px;overflow:hidden;background:radial-gradient(ellipse at 45% 35%,#203849 0%,#10202e 65%,#091723 100%)}
+.vspace-stage canvas{display:block;width:100%;height:100%;outline:0;touch-action:none;cursor:grab}
+.vspace-stage canvas:active{cursor:grabbing}
+.vspace-floating{position:absolute;bottom:15px;left:15px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none;max-width:80%}
+.vspace-floating span{font-size:10px;color:#d4e1e9;background:rgba(11,27,41,.82);border:1px solid #38556a;border-radius:6px;padding:6px 8px}
+.vspace-compass{position:absolute;right:15px;top:12px;border:1px solid #50778b;border-radius:100%;height:38px;width:38px;display:grid;place-items:center;color:#8cead8;background:#152b3d;font-weight:850;pointer-events:none;box-shadow:0 5px 18px rgba(0,0,0,.2)}
+.vspace-loading{position:absolute;inset:0;display:grid;place-items:center;padding:15px;color:#a5dae2;background:rgba(11,26,39,.85);text-align:center;font-size:13px}
+.vspace-inspector{overflow:auto;background:#182b3a;border-left:1px solid #365064;padding:15px 12px}
+.vspace-inspector>h4{font-size:13px;margin:2px 0 14px}
+.vspace-inspector-body{display:flex;flex-direction:column;gap:9px;font-size:12px}
+.vspace-inspector-id{padding:9px 10px;border-radius:8px;background:#213b4a;border:1px solid #3f5e70;display:flex;flex-direction:column;gap:5px}
+.vspace-inspector-id b{font-size:13px}
+.vspace-inspector-id small{color:#9db9c6}
+.vspace-field{display:flex;flex-direction:column;gap:5px;color:#b4ccda;font-size:11px;font-weight:600;min-width:0}
+.vspace-field input,.vspace-field select{min-width:0;width:100%;padding:8px 7px;border:1px solid #40596a;border-radius:7px;background:#142635;color:#ebf9fd;font-size:12px;outline-color:#27d2ba}
+.vspace-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.vspace-inspector-body>button,.vspace-inspector-body>.vspace-grid-2 button{min-height:34px;border-radius:7px;padding:8px}
+.vspace-divider{height:1px;background:#3b5363;margin:7px 0}
+.vspace-numbers{display:flex;gap:4px;flex-wrap:wrap}
+.vspace-numbers button{min-width:32px;border:1px solid #425d70;color:#c7dce7;border-radius:5px;background:#253d4e;padding:6px 8px}
+.vspace-numbers button.active{background:#148b7f!important;border-color:#45e5ca!important;color:#fff!important}
+.vspace-loc-code{background:#123b40;color:#64f0d9;border:1px solid #247f79;border-radius:8px;padding:10px 7px;text-align:center;font-size:13px;font-weight:800;letter-spacing:.25px}
+.vspace-assignment-name{color:#e8ebc1;font-size:11px;line-height:1.3}
+.vspace-inspector-body .vspace-danger{background:#53313b!important;color:#ffcad1!important;border-color:#a75a6d!important}
+.vspace-bottom{min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 13px;background:#152635;border-top:1px solid #344d60;color:#89b2c1;font-size:11px}
+#vspaceNotice.error{color:#ffacb7}
+.vspace-empty{padding:32px 12px;color:#abc4d0;text-align:center;line-height:1.6;background:#1e3547;border-radius:9px}
+@media(max-width:1240px){.vspace-main{grid-template-columns:190px minmax(0,1fr) 235px}.vspace-left,.vspace-inspector{padding:9px}.vspace-toolbar-right{margin-left:0}}
+@media(max-width:880px){.vspace-root{height:auto;min-height:600px;max-height:none}.vspace-main{display:flex;flex-direction:column}.vspace-stage{min-height:430px;height:50vh;order:0}.vspace-left{order:1;overflow:visible;border-right:0;border-top:1px solid #334e61}.vspace-inspector{order:2;border-left:0;border-top:1px solid #334e61}.vspace-catalog{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.vspace-object-list{max-height:160px}.vspace-floating{max-width:98%}.vspace-bottom{flex-wrap:wrap}}
+
+/* ================================================================
+   WMS V161 · DIORAMA — Interior isométrico cálido y mobiliario 3D
+   Todos los estilos están aislados dentro de .vspace-root.
+   ================================================================ */
+.vspace-root{
+  --vs-ink:#443e36;--vs-muted:#8b806e;--vs-line:#e6ded0;--vs-warm:#b88b5d;
+  --vs-accent:#267e69;--vs-panel:#fffdfa;
+  color:var(--vs-ink);background:#f8f5ef;border-color:#e2d7c6;
+  border-radius:18px;box-shadow:0 20px 52px rgba(74,55,30,.12);
+}
+.vspace-toolbar{background:#fffdf8;border-color:#e9dfd0;padding:12px 16px;min-height:66px}
+.vspace-toolbar>strong{color:#544638;font-size:15px;letter-spacing:-.35px}
+.vspace-chip{background:#f4eee5;color:#87725c;border-color:#e6d6c3;font-weight:600}
+.vspace-toolbar-right button,.vspace-inspector button:not(.vspace-primary),.vspace-search button{
+  color:#655747;background:#f7f1e8;border-color:#e4d8c7;border-radius:9px;
+  padding:8px 11px;font-size:11px;
+}
+.vspace-toolbar-right button:hover,.vspace-root button:hover:not(:disabled){border-color:#5eab8f;color:#185f4c}
+.vspace-toolbar-right button.active{color:#135c49;background:#e3f1e9;border-color:#80baa4}
+.vspace-toolbar-right .vspace-save,.vspace-primary{background:#267e69!important;color:white!important;border-color:#267e69!important}
+.vspace-main{grid-template-columns:minmax(210px,235px) minmax(0,1fr) minmax(245px,280px)}
+.vspace-left{background:#f6f1e9;border-right:1px solid #e7dccc;padding:13px 11px;gap:12px}
+.vspace-sidebar-section{background:var(--vs-panel);border:1px solid var(--vs-line);box-shadow:0 2px 7px rgba(82,66,43,.025);border-radius:12px;padding:12px}
+.vspace-sidebar-section h4,.vspace-inspector h4{color:#514337;font-size:12px}
+.vspace-sidebar-section p,.vspace-muted{color:#968877;font-size:11px;line-height:1.55}
+.vspace-catalog{display:grid;gap:8px}
+.vspace-catalog-btn{grid-template-columns:33px 1fr;gap:2px 10px;border:1px solid #e5dacb;
+  background:linear-gradient(110deg,#fffdfa,#f8f1e6);color:#534537;
+  padding:10px 9px!important;border-radius:10px;box-shadow:0 2px 4px rgba(119,88,54,.035)}
+.vspace-catalog-btn b{font-size:25px;color:#a8835d}
+.vspace-catalog-btn span{font-size:11px;color:#524638}
+.vspace-catalog-btn small{font-size:10px;color:#9a8a76}
+.vspace-catalog-btn:hover{background:#ecf7ee;border-color:#6fad9c;transform:translateY(-1px)}
+.vspace-example-btn{margin-top:11px;padding:11px 8px!important;border:1px dashed #c2a482!important;
+  color:#805d39!important;background:#fcf6eb!important;border-radius:10px!important;
+  width:100%;font-size:11px!important;font-weight:700!important}
+.vspace-search input,.vspace-field input,.vspace-field select{
+  color:#4c4239;background:#fffdf8;border:1px solid #e1d6c6;outline-color:#5eab8f;
+  border-radius:8px;font-size:11px;
+}
+.vspace-search input::placeholder{color:#a99b89}
+.vspace-hits button{background:#f7f2e9;color:#4f4438;border-color:#e7daca}
+.vspace-hits small{color:#8d7e6c}
+.vspace-object{background:#fffdf9;border-color:#e6dbc9;border-radius:9px;color:#534537}
+.vspace-object.active{background:#e4f1e9;border-color:#6ca88e}
+.vspace-object b{color:#514537}.vspace-object small{color:#9a8774}
+.vspace-stage{background:radial-gradient(ellipse at 50% 40%,#ffffff 0%,#f7f4ed 66%,#ebe4d9 100%)}
+.vspace-stage canvas{cursor:grab}
+.vspace-floating span{color:#746651;background:rgba(255,253,248,.90);border-color:#e4d6bf;
+  border-radius:9px;box-shadow:0 3px 12px rgba(60,40,20,.08)}
+.vspace-compass{color:#77614a;background:#fff9f0;border-color:#dbc8b1;box-shadow:0 5px 16px rgba(90,66,37,.09)}
+.vspace-loading{color:#6b5844;background:rgba(246,241,233,.96)}
+.vspace-inspector{background:#fffdf9;border-left:1px solid #e7dccc;padding:16px 13px}
+.vspace-inspector>h4{font-size:13px;color:#594735}
+.vspace-inspector-id{background:#f7f0e6;border-color:#e6d6c1;border-radius:10px}
+.vspace-inspector-id b{color:#4b4035}
+.vspace-inspector-id small{color:#9b886e}
+.vspace-field{color:#7d6d5b;font-size:11px}
+.vspace-divider{background:#e8ddcd}
+.vspace-numbers button{color:#675948;background:#f7f1e9;border-color:#e1d5c5;border-radius:7px}
+.vspace-numbers button.active{color:white!important;background:#2e8d71!important;border-color:#438f74!important}
+.vspace-loc-code{color:#166b55;background:#e6f2e9;border-color:#9dc9b1;letter-spacing:.35px}
+.vspace-container-editor{padding:11px 10px;border:1px solid #dfd0bb;border-radius:11px;
+  background:linear-gradient(120deg,#fff8eb,#fcf3e8);display:grid;gap:8px}
+.vspace-container-editor>b{font-size:12px;color:#71553a}
+.vspace-container-editor small{font-size:10px}
+.vspace-container-editor>button{border:1px solid #be9771!important;background:#f7e5cb!important;
+  color:#725233!important;font-size:11px!important;font-weight:700!important}
+.vspace-assignment-name{color:#7e6644}
+.vspace-inspector-body .vspace-danger{background:#fff1ed!important;color:#a44236!important;border-color:#eac6ba!important}
+.vspace-bottom{background:#fffdfa;color:#8f7e69;border-color:#e9decf}
+#vspaceNotice.error{color:#aa4638}
+.vspace-empty{background:#f7efe2;color:#8b7961}
+@media(max-width:1200px){.vspace-main{grid-template-columns:190px minmax(0,1fr) 235px}}
+@media(max-width:880px){.vspace-main{display:flex;flex-direction:column}.vspace-stage{min-height:440px;height:54vh;order:0}.vspace-left{order:1;overflow:visible;border-right:0;border-top:1px solid var(--vs-line)}.vspace-inspector{order:2;border-left:0;border-top:1px solid var(--vs-line)}.vspace-catalog{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
+
+

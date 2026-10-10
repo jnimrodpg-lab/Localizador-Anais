@@ -410,7 +410,107 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   function ensureLayoutMeta(){
     if(!appState.layout.meta || typeof appState.layout.meta !== 'object') appState.layout.meta = {};
     if(!Number.isFinite(Number(appState.layout.meta.scaleCmPerUnit)) || Number(appState.layout.meta.scaleCmPerUnit) <= 0) appState.layout.meta.scaleCmPerUnit = 1;
+    if(!appState.layout.meta.siteBoundary || !Array.isArray(appState.layout.meta.siteBoundary.pts) || appState.layout.meta.siteBoundary.pts.length < 4){
+      const zones = Array.isArray(appState.layout?.zones) ? appState.layout.zones : [];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      zones.forEach(z => {
+        (z?.pts || []).forEach(pt => {
+          minX = Math.min(minX, Number(pt?.x || 0));
+          minY = Math.min(minY, Number(pt?.y || 0));
+          maxX = Math.max(maxX, Number(pt?.x || 0));
+          maxY = Math.max(maxY, Number(pt?.y || 0));
+        });
+      });
+      if(!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)){
+        minX = 80; minY = 80; maxX = 840; maxY = 600;
+      }
+      const padX = Math.max(80, (maxX - minX) * 0.14);
+      const padY = Math.max(80, (maxY - minY) * 0.16);
+      appState.layout.meta.siteBoundary = {
+        id:'AREA-GENERAL',
+        name:'Área general',
+        pts:[
+          {x:minX - padX, y:minY - padY},
+          {x:maxX + padX, y:minY - padY},
+          {x:maxX + padX, y:maxY + padY},
+          {x:minX - padX, y:maxY + padY}
+        ]
+      };
+    }
+    if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    if(!appState.layout.meta.defaultStreetCornerStyle) appState.layout.meta.defaultStreetCornerStyle = 'right';
     return appState.layout.meta;
+  }
+  function pathFromPts(pts=[]){ return (pts || []).map((pt,i) => `${i===0?'M':'L'} ${Number(pt?.x || 0)} ${Number(pt?.y || 0)}`).join(' ') + ' Z'; }
+  function layoutBoundary(){ ensureLayoutMeta(); return appState.layout?.meta?.siteBoundary || null; }
+  function layoutBoundaryPts(){ return Array.isArray(layoutBoundary()?.pts) ? layoutBoundary().pts : []; }
+  function layoutBoundaryBounds(){
+    const pts = layoutBoundaryPts();
+    if(!pts.length) return { minX:0, minY:0, maxX:900, maxY:620, w:900, h:620 };
+    const xs = pts.map(p => Number(p.x || 0)), ys = pts.map(p => Number(p.y || 0));
+    const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys);
+    return { minX, minY, maxX, maxY, w:maxX-minX, h:maxY-minY };
+  }
+  function pointInLayoutBoundary(point){
+    const pts = layoutBoundaryPts();
+    return pts.length >= 3 ? pointInPoly(point, pts) || pointNearPolygonEdge(point, pts, 1.2) : true;
+  }
+  function clampPointToLayoutBoundary(point, margin=24){
+    const b = layoutBoundaryBounds();
+    return { x:Math.max(b.minX + margin, Math.min(b.maxX - margin, Number(point?.x || 0))), y:Math.max(b.minY + margin, Math.min(b.maxY - margin, Number(point?.y || 0))) };
+  }
+  function nextStreetId(layout=appState.layout){
+    const streets = Array.isArray(layout?.streets) ? layout.streets : [];
+    const nums = streets.map(s => { const m = String(s?.id || '').match(/^C(\d+)$/i); return m ? Number(m[1]) : NaN; }).filter(Number.isFinite);
+    return `C${Math.max(0, ...nums) + 1}`;
+  }
+  function getStreetCornerStyle(){ return String(appState.layout?.meta?.defaultStreetCornerStyle || 'right') === 'diagonal' ? 'diagonal' : 'right'; }
+  function setStreetCornerStyle(style='right'){ ensureLayoutMeta(); appState.layout.meta.defaultStreetCornerStyle = String(style) === 'diagonal' ? 'diagonal' : 'right'; }
+  function nearestBoundaryEdge(point){
+    const b = layoutBoundaryBounds();
+    const dTop = Math.abs(Number(point?.y || 0) - b.minY);
+    const dBottom = Math.abs(Number(point?.y || 0) - b.maxY);
+    const dLeft = Math.abs(Number(point?.x || 0) - b.minX);
+    const dRight = Math.abs(Number(point?.x || 0) - b.maxX);
+    const list = [
+      { side:'top', d:dTop },
+      { side:'bottom', d:dBottom },
+      { side:'left', d:dLeft },
+      { side:'right', d:dRight }
+    ].sort((a,b) => a.d - b.d);
+    return list[0]?.side || 'top';
+  }
+  function buildStreetGeometry(side='top', opts={}){
+    const b = layoutBoundaryBounds();
+    const sidewalk = Math.max(20, Number(opts.sidewalkWidth || 42) || 42);
+    const road = Math.max(26, Number(opts.roadWidth || 92) || 92);
+    const bevel = String(opts.cornerStyle || getStreetCornerStyle()) === 'diagonal' ? Math.max(16, Math.min(42, sidewalk * .6)) : 0;
+    let sidewalkPts = [], roadPts = [];
+    if(side === 'top'){
+      sidewalkPts = [{x:b.minX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY},{x:b.minX,y:b.minY}];
+      roadPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}] : [{x:b.minX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}];
+    }else if(side === 'bottom'){
+      sidewalkPts = [{x:b.minX,y:b.maxY},{x:b.maxX,y:b.maxY},{x:b.maxX,y:b.maxY+sidewalk},{x:b.minX,y:b.maxY+sidewalk}];
+      roadPts = bevel ? [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.minX+bevel,y:b.maxY+sidewalk+road}] : [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.minX,y:b.maxY+sidewalk+road}];
+    }else if(side === 'left'){
+      sidewalkPts = [{x:b.minX-sidewalk,y:b.minY},{x:b.minX,y:b.minY},{x:b.minX,y:b.maxY},{x:b.minX-sidewalk,y:b.maxY}];
+      roadPts = bevel ? [{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY}];
+    }else{
+      sidewalkPts = [{x:b.maxX,y:b.minY},{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk,y:b.maxY},{x:b.maxX,y:b.maxY}];
+      roadPts = bevel ? [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel},{x:b.maxX+sidewalk,y:b.maxY}] : [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road,y:b.maxY},{x:b.maxX+sidewalk,y:b.maxY}];
+    }
+    return { side, sidewalkPts, roadPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: bevel ? 'diagonal' : 'right' };
+  }
+  function addStreetFromPoint(point, opts={}){
+    ensureLayoutMeta();
+    if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    const side = opts.side || nearestBoundaryEdge(point);
+    const existing = appState.layout.streets.find(s => s.side === side);
+    const geo = buildStreetGeometry(side, opts);
+    if(existing){ Object.assign(existing, geo); return existing; }
+    const street = { id:nextStreetId(), name:`Calle ${side}`, ...geo };
+    appState.layout.streets.push(street);
+    return street;
   }
   function unitsToCm(units){ return Number(units || 0) * getScaleCmPerUnit(); }
   function formatDistanceCm(units){

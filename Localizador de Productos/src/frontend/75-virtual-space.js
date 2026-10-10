@@ -492,6 +492,16 @@
             const floor=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.15,bevelEnabled:false}),[
               meshMat(0xe9d7bb,{metalness:0,roughness:.9}),meshMat(0xbba48a,{metalness:0,roughness:.95})]);
             floor.rotation.x=-Math.PI/2;floor.position.y=-.15;floor.receiveShadow=true;world.add(floor);
+            const outlinePts = pts.map(pt => coord(pt));
+            if(outlinePts.length >= 2){
+              const lineMat = new THREE.LineBasicMaterial({ color:0xbca17d, transparent:true, opacity:.96 });
+              const arr = [];
+              outlinePts.forEach((pt,i) => { arr.push(pt.x, .018, pt.z); const nx = outlinePts[(i+1)%outlinePts.length]; arr.push(nx.x, .018, nx.z); });
+              const geo = new THREE.BufferGeometry();
+              geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+              const line = new THREE.LineSegments(geo, lineMat);
+              world.add(line);
+            }
             if(state.wallVisible){
               const center={x:pts.reduce((v,p)=>v+Number(p.x),0)/pts.length,y:pts.reduce((v,p)=>v+Number(p.y),0)/pts.length};
               const midpoint=coord(center);

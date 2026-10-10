@@ -297,7 +297,13 @@
       rackHeight:rackModel(i===2?'wide_5':'std_4').height || 238
     }));
     racks.forEach(r=>syncRackFootprint(r,false));
-    return { zones:[zone], racks, meta:{ createdAt: Date.now(), scaleCmPerUnit: 1 } };
+    const areaPts = [
+      { x:zx - 70, y:zy - 56 },
+      { x:zx + zw + 140, y:zy - 56 },
+      { x:zx + zw + 140, y:zy + zh + 160 },
+      { x:zx - 70, y:zy + zh + 160 }
+    ];
+    return { zones:[zone], racks, streets:[], meta:{ createdAt: Date.now(), scaleCmPerUnit: 1, defaultStreetCornerStyle:'right', siteBoundary:{ id:'AREA-GENERAL', name:'Área general', pts:areaPts } } };
   }
   function ensureBranchLayouts(){
     const branches = appState.admin?.branches || [];

@@ -1,5 +1,5 @@
 {
-  "version": "193",
+  "version": "194",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V193: interfaz consolidada sin solapamiento, modelos de catálogo desacoplados de racks del layout y colocación manual con fantasma y validación."
+  "notes": "V194: racks editables en todo el layout, preview 3D del catálogo con mallas del constructor y NPT por instancia."
 }

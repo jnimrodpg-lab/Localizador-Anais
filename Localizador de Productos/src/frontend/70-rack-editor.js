@@ -710,6 +710,74 @@
     }
   }
 
+  // V194: el preview principal usa exactamente el motor y las piezas del constructor 3D.
+  // El SVG permanece disponible como fallback cuando no hay WebGL.
+  let rackLibrary3DEngine = null;
+  let rackLibraryPreviewToken = 0;
+  function disposeRackLibrary3DPreview(){
+    const e=rackLibrary3DEngine;
+    if(!e)return;
+    try{e.resizeObserver?.disconnect();}catch{}
+    try{cancelAnimationFrame(e.raf||0);}catch{}
+    try{e.scene?.traverse(o=>{o.geometry?.dispose?.();if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose?.());}});}catch{}
+    try{e.renderer?.dispose?.();e.renderer?.forceContextLoss?.();e.renderer?.domElement?.remove();}catch{}
+    rackLibrary3DEngine=null;
+  }
+  async function renderRackLibrary3DPreview(modelId){
+    const token=++rackLibraryPreviewToken;
+    const model=rackModel(modelId),host=document.getElementById('rackPreviewStage');
+    if(!host||!model?.furniture?.enabled){disposeRackLibrary3DPreview();return;}
+    let THREE;
+    try{THREE=await loadThreeRuntime();}catch(error){console.warn('Preview WebGL no disponible; se mantiene vista SVG:',error?.message||error);return;}
+    if(token!==rackLibraryPreviewToken||!host.isConnected)return;
+    let e=rackLibrary3DEngine;
+    if(!e||e.host!==host){
+      disposeRackLibrary3DPreview();
+      let renderer;
+      try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:false});}
+      catch(error){console.warn('Sin contexto WebGL para el preview:',error);return;}
+      renderer.setPixelRatio(Math.min(1.6,window.devicePixelRatio||1));
+      renderer.setClearColor(0xf6f2eb,1);
+      renderer.shadowMap.enabled=true;
+      renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+      renderer.domElement.className='wms-v194-real-model-preview';
+      renderer.domElement.style.cssText='display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab;';
+      const scene=new THREE.Scene();scene.background=new THREE.Color(0xf6f2eb);
+      const camera=new THREE.PerspectiveCamera(34,1,.1,100000);
+      const root=new THREE.Group();scene.add(root);
+      scene.add(new THREE.HemisphereLight(0xffffff,0xc7beb2,2.15));
+      const key=new THREE.DirectionalLight(0xffffff,2.0);key.position.set(260,400,460);key.castShadow=true;key.shadow.mapSize.set(1024,1024);scene.add(key);
+      const fill=new THREE.DirectionalLight(0xdce8ff,.65);fill.position.set(-280,140,-220);scene.add(fill);
+      e={THREE,host,renderer,scene,camera,root,modelId,meshByPiece:new Map(),spaceMeshes:[],target:new THREE.Vector3(),yaw:.83,pitch:.36,distance:400,raf:0};
+      rackLibrary3DEngine=e;
+      host.style.position='relative';
+      host.appendChild(renderer.domElement);
+      const resize=()=>{if(!host.isConnected)return;const w=Math.max(160,host.clientWidth||600),h=Math.max(180,host.clientHeight||480);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRackFurniture3DRender(e);};
+      e.resizeObserver=new ResizeObserver(resize);e.resizeObserver.observe(host);resize();
+      let drag=null;
+      renderer.domElement.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;drag={x:ev.clientX,y:ev.clientY,yaw:e.yaw,pitch:e.pitch};renderer.domElement.style.cursor='grabbing';renderer.domElement.setPointerCapture?.(ev.pointerId);});
+      renderer.domElement.addEventListener('pointermove',ev=>{if(!drag)return;e.yaw=drag.yaw-(ev.clientX-drag.x)*.007;e.pitch=Math.max(-.2,Math.min(1.45,drag.pitch+(ev.clientY-drag.y)*.006));updateRackFurniture3DCamera(e);requestRackFurniture3DRender(e);});
+      const finish=()=>{drag=null;renderer.domElement.style.cursor='grab';};
+      renderer.domElement.addEventListener('pointerup',finish);renderer.domElement.addEventListener('pointercancel',finish);
+      renderer.domElement.addEventListener('wheel',ev=>{ev.preventDefault();e.distance=Math.max(10,Math.min(60000,e.distance*(ev.deltaY>0?1.1:.9)));updateRackFurniture3DCamera(e);requestRackFurniture3DRender(e);},{passive:false});
+    }
+    e.modelId=model.id;
+    rebuildRackFurniture3DScene(e,model); // Misma geometría y materiales que 'Crear mobiliario 3D'.
+    // El catálogo no muestra ejes, zonas fantasma ni seleccionados de la sesión de construcción.
+    e.spaceMeshes.forEach(mesh=>{e.root.remove(mesh);mesh.geometry?.dispose();mesh.material?.dispose();});
+    e.spaceMeshes=[];
+    e.root.children.slice().filter(o=>o.isAxesHelper||o.isLineSegments).forEach(o=>{e.root.remove(o);o.geometry?.dispose();o.material?.dispose();});
+    const W=Math.max(1,Number(model.width||120)),D=Math.max(1,Number(model.depth||40)),H=Math.max(1,Number(model.height||200));
+    e.target.set(W/2,H*.5,D/2);
+    // Encuadre según dimensión mayor y relación de aspecto, para muebles cortos o muy anchos.
+    const radius=Math.hypot(W,H,D)*.57;
+    e.distance=Math.max(70,radius/(Math.sin(Math.PI*34/360)*Math.min(1,Math.max(.4,e.camera.aspect)))*1.2);
+    updateRackFurniture3DCamera(e);
+    const svg=host.querySelector('#rackModelSvg');if(svg)svg.style.display='none';
+    e.renderer.domElement.style.display='block';
+    requestRackFurniture3DRender(e);
+  }
+
   function renderRackModelPreview(){
     const svg = $('#rackModelSvg');
     if(!svg)return;
@@ -721,9 +789,11 @@
     svg.setAttribute('data-catalog-preview','');
     renderRackDetail(previewModel.name||'Modelo',null,svg,previewModel,previewRack);
     if(previewModel.furniture?.enabled){
+      void renderRackLibrary3DPreview(previewModel.id);
       const thumbnail=Array.from(document.querySelectorAll('svg[data-furniture-thumb]')).find(x=>x.dataset.furnitureThumb===previewModel.id);
       if(thumbnail)renderFurnitureRackDetail(previewModel.name,null,thumbnail,previewModel,null);
     }
+    if(!previewModel.furniture?.enabled){rackLibraryPreviewToken++;disposeRackLibrary3DPreview();svg.style.display='';}
     detailStatus.textContent=previewModel.name||'Modelo';
     detailChip.textContent=`${previewModel.levels||0} niveles · ${previewModel.width}×${previewModel.depth}×${previewModel.height} cm`;
     enableRackPreviewNavigation(svg,previewModel.id);
@@ -790,7 +860,10 @@
     if(!appState.ui) appState.ui = {};
     const saved = appState.ui.rackPreviewCamera;
     const initialView = getCenteredPreviewView(svg, { x: vb.x, y: vb.y, width: vb.width, height: vb.height }, modelId);
-    let view = (saved && saved.modelId === modelId && saved.view) ? { ...saved.view } : { ...initialView };
+    // Las piezas cambian sus límites al editar el modelo: una cámara SVG antigua
+    // podía recortar la base o la tapa. El modelo paramétrico siempre se reencuadra.
+    const model=rackModel(modelId);
+    let view = (!model?.furniture?.enabled && saved && saved.modelId === modelId && saved.view) ? { ...saved.view } : { ...initialView };
     let dragging = false;
     let start = null;
     const apply = () => { svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`); appState.ui.rackPreviewCamera = { modelId, view: { ...view } }; };
@@ -1916,7 +1989,7 @@
 
   function renderFurnitureRackDetail(rackId,prod,holder,model,rack){
     if(!holder||!model)return;ensureRackFurnitureModel(model);furnitureRefitModel(model);holder.innerHTML='';holder.setAttribute('preserveAspectRatio','xMidYMid meet');
-    const root=svgEl('g',{transform:'translate(0 86)'});holder.appendChild(root);const W=Number(model.width||120),D=Number(model.depth||40),H=Number(model.height||200),baseOffset=Math.max(0,Number(rack?.baseHeight ?? model.clearance ?? 0)||0),pieces=getFurnitureRenderPieces(model);const ox=-W/2,oy=-D/2;
+    const root=svgEl('g',{});holder.appendChild(root);const W=Number(model.width||120),D=Number(model.depth||40),H=Number(model.height||200),baseOffset=Math.max(0,Number(rack?.baseHeight ?? model.clearance ?? 0)||0),pieces=getFurnitureRenderPieces(model);const ox=-W/2,oy=-D/2;
     const finish=model.furniture.finish||'oak';
     const palettes={
       white:{top:'#f6f4ee',front:'#e6e2d9',side:'#cbc8c1',stroke:'#b7b2a9'},
@@ -1926,8 +1999,25 @@
       metal:{top:'#8999a6',front:'#697c8b',side:'#4e626e',stroke:'#455864'}
     };
     const paletteFor=p=>furniturePieceFinish(model,p)==='metal'?palettes.metal:(palettes[finish]||palettes.oak);
-    const prism=(p,attrs={})=>{const colors=paletteFor(p);const x0=ox+p.x,x1=x0+p.w,y0=oy+p.y,y1=y0+p.d,z0=p.z+baseOffset,z1=p.z+p.h+baseOffset;root.appendChild(face([toIso(x0,y0,z1),toIso(x1,y0,z1),toIso(x1,y1,z1),toIso(x0,y1,z1)],{fill:attrs.top||colors.top,stroke:colors.stroke,'stroke-width':'1'}));root.appendChild(face([toIso(x0,y1,z0),toIso(x1,y1,z0),toIso(x1,y1,z1),toIso(x0,y1,z1)],{fill:attrs.front||colors.front,stroke:colors.stroke,'stroke-width':'.9'}));root.appendChild(face([toIso(x1,y0,z0),toIso(x1,y1,z0),toIso(x1,y1,z1),toIso(x1,y0,z1)],{fill:attrs.side||colors.side,stroke:colors.stroke,'stroke-width':'.9'}));};
-    pieces.filter(p=>p.type==='back').forEach(p=>prism(p));pieces.filter(p=>p.type!=='back'&&p.type!=='brace').forEach(p=>prism(p));pieces.filter(p=>p.type==='brace').forEach(p=>{const a=toIso(ox+Number(p.x||0),oy+D*.1,Number(p.z||0)+baseOffset),b=toIso(ox+Number(p.x2||p.x+p.w||0),oy+D*.1,Number(p.z2||p.z+p.h||0)+baseOffset);root.appendChild(svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'#637b87','stroke-width':Math.max(2,Number(p.d||2)),'stroke-linecap':'round'}));});
+    // Vista técnica SVG de respaldo: proyección por caras ordenadas según profundidad.
+    // Evita que un panel lejano se dibuje encima de las repisas delanteras.
+    const isoCfg=getIsoViewConfig();
+    const svgFaces=[];
+    const addFace=(pts3,color,stroke,strokeWidth='0.9')=>{
+      const pts=pts3.map(pt=>toIso(pt[0],pt[1],pt[2]));
+      const depth=pts3.reduce((v,pt)=>v+pt[0]*isoCfg.sx+pt[1]*isoCfg.sy+pt[2]*.95,0)/pts3.length;
+      svgFaces.push({depth,element:face(pts,{fill:color,stroke,'stroke-width':strokeWidth})});
+    };
+    const prism=(p,attrs={})=>{
+      const colors=paletteFor(p),x0=ox+p.x,x1=x0+p.w,y0=oy+p.y,y1=y0+p.d,z0=p.z+baseOffset,z1=p.z+p.h+baseOffset;
+      const yy=isoCfg.sy>=0?y1:y0,xx=isoCfg.sx>=0?x1:x0;
+      addFace([[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]],attrs.top||colors.top,colors.stroke,'1');
+      addFace([[x0,yy,z0],[x1,yy,z0],[x1,yy,z1],[x0,yy,z1]],attrs.front||colors.front,colors.stroke);
+      addFace([[xx,y0,z0],[xx,y1,z0],[xx,y1,z1],[xx,y0,z1]],attrs.side||colors.side,colors.stroke);
+    };
+    pieces.filter(p=>p.type!=='brace').forEach(prism);
+    svgFaces.sort((a,b)=>a.depth-b.depth).forEach(row=>root.appendChild(row.element));
+    pieces.filter(p=>p.type==='brace').forEach(p=>{const a=toIso(ox+Number(p.x||0),oy+D*.1,Number(p.z||0)+baseOffset),b=toIso(ox+Number(p.x2||p.x+p.w||0),oy+D*.1,Number(p.z2||p.z+p.h||0)+baseOffset);root.appendChild(svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'#637b87','stroke-width':Math.max(2,Number(p.d||2)),'stroke-linecap':'round'}));});
     const levels=deriveFurnitureLevels(model),selectedLevel=prod?.nivel?Math.max(1,Number(prod.nivel)||1):0,selectedSlot=prod?.slot?Math.max(1,Number(prod.slot)||1):0;if(selectedLevel&&selectedSlot){const l=levels.find(x=>x.index===selectedLevel),slot=l?.slots?.[selectedSlot-1];if(l&&slot){const p={x:slot.x0+1,y:D*.08,z:l.z0+1,w:Math.max(1,slot.width-2),d:D*.84,h:Math.max(2,l.height-2)};prism(p,{top:'rgba(196,255,91,.48)',front:'rgba(143,255,91,.34)',side:'rgba(118,238,72,.28)'});}}
     const thumbnail=holder.dataset?.furnitureThumb!==undefined;
     const catalogPreview=thumbnail||holder.dataset?.catalogPreview!==undefined;

@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.9.3-cad-layout-catalog-preview-fixes",
+  "version": "1.9.4-rack-edicion-preview-real-npt",
   "private": true,
-  "description": "WMS Industrial V193: constructor sin solapamientos, preview de catálogo independiente y colocación manual asistida en layout",
+  "description": "WMS Industrial V194: racks editables en arquitectura, preview WebGL de biblioteca y NPT por mueble en 3D",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",

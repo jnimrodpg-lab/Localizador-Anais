@@ -19,9 +19,9 @@
     const scale = Math.max(.01,getScaleCmPerUnit());
     return {
       kind, title:String(rack?.virtualName || rack?.id || preset.name),
-      width:vspaceClamp(vspaceFloat(physical.width, rack?.virtualType ? preset.width : vspaceFloat(model.width,rack?.w*scale||120)),30,1000),
-      depth:vspaceClamp(vspaceFloat(physical.depth, rack?.virtualType ? preset.depth : vspaceFloat(model.depth,rack?.h*scale||50)),20,700),
-      height:vspaceClamp(vspaceFloat(physical.height,vspaceFloat(rack?.rackHeight, vspaceFloat(model.height,preset.height))),30,600),
+      width:vspaceClamp(vspaceFloat(physical.width, rack?.virtualType ? preset.width : vspaceFloat(model.width,rack?.w*scale||120)),30,10000),
+      depth:vspaceClamp(vspaceFloat(physical.depth, rack?.virtualType ? preset.depth : vspaceFloat(model.depth,rack?.h*scale||50)),20,5000),
+      height:vspaceClamp(vspaceFloat(physical.height,vspaceFloat(rack?.rackHeight, vspaceFloat(model.height,preset.height))),30,10000),
       levels:vspaceClamp(Math.round(vspaceFloat(physical.levels,vspaceFloat(model.levels,preset.levels))),1,12),
       slots:vspaceClamp(Math.round(vspaceFloat(physical.slots,vspaceFloat(model.slots,preset.slots))),1,12)
     };
@@ -91,7 +91,7 @@
     const b=vspaceBounds(candidate);
     const collision=(appState.layout.racks||[]).find(r=>{
       if(r.id===ignoreId || r.zoneId!==candidate.zoneId)return false;
-      if(Math.abs(Number(r.baseHeight||0)-Number(candidate.baseHeight||0))>5) return false;
+      const aLow=Number(r.baseHeight||0), bLow=Number(candidate.baseHeight||0);const aHigh=aLow+Number(r.rackHeight||vspaceSpec(r).height||200),bHigh=bLow+Number(candidate.rackHeight||vspaceSpec(candidate).height||200);if(aHigh<=bLow+.5 || bHigh<=aLow+.5)return false;
       const q=vspaceBounds(r);
       return b.left<q.right-2 && b.right>q.left+2 && b.top<q.bottom-2 && b.bottom>q.top+2;
     });
@@ -149,9 +149,10 @@
     if(patch.name!==undefined)cloneRack.virtualName=String(patch.name).trim().slice(0,80)||rack.id;
     if(patch.x!==undefined)cloneRack.x=vspaceFloat(patch.x,rack.x);
     if(patch.y!==undefined)cloneRack.y=vspaceFloat(patch.y,rack.y);
+    if(patch.npt!==undefined)cloneRack.baseHeight=vspaceClamp(vspaceFloat(patch.npt,Number(rack.baseHeight||0)),0,20000);
     if(patch.rot!==undefined)cloneRack.rot=((Math.round(vspaceFloat(patch.rot,0)/90)*90)%360+360)%360;
     for(const key of ['width','depth','height','levels','slots'])if(patch[key]!==undefined){
-      const limits=key==='levels'||key==='slots'?[1,12]:key==='height'?[30,600]:[20,1000];
+      const limits=key==='levels'||key==='slots'?[1,12]:key==='height'?[30,10000]:[20,10000];
       cloneRack.virtual[key]=vspaceClamp(key==='levels'||key==='slots'?Math.round(vspaceFloat(patch[key],rack.virtual?.[key]||1)):vspaceFloat(patch[key],rack.virtual?.[key]||100),...limits);
     }
     const spec=vspaceSpec(cloneRack), scale=getScaleCmPerUnit();
@@ -243,7 +244,7 @@
       `;document.head.appendChild(style);
     }
     const root=document.getElementById('vspaceRoot'),canvas=root.querySelector('#vspaceCanvas');
-    const state={root,canvas,selectedId:appState.selectedRackLayoutId||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
+    const state={root,canvas,selectedId:appState.selectedRackLayoutId||(appState.layout?.racks||[])[0]?.id||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
     vspaceActive=state;
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
@@ -508,10 +509,11 @@
       const slots=Array.from({length:sp.slots},(_,i)=>`<button class="${i+1===state.selectedSlot?'active':''}" data-vspace-slot="${i+1}">P${i+1}</button>`).join('');
       host.innerHTML=`<div class="vspace-inspector-id"><b>${vspaceEsc(sp.title)}</b><small>${vspaceEsc(rack.id)} · ${vspaceEsc(VSPACE_TYPES[sp.kind].name)}</small></div>
         <label class="vspace-field">Nombre<input id="vsName" value="${vspaceEsc(sp.title)}" ${lock}></label>
-        <div class="vspace-grid-2"><label class="vspace-field">Ancho (cm)<input id="vsWidth" type="number" min="30" max="1000" value="${sp.width}" ${lock}></label><label class="vspace-field">Fondo (cm)<input id="vsDepth" type="number" min="20" max="700" value="${sp.depth}" ${lock}></label></div>
-        <div class="vspace-grid-2"><label class="vspace-field">Alto (cm)<input id="vsHeight" type="number" min="30" max="600" value="${sp.height}" ${lock}></label><label class="vspace-field">Giro (°)<select id="vsRotation" ${lock}>${[0,90,180,270].map(d=>`<option value="${d}" ${Number(rack.rot||0)===d?'selected':''}>${d}°</option>`).join('')}</select></label></div>
+        <div class="vspace-grid-2"><label class="vspace-field">Ancho (cm)<input id="vsWidth" type="number" min="30" max="10000" value="${sp.width}" ${lock}></label><label class="vspace-field">Fondo (cm)<input id="vsDepth" type="number" min="20" max="5000" value="${sp.depth}" ${lock}></label></div>
+        <div class="vspace-grid-2"><label class="vspace-field">Alto (cm)<input id="vsHeight" type="number" min="30" max="10000" value="${sp.height}" ${lock}></label><label class="vspace-field">Giro (°)<select id="vsRotation" ${lock}>${[0,90,180,270].map(d=>`<option value="${d}" ${Number(rack.rot||0)===d?'selected':''}>${d}°</option>`).join('')}</select></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">Niveles<input id="vsLevels" type="number" min="1" max="12" value="${sp.levels}" ${lock}></label><label class="vspace-field">Posiciones / nivel<input id="vsSlots" type="number" min="1" max="12" value="${sp.slots}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">X plano<input id="vsX" type="number" value="${Math.round(rack.x)}" ${lock}></label><label class="vspace-field">Y plano<input id="vsY" type="number" value="${Math.round(rack.y)}" ${lock}></label></div>
+        <div class="vspace-grid-2"><label class="vspace-field">NPT — altura desde el piso (cm)<input id="vsNpt" type="number" min="0" max="20000" step="1" value="${Math.round(Number(rack.baseHeight||0))}" ${lock}></label><div class="vspace-field"><small class="vspace-muted">Cota superior</small><b>+${Math.round(Number(rack.baseHeight||0)+Number(rack.rackHeight||sp.height))} cm</b></div></div>
         <button class="vspace-primary" id="vsUpdate" ${lock}>Aplicar medidas y posición</button><div class="vspace-divider"></div>
         <h4>Asignación por nivel</h4><small class="vspace-muted">Nivel: de abajo hacia arriba · P: de izquierda a derecha</small>
         <div class="vspace-numbers">${levels}</div><div class="vspace-numbers vspace-slots">${slots}</div>
@@ -532,7 +534,7 @@
       host.querySelector('#vsUpdate')?.addEventListener('click',()=>{
         vspaceUpdateRack(rack,{name:host.querySelector('#vsName').value,width:host.querySelector('#vsWidth').value,depth:host.querySelector('#vsDepth').value,
           height:host.querySelector('#vsHeight').value,levels:host.querySelector('#vsLevels').value,slots:host.querySelector('#vsSlots').value,
-          rot:host.querySelector('#vsRotation').value,x:host.querySelector('#vsX').value,y:host.querySelector('#vsY').value});
+          rot:host.querySelector('#vsRotation').value,x:host.querySelector('#vsX').value,y:host.querySelector('#vsY').value,npt:host.querySelector('#vsNpt').value});
       });
       host.querySelector('#vsPutContainers')?.addEventListener('click',()=>vspaceSetSlotContainers(rack,state.selectedLevel,state.selectedSlot,host.querySelector('#vsContainerKind').value,host.querySelector('#vsContainerCount').value));
       host.querySelector('#vsAssign')?.addEventListener('click',()=>vspaceAssign(rack,state.selectedLevel,state.selectedSlot,host.querySelector('#vsSku').value,host.querySelector('#vsQty').value));

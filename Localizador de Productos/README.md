@@ -1,15 +1,20 @@
-# WMS Industrial V193 — Paquete limpio para Cloudflare Pages
+# WMS Industrial V194 — Paquete limpio para Cloudflare Pages
 
-Contiene únicamente el código de la aplicación, los recursos web, los scripts de compilación y la configuración de Cloudflare/D1. Se han excluido pruebas de desarrollo y registros históricos de cambios.
+## Mejoras V194
+- Racks seleccionables y arrastrables con snap tanto en **Editar layout (estructura)** como en **Distribución**.
+- Giro por ángulo y botones +45°/+90°; comprueba límites y colisiones antes de aceptar.
+- Entrada **NPT (cm)** por rack en Layout y en **Diseñar espacio 3D**; se guarda en `baseHeight` y eleva realmente las mallas.
+- Validación de colisiones según volumen vertical real, no solo la cota inferior.
+- **Preview principal de Biblioteca** utiliza el mismo motor WebGL por piezas del Constructor y admite orbitar/zoom. Cuando Three.js no está disponible, el SVG tiene las caras ordenadas en profundidad y un encuadre sin recortes.
+- Límites aumentados para modelos paramétricos grandes. Conserva el motor de muebles y la integración de D1.
 
-## Despliegue
-1. Usa el contenido de esta carpeta como raíz de tu repositorio.
-2. Mantén `wrangler.toml` y configura correctamente el binding D1 `DB` en Cloudflare.
-3. Cloudflare Pages: Framework preset `None`; build command `npm ci && npm run build`; output directory `public`.
-4. Verifica primero en Preview el login, los modelos guardados, la colocación en layout y la vista 3D.
+## Despliegue Cloudflare Pages
+- Framework preset: `None`
+- Comando de compilación: `npm ci && npm run build`
+- Directorio de salida: `public`
+- Mantener `wrangler.toml` y el binding D1 `DB` configurado en Cloudflare.
 
-## Comprobación local
-- `npm ci`
-- `npm run check`
+**Importante:** Three.js se incorpora automáticamente a `public/vendor/` al ejecutar `npm ci && npm run build`. Si no se instala, la Biblioteca utiliza su representación SVG de respaldo y la vista 3D depende del CDN. Comprueba el WebGL y la persistencia remota de D1 en una versión Preview desplegada.
 
-`public/` contiene la aplicación compilada, y `src/` el código fuente editable. `functions/` y `migrations/` son componentes requeridos por la integración Cloudflare/D1.
+### Comprobaciones
+`npm run check` verifica compilación, bundle y sintaxis. Se comprobó localmente con Chromium el arrastre y giro en layout, los controles NPT de layout/3D y el respaldo SVG sin errores JS; la escena WebGL completa no se pudo comprobar en este entorno sin la dependencia local.

@@ -2334,26 +2334,36 @@
     }
     (appState.layout?.streets || []).forEach(street => {
       const selected = appState.selectedStreetId === street.id;
+      const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
+      if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
+        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(235,229,216,.98)':'rgba(244,239,230,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.6':'1.15', 'data-street-id':street.id, style:'cursor:pointer' });
+        sw2.addEventListener('pointerdown', pickStreet);
+        streetsLayer.appendChild(sw2);
+      }
       if(Array.isArray(street.roadPts) && street.roadPts.length >= 4){
-        const road = svgEl('path',{ d:pathFromPts(street.roadPts), fill:selected?'rgba(136,145,151,.98)':'rgba(128,136,142,.92)', stroke:selected?'#f7f3df':'rgba(89,92,95,.85)', 'stroke-width':selected?'1.8':'1.2', 'data-street-id':street.id, style:'cursor:pointer' });
-        road.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
+        const road = svgEl('path',{ d:pathFromPts(street.roadPts), fill:selected?'rgba(136,145,151,.98)':'rgba(130,137,143,.94)', stroke:selected?'#f7f3df':'rgba(89,92,95,.88)', 'stroke-width':selected?'1.9':'1.25', 'data-street-id':street.id, style:'cursor:pointer' });
+        road.addEventListener('pointerdown', pickStreet);
         streetsLayer.appendChild(road);
+        const xs = street.roadPts.map(pt => Number(pt?.x || 0));
+        const ys = street.roadPts.map(pt => Number(pt?.y || 0));
+        const lane = street.side === 'top' || street.side === 'bottom'
+          ? svgEl('line',{ x1:Math.min(...xs)+10, y1:(Math.min(...ys)+Math.max(...ys))/2, x2:Math.max(...xs)-10, y2:(Math.min(...ys)+Math.max(...ys))/2, stroke:'rgba(248,240,222,.9)', 'stroke-width':'1.25', 'stroke-dasharray':'12 8', 'vector-effect':'non-scaling-stroke', 'pointer-events':'none' })
+          : svgEl('line',{ x1:(Math.min(...xs)+Math.max(...xs))/2, y1:Math.min(...ys)+10, x2:(Math.min(...xs)+Math.max(...xs))/2, y2:Math.max(...ys)-10, stroke:'rgba(248,240,222,.9)', 'stroke-width':'1.25', 'stroke-dasharray':'12 8', 'vector-effect':'non-scaling-stroke', 'pointer-events':'none' });
+        streetsLayer.appendChild(lane);
       }
       if(Array.isArray(street.sidewalkPts) && street.sidewalkPts.length >= 4){
-        const sw = svgEl('path',{ d:pathFromPts(street.sidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(236,231,219,.92)', stroke:selected?'#d2b07a':'rgba(205,188,158,.95)', 'stroke-width':selected?'1.5':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
-        sw.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
+        const sw = svgEl('path',{ d:pathFromPts(street.sidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(236,231,219,.94)', stroke:selected?'#d2b07a':'rgba(205,188,158,.95)', 'stroke-width':selected?'1.55':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
+        sw.addEventListener('pointerdown', pickStreet);
         streetsLayer.appendChild(sw);
-      }
-      if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
-        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(242,238,228,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.5':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
-        sw2.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
-        streetsLayer.appendChild(sw2);
       }
       const labelPts = street.roadPts?.length ? street.roadPts : (street.sidewalkPts?.length ? street.sidewalkPts : street.outerSidewalkPts);
       if(Array.isArray(labelPts) && labelPts.length){
         const c = polygonCentroid(labelPts);
+        const label = `${street.side === 'top' ? 'Calle superior' : street.side === 'bottom' ? 'Calle inferior' : street.side === 'left' ? 'Calle lateral izq.' : 'Calle lateral der.'} · ${street.cornerStyle === 'diagonal' ? 'esquina diagonal' : '90°'}`;
+        const approxW = Math.max(116, label.length * 5.9);
+        streetsLayer.appendChild(svgEl('rect',{ x:c.x - approxW/2, y:c.y - 11, width:approxW, height:22, rx:'11', fill:'rgba(246,241,231,.92)', stroke:selected?'rgba(34,96,82,.88)':'rgba(188,164,127,.88)', 'stroke-width':'1.05', 'pointer-events':'none' }));
         const txt = svgEl('text',{ x:c.x, y:c.y+4, 'text-anchor':'middle', style:'font-size:10px;font-weight:800;fill:rgba(48,54,60,.95);pointer-events:none' });
-        txt.textContent = `${street.side === 'top' ? 'Calle superior' : street.side === 'bottom' ? 'Calle inferior' : street.side === 'left' ? 'Calle lateral izq.' : 'Calle lateral der.'} · ${street.cornerStyle === 'diagonal' ? 'esquina diagonal' : '90°'}`;
+        txt.textContent = label;
         streetsLayer.appendChild(txt);
       }
     });
@@ -3212,7 +3222,7 @@
       else if(action === 'toggle-lock-zones') appState.editor.zonesLocked = !appState.editor.zonesLocked;
       else if(action === 'toggle-dims') appState.editor.showDims = !appState.editor.showDims;
       else if(action === 'toggle-snap') { appState.editor.snapEnabled = !isSnapEnabled(); clearRackSnapPreview(); }
-      else if(action === 'toggle-section'){ appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; }
+      else if(action === 'toggle-section'){ appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; appState.editor.viewBoxInitialized = false; appState.editor.viewBoxCustomized = false; }
       else if(action === 'toggle-walls') appState.editor.wallsVisible = appState.editor.wallsVisible === false ? true : false;
       else if(action === 'toggle-openings') appState.editor.openingsVisible = appState.editor.openingsVisible === false ? true : false;
       else if(action === 'toggle-racks') appState.editor.racksVisible = appState.editor.racksVisible === false ? true : false;
@@ -3256,7 +3266,7 @@
     if($('#btnSaveLayoutTop')) $('#btnSaveLayoutTop').onclick = runSaveLayout;
     if($('#btnSaveLayoutVisible')) $('#btnSaveLayoutVisible').onclick = runSaveLayout;
     if($('#btnSaveLayoutFloat')) $('#btnSaveLayoutFloat').onclick = runSaveLayout;
-    if($('#btnToggleSections')) $('#btnToggleSections').onclick = () => { appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; renderLayoutEditor(); };
+    if($('#btnToggleSections')) $('#btnToggleSections').onclick = () => { appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; appState.editor.viewBoxInitialized = false; appState.editor.viewBoxCustomized = false; renderLayoutEditor(); };
     if($('#btnPresentationMode')) $('#btnPresentationMode').onclick = () => { appState.editor.presentationMode = !appState.editor.presentationMode; renderLayoutEditor(); };
     if($('#btnExitPresentation')) $('#btnExitPresentation').onclick = () => { appState.editor.presentationMode = false; renderLayoutEditor(); };
     $$('[data-layout-context-action]').forEach(btn=>btn.onclick = () => {

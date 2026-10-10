@@ -476,7 +476,47 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     return `C${Math.max(0, ...nums) + 1}`;
   }
   function getStreetCornerStyle(){ return String(appState.layout?.meta?.defaultStreetCornerStyle || 'right') === 'diagonal' ? 'diagonal' : 'right'; }
-  function setStreetCornerStyle(style='right'){ ensureLayoutMeta(); appState.layout.meta.defaultStreetCornerStyle = String(style) === 'diagonal' ? 'diagonal' : 'right'; }
+  function normalizeStreetDims(source={}, fallback={}){
+    const sidewalkWidth = Math.max(20, Number(source.sidewalkWidth ?? fallback.sidewalkWidth ?? 42) || 42);
+    const roadWidth = Math.max(26, Number(source.roadWidth ?? fallback.roadWidth ?? 92) || 92);
+    return { sidewalkWidth, roadWidth, totalWidth: sidewalkWidth * 2 + roadWidth, side: source.side || fallback.side || '' };
+  }
+  function getStreetSpecsMap(network = appState.layout?.streets || [], overrides = {}){
+    const map = {};
+    ['top','bottom','left','right'].forEach(side => {
+      const source = side === overrides.side ? overrides : (Array.isArray(network) ? network.find(street => street?.side === side) : null) || {};
+      map[side] = normalizeStreetDims(source, { side });
+    });
+    return map;
+  }
+  function rebuildStreetNetwork(){
+    ensureLayoutMeta();
+    if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    const network = appState.layout.streets.map(street => ({
+      side: street?.side,
+      sidewalkWidth: street?.sidewalkWidth,
+      roadWidth: street?.roadWidth,
+      cornerStyle: street?.cornerStyle || appState.layout?.meta?.defaultStreetCornerStyle || 'right'
+    }));
+    appState.layout.streets = appState.layout.streets.map(street => {
+      if(!street?.side) return street;
+      return {
+        ...street,
+        ...buildStreetGeometry(street.side, {
+          network,
+          sidewalkWidth: street.sidewalkWidth,
+          roadWidth: street.roadWidth,
+          cornerStyle: street.cornerStyle || appState.layout?.meta?.defaultStreetCornerStyle || 'right'
+        })
+      };
+    });
+    return appState.layout.streets;
+  }
+  function setStreetCornerStyle(style='right'){
+    ensureLayoutMeta();
+    appState.layout.meta.defaultStreetCornerStyle = String(style) === 'diagonal' ? 'diagonal' : 'right';
+    rebuildStreetNetwork();
+  }
   function nearestBoundaryEdge(point){
     const b = layoutBoundaryBounds();
     const dTop = Math.abs(Number(point?.y || 0) - b.minY);
@@ -493,28 +533,87 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   }
   function buildStreetGeometry(side='top', opts={}){
     const b = layoutBoundaryBounds();
-    const sidewalk = Math.max(20, Number(opts.sidewalkWidth || 42) || 42);
-    const road = Math.max(26, Number(opts.roadWidth || 92) || 92);
-    const bevel = String(opts.cornerStyle || getStreetCornerStyle()) === 'diagonal' ? Math.max(16, Math.min(42, sidewalk * .6)) : 0;
+    const streetDims = normalizeStreetDims(opts, { side });
+    const sidewalk = streetDims.sidewalkWidth;
+    const road = streetDims.roadWidth;
+    const networkMap = getStreetSpecsMap(opts.network || appState.layout?.streets || [], { side, sidewalkWidth:sidewalk, roadWidth:road });
+    const hasTop = !!(opts.side === 'top' || networkMap.top?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'top'));
+    const hasBottom = !!(opts.side === 'bottom' || networkMap.bottom?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'bottom'));
+    const hasLeft = !!(opts.side === 'left' || networkMap.left?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'left'));
+    const hasRight = !!(opts.side === 'right' || networkMap.right?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'right'));
+    const diagonal = String(opts.cornerStyle || getStreetCornerStyle()) === 'diagonal';
+    const bevel = diagonal ? Math.max(16, Math.min(42, sidewalk * .6)) : 0;
+    const left = networkMap.left || normalizeStreetDims({}, {});
+    const right = networkMap.right || normalizeStreetDims({}, {});
+    const top = networkMap.top || normalizeStreetDims({}, {});
+    const bottom = networkMap.bottom || normalizeStreetDims({}, {});
     let sidewalkPts = [], roadPts = [], outerSidewalkPts = [];
     if(side === 'top'){
-      sidewalkPts = [{x:b.minX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY},{x:b.minX,y:b.minY}];
-      roadPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}] : [{x:b.minX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}];
-      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.minX+bevel,y:b.minY-sidewalk-road}] : [{x:b.minX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.minX,y:b.minY-sidewalk-road}];
+      const sideL = hasLeft ? left.sidewalkWidth : 0;
+      const sideR = hasRight ? right.sidewalkWidth : 0;
+      const roadL = hasLeft ? (left.sidewalkWidth + left.roadWidth) : 0;
+      const roadR = hasRight ? (right.sidewalkWidth + right.roadWidth) : 0;
+      const outerL = hasLeft ? left.totalWidth : 0;
+      const outerR = hasRight ? right.totalWidth : 0;
+      const cutL = hasLeft ? bevel : 0;
+      const cutR = hasRight ? bevel : 0;
+      sidewalkPts = [{x:b.minX-sideL,y:b.minY-sidewalk},{x:b.maxX+sideR,y:b.minY-sidewalk},{x:b.maxX,y:b.minY},{x:b.minX,y:b.minY}];
+      roadPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-roadL+cutL,y:b.minY-sidewalk-road},{x:b.maxX+roadR-cutR,y:b.minY-sidewalk-road},{x:b.maxX+roadR,y:b.minY-sidewalk},{x:b.minX-roadL,y:b.minY-sidewalk}]
+        : [{x:b.minX-roadL,y:b.minY-sidewalk-road},{x:b.maxX+roadR,y:b.minY-sidewalk-road},{x:b.maxX+roadR,y:b.minY-sidewalk},{x:b.minX-roadL,y:b.minY-sidewalk}];
+      outerSidewalkPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-outerL+cutL,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+outerR-cutR,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+roadR-cutR,y:b.minY-sidewalk-road},{x:b.minX-roadL+cutL,y:b.minY-sidewalk-road}]
+        : [{x:b.minX-outerL,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+outerR,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+roadR,y:b.minY-sidewalk-road},{x:b.minX-roadL,y:b.minY-sidewalk-road}];
     }else if(side === 'bottom'){
-      sidewalkPts = [{x:b.minX,y:b.maxY},{x:b.maxX,y:b.maxY},{x:b.maxX,y:b.maxY+sidewalk},{x:b.minX,y:b.maxY+sidewalk}];
-      roadPts = bevel ? [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.minX+bevel,y:b.maxY+sidewalk+road}] : [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.minX,y:b.maxY+sidewalk+road}];
-      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX+bevel,y:b.maxY+sidewalk+road+sidewalk}] : [{x:b.minX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX,y:b.maxY+sidewalk+road+sidewalk}];
+      const sideL = hasLeft ? left.sidewalkWidth : 0;
+      const sideR = hasRight ? right.sidewalkWidth : 0;
+      const roadL = hasLeft ? (left.sidewalkWidth + left.roadWidth) : 0;
+      const roadR = hasRight ? (right.sidewalkWidth + right.roadWidth) : 0;
+      const outerL = hasLeft ? left.totalWidth : 0;
+      const outerR = hasRight ? right.totalWidth : 0;
+      const cutL = hasLeft ? bevel : 0;
+      const cutR = hasRight ? bevel : 0;
+      sidewalkPts = [{x:b.minX,y:b.maxY},{x:b.maxX,y:b.maxY},{x:b.maxX+sideR,y:b.maxY+sidewalk},{x:b.minX-sideL,y:b.maxY+sidewalk}];
+      roadPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-roadL,y:b.maxY+sidewalk},{x:b.maxX+roadR,y:b.maxY+sidewalk},{x:b.maxX+roadR-cutR,y:b.maxY+sidewalk+road},{x:b.minX-roadL+cutL,y:b.maxY+sidewalk+road}]
+        : [{x:b.minX-roadL,y:b.maxY+sidewalk},{x:b.maxX+roadR,y:b.maxY+sidewalk},{x:b.maxX+roadR,y:b.maxY+sidewalk+road},{x:b.minX-roadL,y:b.maxY+sidewalk+road}];
+      outerSidewalkPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-roadL+cutL,y:b.maxY+sidewalk+road},{x:b.maxX+roadR-cutR,y:b.maxY+sidewalk+road},{x:b.maxX+outerR-cutR,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX-outerL+cutL,y:b.maxY+sidewalk+road+sidewalk}]
+        : [{x:b.minX-roadL,y:b.maxY+sidewalk+road},{x:b.maxX+roadR,y:b.maxY+sidewalk+road},{x:b.maxX+outerR,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX-outerL,y:b.maxY+sidewalk+road+sidewalk}];
     }else if(side === 'left'){
-      sidewalkPts = [{x:b.minX-sidewalk,y:b.minY},{x:b.minX,y:b.minY},{x:b.minX,y:b.maxY},{x:b.minX-sidewalk,y:b.maxY}];
-      roadPts = bevel ? [{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY}];
-      outerSidewalkPts = bevel ? [{x:b.minX-sidewalk-road-sidewalk,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.maxY-bevel},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road-sidewalk,y:b.minY},{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk-road,y:b.maxY},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY}];
+      const sideT = hasTop ? top.sidewalkWidth : 0;
+      const sideB = hasBottom ? bottom.sidewalkWidth : 0;
+      const roadT = hasTop ? (top.sidewalkWidth + top.roadWidth) : 0;
+      const roadB = hasBottom ? (bottom.sidewalkWidth + bottom.roadWidth) : 0;
+      const outerT = hasTop ? top.totalWidth : 0;
+      const outerB = hasBottom ? bottom.totalWidth : 0;
+      const cutT = hasTop ? bevel : 0;
+      const cutB = hasBottom ? bevel : 0;
+      sidewalkPts = [{x:b.minX-sidewalk,y:b.minY-sideT},{x:b.minX,y:b.minY},{x:b.minX,y:b.maxY},{x:b.minX-sidewalk,y:b.maxY+sideB}];
+      roadPts = diagonal && (cutT || cutB)
+        ? [{x:b.minX-sidewalk-road,y:b.minY-roadT+cutT},{x:b.minX-sidewalk,y:b.minY-sideT},{x:b.minX-sidewalk,y:b.maxY+sideB},{x:b.minX-sidewalk-road,y:b.maxY+roadB-cutB}]
+        : [{x:b.minX-sidewalk-road,y:b.minY-roadT},{x:b.minX-sidewalk,y:b.minY-sideT},{x:b.minX-sidewalk,y:b.maxY+sideB},{x:b.minX-sidewalk-road,y:b.maxY+roadB}];
+      outerSidewalkPts = diagonal && (cutT || cutB)
+        ? [{x:b.minX-sidewalk-road-sidewalk,y:b.minY-outerT+cutT},{x:b.minX-sidewalk-road,y:b.minY-roadT+cutT},{x:b.minX-sidewalk-road,y:b.maxY+roadB-cutB},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY+outerB-cutB}]
+        : [{x:b.minX-sidewalk-road-sidewalk,y:b.minY-outerT},{x:b.minX-sidewalk-road,y:b.minY-roadT},{x:b.minX-sidewalk-road,y:b.maxY+roadB},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY+outerB}];
     }else{
-      sidewalkPts = [{x:b.maxX,y:b.minY},{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk,y:b.maxY},{x:b.maxX,y:b.maxY}];
-      roadPts = bevel ? [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel},{x:b.maxX+sidewalk,y:b.maxY}] : [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road,y:b.maxY},{x:b.maxX+sidewalk,y:b.maxY}];
-      outerSidewalkPts = bevel ? [{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY-bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel}] : [{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY},{x:b.maxX+sidewalk+road,y:b.maxY}];
+      const sideT = hasTop ? top.sidewalkWidth : 0;
+      const sideB = hasBottom ? bottom.sidewalkWidth : 0;
+      const roadT = hasTop ? (top.sidewalkWidth + top.roadWidth) : 0;
+      const roadB = hasBottom ? (bottom.sidewalkWidth + bottom.roadWidth) : 0;
+      const outerT = hasTop ? top.totalWidth : 0;
+      const outerB = hasBottom ? bottom.totalWidth : 0;
+      const cutT = hasTop ? bevel : 0;
+      const cutB = hasBottom ? bevel : 0;
+      sidewalkPts = [{x:b.maxX,y:b.minY},{x:b.maxX+sidewalk,y:b.minY-sideT},{x:b.maxX+sidewalk,y:b.maxY+sideB},{x:b.maxX,y:b.maxY}];
+      roadPts = diagonal && (cutT || cutB)
+        ? [{x:b.maxX+sidewalk,y:b.minY-sideT},{x:b.maxX+sidewalk+road,y:b.minY-roadT+cutT},{x:b.maxX+sidewalk+road,y:b.maxY+roadB-cutB},{x:b.maxX+sidewalk,y:b.maxY+sideB}]
+        : [{x:b.maxX+sidewalk,y:b.minY-sideT},{x:b.maxX+sidewalk+road,y:b.minY-roadT},{x:b.maxX+sidewalk+road,y:b.maxY+roadB},{x:b.maxX+sidewalk,y:b.maxY+sideB}];
+      outerSidewalkPts = diagonal && (cutT || cutB)
+        ? [{x:b.maxX+sidewalk+road,y:b.minY-roadT+cutT},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY-outerT+cutT},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY+outerB-cutB},{x:b.maxX+sidewalk+road,y:b.maxY+roadB-cutB}]
+        : [{x:b.maxX+sidewalk+road,y:b.minY-roadT},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY-outerT},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY+outerB},{x:b.maxX+sidewalk+road,y:b.maxY+roadB}];
     }
-    return { side, sidewalkPts, roadPts, outerSidewalkPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: bevel ? 'diagonal' : 'right' };
+    return { side, sidewalkPts, roadPts, outerSidewalkPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: diagonal ? 'diagonal' : 'right' };
   }
   function addStreetFromPoint(point, opts={}){
     ensureLayoutMeta();
@@ -522,9 +621,13 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const side = opts.side || nearestBoundaryEdge(point);
     const existing = appState.layout.streets.find(s => s.side === side);
     const geo = buildStreetGeometry(side, opts);
-    if(existing){ Object.assign(existing, geo); return existing; }
-    const street = { id:nextStreetId(), name:`Calle ${side}`, ...geo };
-    appState.layout.streets.push(street);
+    let street = existing;
+    if(existing){ Object.assign(existing, geo); street = existing; }
+    else {
+      street = { id:nextStreetId(), name:`Calle ${side}`, ...geo };
+      appState.layout.streets.push(street);
+    }
+    rebuildStreetNetwork();
     return street;
   }
   function unitsToCm(units){ return Number(units || 0) * getScaleCmPerUnit(); }

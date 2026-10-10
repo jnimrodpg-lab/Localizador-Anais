@@ -225,13 +225,23 @@
     vspaceActive=state;
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
-    const zoneBounds=[];(appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>zoneBounds.push(p)));
-    const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
-    sitePts.forEach(p=>zoneBounds.push(p));
-    (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>zoneBounds.push(p)));
-    if(!zoneBounds.length)(appState.layout.racks||[]).forEach(r=>zoneBounds.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
+    const collectScenePoints=()=>{
+      const pts=[];
+      (appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>pts.push(p)));
+      const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
+      sitePts.forEach(p=>pts.push(p));
+      (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>pts.push(p)));
+      if(!pts.length)(appState.layout.racks||[]).forEach(r=>pts.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
+      return pts;
+    };
+    let zoneBounds=collectScenePoints();
     let mx=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.x)))+Math.max(...zoneBounds.map(p=>Number(p.x))))/2:200;
     let my=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.y)))+Math.max(...zoneBounds.map(p=>Number(p.y))))/2:180;
+    const refreshSceneFrame=()=>{
+      zoneBounds=collectScenePoints();
+      mx=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.x)))+Math.max(...zoneBounds.map(p=>Number(p.x))))/2:mx;
+      my=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.y)))+Math.max(...zoneBounds.map(p=>Number(p.y))))/2:my;
+    };
     const coord=p=>({x:(p.x-mx)*getScaleCmPerUnit()/100,z:(p.y-my)*getScaleCmPerUnit()/100});
     const invCoord=p=>({x:p.x*100/getScaleCmPerUnit()+mx,y:p.z*100/getScaleCmPerUnit()+my});
     const formatPosition=r=>`${Math.round(Number(r.x))}, ${Math.round(Number(r.y))}`;
@@ -406,15 +416,16 @@
       try{
         const THREE=await loadThreeRuntime();if(state.destroyed||vspaceActive!==state)return;
         const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
         renderer.outputColorSpace=THREE.SRGBColorSpace;
-        renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.33;
+        renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.28;
         renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+        if('physicallyCorrectLights' in renderer) renderer.physicallyCorrectLights = true;
         const scene=new THREE.Scene();scene.background=new THREE.Color(0xf6f3ed);
         const camera=new THREE.OrthographicCamera(-5,5,5,-5,.05,260);
-        scene.add(new THREE.HemisphereLight(0xfffaf1,0xb6ada0,2.15));
-        const fill=new THREE.AmbientLight(0xffffff,.5);scene.add(fill);
-        const sun=new THREE.DirectionalLight(0xffedcf,3.2);
+        scene.add(new THREE.HemisphereLight(0xfffaf1,0xb8b2a8,2.35));
+        const fill=new THREE.AmbientLight(0xffffff,.62);scene.add(fill);
+        const sun=new THREE.DirectionalLight(0xffedcf,3.45);
         sun.position.set(-5,12,8);sun.castShadow=true;
         sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-32;sun.shadow.camera.right=32;
         sun.shadow.camera.top=32;sun.shadow.camera.bottom=-32;
@@ -489,13 +500,45 @@
           const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent:true, opacity }));
           world.add(line);
         };
-        const addStreetBand = (pts=[], color=0x8a8f92, y=0, depth=.02, outlineColor=0xe9dcc2) => {
-          if(!Array.isArray(pts) || pts.length < 3) return;
-          const shape = shapeFromLayoutPts(pts);
-          const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:false}), meshMat(color,{metalness:.03,roughness:.92}));
-          mesh.rotation.x = -Math.PI/2; mesh.position.y = y - depth; mesh.receiveShadow = true; mesh.castShadow = false; world.add(mesh);
-          addOutlineFromPts(pts, outlineColor, y + .02, .92);
+        const rectFromPts = (pts=[]) => {
+          if(!Array.isArray(pts) || !pts.length) return [];
+          const xs = pts.map(pt => Number(pt?.x || 0));
+          const ys = pts.map(pt => Number(pt?.y || 0));
+          const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys);
+          return [{x:minX,y:minY},{x:maxX,y:minY},{x:maxX,y:maxY},{x:minX,y:maxY}];
         };
+        const addTopSurfaceFromPts = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0) => {
+          if(!Array.isArray(pts) || pts.length < 3) return null;
+          const shape = shapeFromLayoutPts(pts);
+          const material = meshMat(color,{metalness:.03,roughness:.92,transparent:opacity < 1,opacity,polygonOffset:true,polygonOffsetFactor:-1-order*.15,polygonOffsetUnits:-1,side:THREE.DoubleSide});
+          const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
+          mesh.rotation.x = -Math.PI/2;
+          mesh.position.y = y;
+          mesh.receiveShadow = true;
+          mesh.castShadow = false;
+          world.add(mesh);
+          if(outlineColor !== null) addOutlineFromPts(pts, outlineColor, y + .0035, .92);
+          return mesh;
+        };
+        const addDioramaBase = (pts=[]) => {
+          const basePts = rectFromPts(pts);
+          if(basePts.length < 4) return [];
+          const shape = shapeFromLayoutPts(basePts);
+          const base = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.24,bevelEnabled:false}),[
+            meshMat(0xf1e7d6,{metalness:0,roughness:.94}),
+            meshMat(0xcebb9f,{metalness:0,roughness:.98})
+          ]);
+          base.rotation.x = -Math.PI/2;
+          base.position.y = -.24;
+          base.receiveShadow = true;
+          base.castShadow = true;
+          world.add(base);
+          addTopSurfaceFromPts(basePts, 0xf7f1e4, .002, 0xe0caaa, .99, 0);
+          addOutlineFromPts(basePts, 0xb09068, .026, .98);
+          addOutlineFromPts(basePts, 0xf6ead5, .042, .84);
+          return basePts;
+        };
+        const addStreetBand = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0) => addTopSurfaceFromPts(pts, color, y, outlineColor, opacity, order);
         const addStreetLabel = (street, pts=[]) => {
           if(!Array.isArray(pts) || !pts.length) return;
           const c = { x:pts.reduce((v,p)=>v+Number(p.x||0),0)/pts.length, y:pts.reduce((v,p)=>v+Number(p.y||0),0)/pts.length };
@@ -516,32 +559,31 @@
         };
         const rebuild=()=>{
           clearWorld();
+          refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
           const streets = Array.isArray(appState.layout?.streets) ? appState.layout.streets : [];
+          const footprintSource = [];
+          siteBoundary.forEach(pt => footprintSource.push(pt));
+          streets.forEach(street => [ ...(street.outerSidewalkPts||[]), ...(street.roadPts||[]), ...(street.sidewalkPts||[]) ].forEach(pt => footprintSource.push(pt)));
+          if(!footprintSource.length) zones.forEach(zone => (zone.pts||[]).forEach(pt => footprintSource.push(pt)));
+          const dioramaBase = addDioramaBase(footprintSource);
           if(siteBoundary.length >= 3){
-            const siteShape = shapeFromLayoutPts(siteBoundary);
-            const siteFloor = new THREE.Mesh(new THREE.ExtrudeGeometry(siteShape,{depth:.12,bevelEnabled:false}),[
-              meshMat(0xeee6d6,{metalness:0,roughness:.96}),meshMat(0xd7c8ae,{metalness:0,roughness:.98})]);
-            siteFloor.rotation.x=-Math.PI/2; siteFloor.position.y=-.12; siteFloor.receiveShadow=true; world.add(siteFloor);
-            addOutlineFromPts(siteBoundary, 0xa9855f, .042, .98);
-            addOutlineFromPts(siteBoundary, 0xe8d4b7, .058, .82);
+            addTopSurfaceFromPts(siteBoundary, 0xefe6d7, .01, 0xc9b28f, .98, 1);
+            addOutlineFromPts(siteBoundary, 0xae9069, .032, .96);
+            addOutlineFromPts(siteBoundary, 0xf1e5cf, .046, .78);
           }
-          streets.forEach(street => {
-            addStreetBand(street.outerSidewalkPts, 0xe7dece, .014, 0xd9c8aa);
-            addStreetBand(street.roadPts, 0x8c9398, .008, 0xf7efe0);
-            addStreetBand(street.sidewalkPts, 0xe7dece, .014, 0xd9c8aa);
+          streets.forEach((street, index) => {
+            addStreetBand(street.outerSidewalkPts, 0xefe7da, .016, 0xd2bc98, .98, 2 + index * .1);
+            addStreetBand(street.roadPts, 0x8c9398, .011, 0xf8efde, .98, 2.1 + index * .1);
+            addStreetBand(street.sidewalkPts, 0xf3ede1, .018, 0xd2bc98, .98, 2.2 + index * .1);
             addStreetLabel(street, street.roadPts || street.sidewalkPts || street.outerSidewalkPts);
           });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
-            const shape=new THREE.Shape();
-            pts.forEach((pt,i)=>{const p=coord(pt);if(i===0)shape.moveTo(p.x,-p.z);else shape.lineTo(p.x,-p.z);});shape.closePath();
-            const floor=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.15,bevelEnabled:false}),[
-              meshMat(0xe9d7bb,{metalness:0,roughness:.9}),meshMat(0xbba48a,{metalness:0,roughness:.95})]);
-            floor.rotation.x=-Math.PI/2;floor.position.y=-.15;floor.receiveShadow=true;world.add(floor);
-            addOutlineFromPts(pts, 0x2f7b6e, .03, .96);
-            addOutlineFromPts(pts, 0xe6d5b5, .04, .78);
+            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .97, 4);
+            addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
+            addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
             if(state.wallVisible){
               const center={x:pts.reduce((v,p)=>v+Number(p.x),0)/pts.length,y:pts.reduce((v,p)=>v+Number(p.y),0)/pts.length};
               const midpoint=coord(center);

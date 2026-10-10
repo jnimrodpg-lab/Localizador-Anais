@@ -22,7 +22,7 @@ function vspaceSetSlotContainers(rack,level,slot,kind,count){
 function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
   const {shared, block:box, sprite:label, selected, selectedLevel, selectedSlot, products}=options;
   const w=spec.width/100, d=spec.depth/100, h=spec.height/100;
-  const metal=selected?shared.metalSelected:shared.metal;
+  const metal=shared.metal; // selección mediante contorno, sin sustituir los acabados del resto
   const part=(x,y,z,bw,bh,bd,mat,l=0,s=0)=>box(group,x,y,z,bw,bh,bd,mat,l,s);
   const sign=(text,x,y,z,width=.33)=>{const sp=label(text,width);sp.position.set(x,y,z);group.add(sp);return sp;};
   const shelfSlot=(l,s)=>({l,s,selectedSlot: selected && l===selectedLevel && s===selectedSlot});
@@ -100,7 +100,14 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         part(cx,cy,cz,Math.max(.004,pw*physicalScaleX/100),Math.max(.004,ph*physicalScaleH/100),Math.max(.004,pd*physicalScaleD/100),mat);
       }
     });
-    if(selected)sign(spec.title,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
+    if(selected){
+      // El resaltado se dibuja separado de las mallas: no modifica pintura ni veta del mueble.
+      const boundary=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2],[-w/2,-d/2]];
+      const geo=new THREE.BufferGeometry().setFromPoints(boundary.map(([x,z])=>new THREE.Vector3(x,.022,z)));
+      const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0x15a889,depthTest:false}));
+      line.renderOrder=8;group.add(line);
+      sign(spec.title,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
+    }
     return;
   }
   const frame=Math.max(.023,Math.min(.047,w*.025));

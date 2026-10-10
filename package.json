@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.9.0-furniture-plinth-back-history",
+  "version": "1.9.1-furniture-ui-materials",
   "private": true,
-  "description": "WMS Industrial V190: zócalo estructural, fondo paramétrico y Undo/Redo fiable integrados al constructor 3D",
+  "description": "WMS Industrial V191: rediseño constructor 3D, selección con contorno sin alterar acabados, flujo compacto",
   "type": "module",
   "scripts": {
     "build:frontend": "node scripts/build-frontend.mjs",

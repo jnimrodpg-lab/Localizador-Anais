@@ -1,74 +1,26 @@
-# WMS Industrial V187 — CAD + construcción 3D
+# WMS Industrial V191 — Constructor 3D rediseñado
 
-Aplicación para Cloudflare Pages, Cloudflare D1 y Google Sheets. Basada en la V186. Mantiene el editor de racks, el inventario, las ubicaciones y Wrangler.
+Proyecto Cloudflare Pages + D1 con los módulos WMS, inventario, edición de layout, espacio 3D y constructor paramétrico de mobiliario.
 
-## Desplegar en Cloudflare Pages
+## Despliegue
+1. Extraer el ZIP y abrir **WMS_Industrial_V191** como raíz del repositorio.
+2. Mantener `wrangler.toml` y el binding `DB` configurado para la base D1 actual.
+3. En Cloudflare Pages elegir Framework preset **None**.
+4. Build command: **`npm ci && npm run build`**; output directory: **`public`**.
+5. Publicar primero en **Preview**, comprobar la biblioteca, crear un modelo, colocarlo y abrir **Diseñar espacio 3D**. Verificar el guardado en D1 antes de publicarlo en producción.
 
-1. Extrae el ZIP y usa `WMS_Industrial_V187` como carpeta raíz del repositorio.
-2. Conserva la configuración de `wrangler.toml` y el binding `DB` para D1.
-3. Configura Framework preset **None**, comando de construcción `npm run build` y directorio de salida `public`.
-4. Cloudflare instalará las dependencias desde `package-lock.json` mediante `npm ci`; el build copia Three.js a `public/vendor/three.module.js` si está disponible localmente. Existe un respaldo por CDN.
-5. Comprueba primero el despliegue **Preview** y solo después actualiza producción. Verifica que el sidebar diga **WMS V187 · CAD y 3D**.
+## Crear mobiliario 3D
+- Elegir una plantilla de melamina, armario o metal+madera.
+- **01 Medidas**: ancho, altura, profundidad, espesor y acabado.
+- **02 Zócalo y fondo**: base elevada, fondo completo o modular; los paneles se actualizan automáticamente.
+- **03 Divisiones**: distribución equitativa o personalizada en altura y ancho.
+- **04 Acabados**: material y acabado del modelo.
+- **05 Despiece**: comprobar geometría y exportar CSV.
+- El visor abre en **Frontal** para editar; pulsar **Vista 3D** para revisar el volumen real.
+- **Colocar en el almacén** crea una instancia del modelo seleccionable en **Diseñar espacio 3D**.
+- Undo/Redo: botones superiores o `Ctrl+Z`, `Ctrl+Y` (fuera de inputs).
 
-## Funciones incorporadas
+Para el detalle de las modificaciones, consultar `CAMBIOS_V191.md`.
 
-### Editar layout
-- Inspector para editar el perímetro general, incorporar vértices y restablecer el ajuste automático a las zonas.
-- Arrastrar puntos de la superficie general con snap y validación de zonas contenidas; cambios persistidos con las calles actualizadas.
-- Agregar un vértice de zona en un clic, eligiendo la arista más larga cuando aún no hay arista activa.
-- Dividir zonas independientes por línea central horizontal o vertical. La operación no procede si corta un rack o produce una geometría inválida.
-- Posicionar y girar numéricamente el mobiliario urbano agrupado, conservando la selección y representación 3D.
-- Conserva la edición de muros, vanos, racks, calles y panel de capas existente.
-
-### Diseñar espacio 3D
-- Pestaña **Urbanismo** junto a Mobiliario y Arquitectura.
-- Editar tipos de calzada y vereda, anchos, tipo de esquina, y añadir o quitar el conjunto urbano.
-- Selección del conjunto urbano en la escena 3D mediante raycasting y desplazamiento con snap cuando Mover está activo.
-- Edición numérica de posición/giro del conjunto urbano con comprobación de ubicación en vereda.
-- Desplazar los dos extremos de un muro mediante deltas X/Y numéricos con el motor geométrico compartido.
-- Conserva la edición arquitectónica existente de muros, aberturas libres, puertas, ventanal y pisos por zona.
-
-## Auditoría y pruebas
-
-```bash
-npm ci
-npm run check
-npm run test:v187
-```
-
-Las pruebas de integración V187 y regresión previas pasan. Se probó en Chromium el flujo **agregar vértice de área → crear calle → agregar mobiliario agrupado → modificar materiales en Urbanismo**, sin errores JS.
-
-## Límites pendientes
-
-- No se han implementado aún agrupaciones arbitrarias entre todos los tipos de objetos, uniones/recortes booleanos complejos de polígonos ni distribución automática avanzada con optimización de pasillos.
-- El movimiento de un muro vinculado actualiza sus nodos y elementos dependientes; no reconstruye automáticamente todas las subdivisiones de zona existentes.
-- Las texturas urbanas son procedurales: no equivalen exactamente a una fotografía/PBR escaneada ni cuentan con mapas de relieve profesionales.
-- La prueba WebGL 3D completa con Three.js no se pudo realizar localmente porque este entorno no tiene instalada esa biblioteca ni acceso al registro npm. Cloudflare debe instalarla durante el build.
-- No se validó una escritura efectiva sobre la base de datos D1 remota. Comprueba guardados, cambio de sucursal y recarga en Preview.
-
-Documentación de cambios técnicos: `CAMBIOS_V187.md`.
-
-
-## V189 — Crear mobiliario 3D
-
-1. Acceder con perfil administrador y abrir **Crear mobiliario 3D** en el menú izquierdo.
-2. Elegir **Estante melamina**, **Armario melamina** o **Metal + madera**.
-3. Editar ancho, profundidad, altura, repisas y divisiones; usar el inspector para modificar piezas.
-4. Generar distribuciones equitativas o personalizadas en **Distribución paramétrica**.
-5. Comprobar geometría, guardar el modelo y opcionalmente exportar el despiece CSV.
-6. **Colocar en el almacén** (requiere una zona con espacio disponible) y abrir **Diseñar espacio 3D**; las piezas se renderizan a partir del modelo guardado.
-
-Para publicar en Cloudflare Pages: ejecutar `npm install && npm run build`, seleccionar directorio de salida `public`; preservar la configuración D1 en `wrangler.toml`.
-
-## V190 — Constructor de mobiliario (zócalo/fondo/historial)
-
-En el sidebar, entra a **Crear mobiliario 3D**. Elige una plantilla de melamina o de metal+madera.
-La sección **Construcción básica** permite activar el zócalo, definir su altura y retranqueo, y escoger
-**Sin fondo**, **Fondo completo** o **Fondo por compartimento**, sin tener que seleccionar la cara trasera.
-Al guardar/colocar el mueble, los paneles y las piezas quedan vinculados a Diseñar espacio 3D.
-
-Deshacer y rehacer se encuentran en la cabecera. Fuera de campos de texto también admiten
-Ctrl/Cmd+Z, Ctrl/Cmd+Y y Ctrl/Cmd+Shift+Z. Puedes verificar la integración mediante `npm run check`.
-
-Para Cloudflare Pages usar `npm ci && npm run build`; directorio de salida `public`.
-Para detalles de validación y limitaciones, consulta `CAMBIOS_V190.md`.
+## Verificación
+Ejecutar `npm run check`. Para pruebas visuales 3D, disponer de WebGL/Three.js en un despliegue Preview.

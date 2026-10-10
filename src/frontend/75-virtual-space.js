@@ -691,7 +691,7 @@
         const applyPointer=e=>{const r=canvas.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;raycaster.setFromCamera(mouse,camera);};
         const meshMat=(color,extra={})=>new THREE.MeshStandardMaterial({color,metalness:.14,roughness:.6,...extra});
         const shared={
-          metal:meshMat(0x6e7674,{metalness:.63,roughness:.43}),
+          metal:meshMat(0x939e9c,{metalness:.53,roughness:.48}),
           metalDark:meshMat(0x424947,{metalness:.58,roughness:.41}),
           metalSelected:meshMat(0x3b8d7e,{metalness:.43,roughness:.35}),
           hole:meshMat(0x353b39),

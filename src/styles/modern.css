@@ -277,3 +277,88 @@ body[data-screen="rack-builder"] #appRoot.app .rack-cad-shell{
 #appRoot.app .rack-cad-shell [data-history-undo="racks"]:disabled,#appRoot.app .rack-cad-shell [data-history-redo="racks"]:disabled{opacity:.42;cursor:not-allowed;}
 @media(max-width:960px){#appRoot.app .fb-quick-columns{grid-template-columns:minmax(0,1fr)}#appRoot.app .fb-quick-group{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:520px){#appRoot.app .fb-quick-group{grid-template-columns:minmax(0,1fr)}#appRoot.app .fb-quick-group>label{grid-column:1/-1}}
+
+/* V191 — Constructor de mobiliario: lienzo prioritario y controles contextuales. */
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-shell{
+  display:flex!important; flex-direction:column; gap:9px; min-height:0!important;
+  height:auto!important; max-height:none!important; overflow:visible!important;
+}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-projectbar{
+  display:flex; flex-wrap:wrap; align-items:center; padding:10px 12px;
+  gap:9px 14px; border-radius:12px; min-height:0;
+}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-main{flex:1 1 290px; min-width:220px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-meta{display:flex; flex-wrap:wrap; gap:6px 12px; font-size:10px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-actions{display:flex; flex:0 1 auto; flex-wrap:wrap; gap:6px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-actions button{min-height:33px; padding:6px 11px; white-space:nowrap}
+body[data-screen="rack-builder"] #appRoot.app .fb-template-bar{margin:0; padding:9px 13px; border-radius:12px; box-shadow:none}
+body[data-screen="rack-builder"] #appRoot.app .fb-template-actions button{min-height:32px; padding:6px 10px}
+#appRoot.app .rack-cad-workflow{display:flex;flex-wrap:wrap; gap:6px; align-items:center; background:var(--surface-1); border:1px solid var(--line); padding:7px 9px; border-radius:12px;}
+#appRoot.app .rack-cad-workflow button{border:1px solid var(--line); border-radius:8px; background:var(--surface-2); color:var(--ink); font-size:11px; font-weight:700; padding:9px 12px; min-height:34px; cursor:pointer; transition:background .18s,border-color .18s}
+#appRoot.app .rack-cad-workflow button:hover,#appRoot.app .rack-cad-workflow button.active{border-color:var(--primary); background:var(--accent-soft)}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-main{
+  display:grid; grid-template-columns:83px minmax(0,1fr) minmax(296px,330px)!important;
+  gap:9px; min-height:570px!important; max-height:calc(100vh - 255px); overflow:hidden!important;
+}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-toolrail{display:flex;flex-direction:column;align-items:stretch;gap:5px;overflow-y:auto;overflow-x:hidden;max-height:100%;padding:7px;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-tool{min-height:52px; padding:6px 3px; flex-shrink:0; border-radius:9px}
+#appRoot.app .fb-rail-title{font-size:9px; font-weight:850; letter-spacing:.045em; color:var(--ink-soft); padding:9px 2px 4px; text-align:center; border-top:1px solid var(--line);white-space:nowrap}
+#appRoot.app .fb-rail-title:first-child{border-top:0; padding-top:4px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas{display:flex; flex-direction:column; overflow:hidden; min-height:0;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas-head{min-height:51px; flex-shrink:0;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas-head b{font-size:13px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-stage-stack{flex:1 1 auto; min-height:0!important;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-front, body[data-screen="rack-builder"] #appRoot.app .rack-cad-3d{height:100%!important; min-height:0!important; width:100%;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-3d{background:#edece7!important}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas-foot{flex-shrink:0; flex-wrap:wrap; gap:4px 12px; min-height:34px;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas-foot span{font-size:10px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-inspector-col{display:flex!important; flex-direction:column!important; max-height:none!important; min-height:0; overflow-y:auto!important; overflow-x:hidden; padding:0 3px 0 0; gap:8px; grid-column:auto!important}
+#appRoot.app .fb-accordion{min-width:0; background:var(--surface-1); border:1px solid var(--line); border-radius:12px; overflow:clip; color:var(--ink)}
+#appRoot.app .fb-accordion>summary{display:flex;justify-content:space-between;align-items:center;gap:8px;list-style:none;padding:13px 12px;cursor:pointer;user-select:none}
+#appRoot.app .fb-accordion>summary::-webkit-details-marker{display:none}
+#appRoot.app .fb-accordion>summary>span:first-child{display:grid;gap:3px;min-width:0}
+#appRoot.app .fb-accordion>summary b{font-size:12px;font-weight:800;color:var(--ink)}
+#appRoot.app .fb-accordion>summary small{font-size:10px;color:var(--ink-soft);line-height:1.35}
+#appRoot.app .fb-accordion>summary .fb-chevron{color:var(--ink-soft); transition:transform .15s; font-size:16px}
+#appRoot.app .fb-accordion[open]>summary .fb-chevron{transform:rotate(180deg)}
+#appRoot.app .fb-accordion[open]>summary{border-bottom:1px solid var(--line);background:var(--surface-2)}
+#appRoot.app .fb-accordion .rack-cad-inspector-card,#appRoot.app .fb-accordion .fb-construction-quick,#appRoot.app .fb-accordion .rack-cad-levelbar{border:0!important;border-radius:0!important;background:var(--surface-1)!important;padding:11px!important;margin:0!important;min-height:0!important;box-shadow:none}
+#appRoot.app .fb-accordion .fb-construction-quick .fb-quick-head{display:none}
+#appRoot.app .fb-accordion .fb-quick-columns{display:flex;flex-direction:column;gap:9px}
+#appRoot.app .fb-accordion .fb-quick-group{padding:10px;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#appRoot.app .fb-accordion .fb-quick-group small{font-size:10px}
+#appRoot.app .fb-bottom-accordion{flex:0 0 auto}
+body[data-screen="rack-builder"] #appRoot.app .fb-bom-section{max-height:300px; overflow:auto!important}
+body[data-screen="rack-builder"] #appRoot.app .fb-parts-scroll{max-height:200px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-inspector-col .rack-cad-inspector-card{padding:11px;max-height:none}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-general{gap:9px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-general .construction-field{min-width:0}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-general input,body[data-screen="rack-builder"] #appRoot.app .rack-cad-general select{min-height:34px}
+body[data-screen="rack-builder"] #appRoot.app .rack-view-switch{display:flex;gap:4px; padding:3px; border-radius:9px; border:1px solid var(--line);background:var(--surface-2)}
+body[data-screen="rack-builder"] #appRoot.app .rack-view-switch button{padding:7px 12px;font-size:11px;white-space:nowrap}
+@media(max-width:1220px){
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-main{grid-template-columns:72px minmax(0,1fr) minmax(265px,290px)!important;max-height:640px}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-tool{min-height:48px}
+}
+@media(max-width:990px){
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-main{grid-template-columns:73px minmax(0,1fr)!important;max-height:none;min-height:520px!important;overflow:visible!important}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-inspector-col{grid-column:1/-1!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas{min-height:520px}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-toolrail{max-height:520px}
+}
+@media(max-width:650px){
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-main{display:flex;flex-direction:column;min-height:0!important;gap:7px}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-toolrail{flex-direction:row;gap:5px;max-height:none;overflow-x:auto;overflow-y:hidden;padding:6px;flex-shrink:0}
+ body[data-screen="rack-builder"] #appRoot.app .fb-rail-title{display:none}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-tool{min-width:70px;flex-shrink:0}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas{min-height:430px}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-inspector-col{display:flex!important;flex-direction:column!important}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-workflow{flex-wrap:nowrap;overflow-x:auto}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-workflow button{white-space:nowrap}
+}
+/* Vista frontal de estudio: tablero real y cotas legibles también en tema claro. */
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-front{background:#f7f3ec!important}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-front .rack-builder-dim{fill:#766149;stroke:#f7f3ec;stroke-width:2.4px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-front .rack-builder-slot-label{fill:#49635c;stroke:#f7f3ec;stroke-width:2.5px}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-front .rack-builder-slot{stroke:rgba(74,122,104,.25);fill:rgba(51,143,110,.025)}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-front .rack-builder-piece.selected{stroke:#17836c!important;filter:drop-shadow(0 0 2px rgba(25,131,108,.35))}

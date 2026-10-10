@@ -1,14 +1,14 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.8.1-floor-streets",
+  "version": "1.9.0-furniture-plinth-back-history",
   "private": true,
-  "description": "WMS Industrial V181: CAD estable, porcelanatos por zona y edición de vértices de calle",
+  "description": "WMS Industrial V190: zócalo estructural, fondo paramétrico y Undo/Redo fiable integrados al constructor 3D",
   "type": "module",
   "scripts": {
     "build:frontend": "node scripts/build-frontend.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
     "audit:frontend": "node scripts/audit-frontend.mjs",
-    "check": "npm run build && npm run verify:frontend && npm run audit:frontend && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js && npm run test:architecture && npm run test:ui-v176 && npm run test:regression-v181",
+    "check": "npm run build && npm run verify:frontend && npm run audit:frontend && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js && npm run test:architecture && npm run test:ui-v176 && npm run test:regression-v181 && npm run test:furniture-v188 && npm run test:furniture-v189 && npm run test:furniture-v190",
     "build": "npm run build:frontend && npm run build:css",
     "test:virtual": "node tests/virtual-space.test.mjs && node tests/furniture-v161.test.mjs",
     "test:auth": "node tests/auth-compat.test.mjs",
@@ -21,7 +21,11 @@
     "build:css": "node scripts/build-css.mjs",
     "test:ui-v176": "node tests/ui-v176.test.mjs",
     "test:architecture": "node tests/architecture-v180.test.mjs",
-    "test:regression-v181": "node tests/regression-v181.test.mjs"
+    "test:furniture-v188": "node tests/furniture-v188.test.mjs",
+    "test:furniture-v189": "node tests/furniture-v189.test.mjs",
+    "test:regression-v181": "node tests/regression-v181.test.mjs",
+    "test:v187": "node tests/integration-v187.test.mjs",
+    "test:furniture-v190": "node tests/furniture-v190.test.mjs"
   },
   "dependencies": {
     "three": "0.160.0"

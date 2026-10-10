@@ -1547,12 +1547,12 @@
       </div>
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
         <section class="layout-prop-card selected-summary layout-editor-focus-card">
-          <div class="layout-prop-title">Selección</div>
+          <div class="layout-prop-title">Elemento seleccionado</div>
           <div class="layout-selected-title">${escapeHtml(summary.title)}</div>
-          <div class="tiny muted">Modo: ${escapeHtml(appState.editor.mode || 'select')}</div>
+
         </section>
         <section class="layout-prop-card">
-          <div class="layout-prop-title">Vista</div>
+          <div class="layout-prop-title">Capas visibles</div>
           <div class="layout-layer-grid">
             ${renderLayerToggle('lyGrid','Grilla', appState.editor.showGrid !== false)}
             ${renderLayerToggle('lyZones','Zonas', appState.editor.showZones !== false)}
@@ -1570,9 +1570,9 @@
             <label>Snap<input id="rpSnapEnabled" type="checkbox" ${isSnapEnabled()?'checked':''}></label>
             <label>Tamaño snap<input id="rpSnapSize" type="number" min="1" max="80" step="1" value="${formatUnitNumber(getSnapSize())}"></label>
             <label>Tamaño letra cotas<input id="rpDimFontSize" type="number" min="14" max="72" step="1" value="${formatUnitNumber(getDimFontSize())}"></label>
-            <label>Estado<input value="${isSnapEnabled() ? 'Activo' : 'Desactivado'}" disabled></label>
+
           </div>
-          <div class="tiny muted layout-panel-hint" style="margin-top:8px">Usa snap bajo para mayor precisión visual. Recomendado: 2, 5 o 10.</div>
+
         </section>
         ${rackMode ? v117RackToolsMarkup() + v117ValidationMarkup() : v117StructureToolsMarkup()}
         ${rackMode ? `<section class="layout-prop-card">
@@ -1581,7 +1581,7 @@
             <button class="seg-btn" id="tplRackRow">Fila de racks</button>
             <button class="seg-btn" id="tplDistribute">Distribuir racks</button>
           </div>
-          <div class="tiny muted layout-panel-hint" style="margin-top:8px">Optimiza la distribución sin cambiar el plano base.</div>
+
         </section>` : `<section class="layout-prop-card">
           <div class="layout-prop-title">Acciones rápidas</div>
           <div class="layout-template-grid"><button class="seg-btn" id="tplWarehouse">Agregar almacén / zona</button></div>
@@ -1593,7 +1593,7 @@
             <button class="seg-btn" id="btnLayoutBgUpload">Subir imagen</button>
             <button class="seg-btn" id="btnLayoutBgClear" ${appState.layout?.meta?.backgroundImage ? '' : 'disabled'}>Quitar fondo</button>
           </div>
-          <div class="tiny muted layout-panel-hint" style="margin-top:8px">Ideal para calcar un plano real sin ensuciar la vista principal.</div>
+
         </section>`}
         ${structureMode && findRoomById(appState.selectedRoomId) ? (()=>{ const rr=findRoomById(appState.selectedRoomId); const rp=roomPointsRaw(rr); const rz=getRoomLinkedZone(rr); const area=polygonAreaAbs(rp)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000; const perimeter=rp.reduce((sum,p,i)=>{ const q=rp[(i+1)%rp.length]; return sum+Math.hypot(q.x-p.x,q.y-p.y); },0); return `<section class="layout-prop-card room-zone-card">
           <div class="layout-prop-title">Recinto</div>
@@ -2000,10 +2000,10 @@
           <div class="layout-cad-localbar-v80">
             ${structureMode ? '<button class="btn primary v80-zone-btn" id="btnZonePlus">+ Zona</button>' : '<button class="btn primary v80-zone-btn" data-emode="rack">+ Rack</button>'}
             <select id="layoutBranchSelect" class="seg-btn v80-branch-select">${(appState.admin.branches||[]).map((b,i)=>`<option value="${i}" ${i===getActiveLayoutBranchIndex()?'selected':''}>${escapeHtml(b.name||('Sucursal '+(i+1)))}</option>`).join('')}</select>
-            <select class="seg-btn v80-unit-select" aria-label="Unidades"><option>m</option><option>cm</option></select>
-            <button class="seg-btn v80-icon-btn" data-layout-tag-action="toggle-snap" title="Snap">⌁</button>
-            <button class="seg-btn v80-icon-btn" data-layout-tag-action="toggle-dims" title="Cotas">▦</button>
-            <button class="seg-btn v80-icon-btn" id="btnZoomFit" title="Ajustar vista">□</button>
+            <span class="v175-unit-label" title="Escala del plano">cm / m</span>
+            <button class="seg-btn v80-icon-btn ${isSnapEnabled()?'is-active':''}" data-layout-tag-action="toggle-snap" type="button" aria-pressed="${isSnapEnabled()}" title="Activar o desactivar snap" aria-label="Activar o desactivar snap">⌁</button>
+            <button class="seg-btn v80-icon-btn ${appState.editor.showDims?'is-active':''}" data-layout-tag-action="toggle-dims" type="button" aria-pressed="${!!appState.editor.showDims}" title="Mostrar u ocultar cotas" aria-label="Mostrar u ocultar cotas">▦</button>
+            <button class="seg-btn v80-icon-btn" id="btnZoomFit" title="Ajustar plano a la vista" aria-label="Ajustar plano a la vista">⛶</button>
             <button class="seg-btn v172-sections-switch ${appState.editor.sectionVisible ? 'is-active' : ''}" id="btnToggleSections" type="button" aria-pressed="${!!appState.editor.sectionVisible}" title="Mostrar u ocultar cortes X e Y">${appState.editor.sectionVisible ? '◉ Ocultar secciones' : '◫ Mostrar secciones'}</button>
             <button class="seg-btn v165-inspector-toggle" data-layout-tag-action="toggle-right-props" type="button">${appState.editor.rightPanelOpen === false ? 'Mostrar inspector' : 'Ocultar inspector'}</button>
             <button class="seg-btn v165-presentation-toggle" id="btnPresentationMode" type="button">${appState.editor.presentationMode ? 'Salir de solo espacio' : 'Solo espacio'}</button>
@@ -2030,11 +2030,11 @@
                     <button class="v80-tool-btn seg-btn" id="btnDuplicateRackRail"><span class="v80-tool-ico">⧉</span><b>Duplicar</b></button>
                     `}
                   </div>
-                  ${appState.editor.showMiniMap !== false ? `<div class="v80-minimap-card"><div class="v80-minimap-title">Layout mini</div>${renderLayoutMiniMapMarkup()}</div>` : ''}
+                  ${appState.editor.showMiniMap !== false ? `<div class="v80-minimap-card"><div class="v80-minimap-title">Vista general</div>${renderLayoutMiniMapMarkup()}</div>` : ''}
                   <div class="v80-canvas-footer">
                     <button class="seg-btn" id="btnZoomOut" title="Alejar" aria-label="Alejar plano">−</button><span class="zoom-chip" id="zoomLabel">100%</span><button class="seg-btn" id="btnZoomIn" title="Acercar" aria-label="Acercar plano">+</button>
                   </div>
-                  <button class="v90-floating-save-layout" id="btnSaveLayoutFloat" type="button">${rackMode ? 'Guardar distribución' : 'Guardar estructura'}</button>
+
                   ${structureMode && appState.editor.mode==='wall' && appState.editor.pendingWallPoint ? `<div class="wall-length-hud"><span>Longitud</span><input id="wallLengthInput" type="number" min="1" step="1" placeholder="cm" value="${escapeHtml(String(appState.editor.wallLengthDraft||''))}"><b>cm</b><small>Enter fija · ESC termina</small></div>` : ''}
                   ${structureMode && appState.editor.mode==='wall' ? `<div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · ESC finaliza</div>` : ''}
                   <div id="layoutStackMenu" class="layout-stack-overlay"></div>
@@ -2092,6 +2092,7 @@
     const zl = $('#zoomLabel'); if(zl){ const vb = appState.editor.viewBox || {w:900}; zl.textContent = `${Math.round((900 / vb.w) * 100)}%`; }
     updateLayoutSaveStatus();
     updateLayoutQualityBadge();
+    if(/^Cargando vista/.test(contentStatus.textContent||'')) contentStatus.textContent='';
   }
 
   function renderLayoutStackMenu(){
@@ -2394,7 +2395,7 @@
         const rHandle = svgEl('circle',{cx:(zb.minX+zb.maxX)/2, cy:rangeLimit, r:'7', class:'section-range-handle', fill:color, stroke:color});
         rHandle.addEventListener('pointerdown', evt => startSectionGuideDrag(evt, axis, 'range'));
         guideLayer.appendChild(rHandle);
-        const rLabel = svgEl('text',{x:zb.maxX+18,y:rangeLimit-6,class:'section-range-label',fill:color}); rLabel.textContent='Límite Y'; guideLayer.appendChild(rLabel);
+        // El corte se reconoce por color y manijas; evitamos etiquetas que pisan las cotas.
       } else {
         const bandX1 = Math.min(linePos, rangeLimit), bandX2 = Math.max(linePos, rangeLimit);
         guideLayer.appendChild(svgEl('rect',{x:bandX1,y:zb.minY,width:Math.max(1,bandX2-bandX1),height:Math.max(1,zb.maxY-zb.minY),class:'section-range-fill'}));
@@ -2410,7 +2411,7 @@
         const rHandle = svgEl('circle',{cx:rangeLimit, cy:(zb.minY+zb.maxY)/2, r:'7', class:'section-range-handle', fill:color, stroke:color});
         rHandle.addEventListener('pointerdown', evt => startSectionGuideDrag(evt, axis, 'range'));
         guideLayer.appendChild(rHandle);
-        const rLabel = svgEl('text',{x:rangeLimit+10,y:zb.minY-14,class:'section-range-label',fill:color}); rLabel.textContent='Límite X'; guideLayer.appendChild(rLabel);
+        // Sin rótulo redundante de límite; las manijas mantienen la interacción.
       }
       const label = svgEl('text',{ x:isY ? zb.minX+16 : linePos+12, y:isY ? linePos-12 : zb.maxY-18, fill:color, 'font-size':'10', 'font-weight':'700', 'text-anchor':'start', style:'pointer-events:none;' });
       label.textContent = isY ? 'Corte Y' : 'Corte X';
@@ -3051,77 +3052,79 @@
 
   function renderSectionAxisSvg(svg, zone, racks, axis){
     if(!svg) return;
-    const mountWidth = Math.max(230, Math.floor((svg.parentElement?.clientWidth || 520) - 12));
-    const width = mountWidth, height = Math.max(116, Math.min(156, Math.round(width * .24)));
-    const groundY = height - 20;
-    const padX = 20;
-    svg.innerHTML = '';
+    const width = Math.max(260, Math.round(svg.parentElement?.clientWidth || 520) - 16);
+    const height = Math.max(140, Math.min(174, Math.round(width * .28)));
+    const dark = document.body.classList.contains('theme-dark');
+    const ink = dark ? '#e6e9e5' : '#38514b';
+    const muted = dark ? '#a5b6b0' : '#768d84';
+    const edge = dark ? '#51695f' : '#a7bdb2';
+    const floor = dark ? '#26392f' : '#e7eee9';
+    const fill = dark ? '#637e71' : '#b1c9b9';
+    const accent = dark ? '#e6b87d' : '#a77c48';
+    const groundY = height - 29;
+    const padX = 25;
+    svg.innerHTML='';
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.appendChild(svgEl('rect',{x:0,y:0,width,height,rx:18,fill:'rgba(6,16,28,.98)'}));
-    svg.appendChild(svgEl('line',{x1:padX,y1:groundY,x2:width-padX,y2:groundY,class:'section-ground'}));
-    if(!zone || !racks.length){
-      const txt = svgEl('text',{x:width/2,y:height/2,class:'section-text','text-anchor':'middle',style:'font-size:11px'});
-      txt.textContent = 'Sin racks en esta zona';
-      svg.appendChild(txt);
-      return;
-    }
-    const zb = zoneBounds(zone);
-    const visible = sectionVisibleRacks(zone, racks, axis);
-    const displayAxisKey = axis === 'x' ? 'y' : 'x';
-    const displaySizeKey = axis === 'x' ? 'h' : 'w';
-    const displayMin = axis === 'x' ? zb.minY : zb.minX;
-    const displayMax = axis === 'x' ? zb.maxY : zb.minX + Math.max(1, zb.maxX-zb.minX);
-    const displaySpan = Math.max(1, displayMax - displayMin);
-    const innerWidth = Math.max(120, width - padX * 2);
-    if(!visible.length){
-      const txt = svgEl('text',{x:width/2,y:height/2,class:'section-text','text-anchor':'middle',style:'font-size:11px'});
-      txt.textContent = 'Sin racks en este corte';
-      svg.appendChild(txt);
-      return;
-    }
-    const maxTop = Math.max(...visible.map(r => (Number(r.baseHeight||0) + Number(r.rackHeight || rackModel(r.modelId).height || 238))), 240);
-    const usableHeight = Math.max(62, height - 53);
-    const rackHeightScale = usableHeight / maxTop;
-    const ordered = visible.slice().sort((a,b)=> ((a[displayAxisKey] || 0) - (b[displayAxisKey] || 0)) || ((a.baseHeight||0)-(b.baseHeight||0)) || (a.id > b.id ? 1 : -1));
-    const sectionItems = ordered.map(r => {
-      const model = rackModel(r.modelId);
-      const pos = Number(r[displayAxisKey] || 0);
-      const size = Math.max(8, Number(r[displaySizeKey] || 44));
-      const rw = Math.max(18, Math.round((size / displaySpan) * innerWidth));
-      const rackHeight = Math.max(60, Number(r.rackHeight || model.height || 238));
-      const baseHeight = Math.max(0, Number(r.baseHeight || 0));
-      const rh = Math.max(48, Math.round(rackHeight * rackHeightScale));
-      const relStart = (pos - displayMin) / displaySpan;
-      const rx = Math.round(padX + relStart * innerWidth);
-      return { r, model, rw, rh, baseHeight, rackHeight, rx };
+    svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+    svg.setAttribute('role','img');
+    svg.setAttribute('aria-label', `Corte ${axis.toUpperCase()} con ${racks.length} racks`);
+    svg.appendChild(svgEl('rect',{x:0,y:0,width,height,rx:9,fill:floor}));
+    for(let i=1;i<=3;i++)svg.appendChild(svgEl('line',{x1:padX,y1:15+(groundY-15)*i/4,x2:width-padX,y2:15+(groundY-15)*i/4,stroke:edge,'stroke-width':'.55',opacity:'.42','stroke-dasharray':'4 7'}));
+    svg.appendChild(svgEl('line',{x1:padX,y1:groundY,x2:width-padX,y2:groundY,stroke:edge,'stroke-width':'1.5'}));
+    const message=(str)=>{
+      const t=svgEl('text',{x:width/2,y:height/2,class:'section-empty-note','text-anchor':'middle',fill:muted,'font-size':'12'});
+      t.textContent=str;svg.appendChild(t);
+    };
+    if(!zone || !racks.length){message('Sin racks en la zona seleccionada');return;}
+    const visible=sectionVisibleRacks(zone,racks,axis);
+    if(!visible.length){message('Este corte no contiene racks');return;}
+    const axisKey = axis==='x'?'y':'x';
+    const dimKey = axis==='x'?'h':'w';
+    const objects=visible.map(r=>{
+      const model=rackModel(r.modelId);
+      const pos=Number(r[axisKey]||0);
+      const dim=Math.max(8,Number(r[dimKey]||50));
+      const baseHeight=Math.max(0,Number(r.baseHeight||0));
+      const rackHeight=Math.max(60,Number(r.rackHeight||model.height||238));
+      return {r,model,pos,dim,baseHeight,rackHeight};
     });
-
-    sectionItems.forEach(it => {
-      const { r, model, rw, rh, baseHeight, rackHeight } = it;
-      let rx = it.rx;
-      rx = Math.max(padX, Math.min(width - padX - rw, rx));
-      const ry = groundY - Math.round((baseHeight + rackHeight) * rackHeightScale);
-      const sectionInset = 1;
-      const rect = svgEl('rect',{x:rx+sectionInset,y:ry+sectionInset,width:Math.max(8,rw-sectionInset*2),height:Math.max(8,rh-sectionInset*2),rx:16,class:'section-rack' + (appState.selectedRackLayoutId===r.id ? ' selected' : '')});
-      rect.setAttribute('filter','drop-shadow(0 10px 18px rgba(0,0,0,.25))');
-      rect.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedRackLayoutId = r.id; appState.selectedZoneId = r.zoneId; renderLayoutEditor(); });
-      svg.appendChild(rect);
-      const orangeInset = 14;
-      const frontY = ry + 16;
-      svg.appendChild(svgEl('line',{x1:rx+orangeInset,y1:frontY,x2:rx+rw-orangeInset,y2:frontY,stroke:'#ff9848','stroke-width':'4.5','stroke-linecap':'round'}));
-      svg.appendChild(svgEl('path',{d:`M ${rx+rw/2} ${ry-6} l 10 0 l -5 -12 z`, fill:'#ff9848', opacity:'0.95'}));
-      const levels = Math.max(2, parseInt(model.levels || 4, 10));
+    // Ajuste real a las piezas visibles: nunca escalar el mobiliario sobre toda
+    // la longitud de una nave vacía, que lo convertía en miniaturas.
+    const left=Math.min(...objects.map(o=>o.pos));
+    const right=Math.max(...objects.map(o=>o.pos+o.dim));
+    const occupied=Math.max(1,right-left);
+    const span=Math.max(occupied*1.16,Math.max(...objects.map(o=>o.dim))*1.35);
+    const offset=(span-occupied)/2;
+    const usableWidth=width-2*padX;
+    const top=Math.max(240,...objects.map(o=>o.baseHeight+o.rackHeight));
+    const vScale=(groundY-32)/top;
+    objects.sort((a,b)=>a.pos-b.pos||a.baseHeight-b.baseHeight);
+    for(const item of objects){
+      const {r,model,baseHeight,rackHeight}=item;
+      const rx=padX+(item.pos-left+offset)/span*usableWidth;
+      const rw=Math.max(20,item.dim/span*usableWidth);
+      const rh=Math.max(32,rackHeight*vScale);
+      const ry=groundY-(baseHeight+rackHeight)*vScale;
+      const selected=appState.selectedRackLayoutId===r.id;
+      const g=svgEl('g',{style:'cursor:pointer',role:'button',tabindex:'0','aria-label':`Rack ${r.id}`});
+      g.appendChild(svgEl('rect',{x:rx+1,y:ry,width:Math.max(12,rw-2),height:rh,rx:3,fill,stroke:selected?accent:edge,'stroke-width':selected?2.3:1.1}));
+      const levels=Math.max(1,Math.round(Number(model.levels)||4));
       for(let i=1;i<levels;i++){
-        const ly = ry + (rh/levels) * i;
-        svg.appendChild(svgEl('line',{x1:rx+8,y1:ly,x2:rx+rw-8,y2:ly,class:'section-deck'}));
+        const ly=ry+rh/levels*i;
+        g.appendChild(svgEl('line',{x1:rx+3,y1:ly,x2:rx+rw-3,y2:ly,stroke:accent,'stroke-width':2}));
       }
-      const label = svgEl('text',{x:rx+rw/2,y:ry+rh/2+6,class:'section-text','text-anchor':'middle'});
-      label.textContent = `${r.id} · N${getRackStackLevel(r)}`;
-      svg.appendChild(label);
-      const baseText = svgEl('text',{x:rx+rw/2,y:ry+rh+11,class:'section-text','text-anchor':'middle',style:'font-size:9px;fill:#9db8d4'});
-      baseText.textContent = `Base ${formatDistanceShort(baseHeight)}`;
-      svg.appendChild(baseText);
-    });
+      g.appendChild(svgEl('line',{x1:rx+4,y1:ry+4,x2:rx+rw-4,y2:ry+4,stroke:accent,'stroke-width':2.5}));
+      if(rw>=44){
+        const id=svgEl('text',{x:rx+rw/2,y:Math.max(12,ry-5),'text-anchor':'middle',fill:ink,'font-size':rw<80?'10':'11','font-weight':'700'});
+        id.textContent=String(r.id||'Rack');g.appendChild(id);
+      }
+      g.addEventListener('pointerdown',e=>{e.stopPropagation();appState.selectedRackLayoutId=r.id;appState.selectedZoneId=r.zoneId;renderLayoutEditor();});
+      g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();appState.selectedRackLayoutId=r.id;appState.selectedZoneId=r.zoneId;renderLayoutEditor();}});
+      svg.appendChild(g);
+    }
+    const foot=svgEl('text',{x:padX,y:height-9,fill:muted,'font-size':'10'});
+    foot.textContent=`${objects.length} rack${objects.length===1?'':'s'} en corte · escala ajustada`;
+    svg.appendChild(foot);
   }
 
   function renderLayoutSection(){

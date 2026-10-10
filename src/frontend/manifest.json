@@ -1,5 +1,5 @@
 {
-  "version": "174",
+  "version": "175",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "v174: retirar botón redundante del editor y pulir secciones, cotas y controles, sin afectar espacios 3D."
+  "notes": "V175: CAD premium suave, cortes autoencuadrados, cotas exteriores, y encabezados Sheet plegables"
 }

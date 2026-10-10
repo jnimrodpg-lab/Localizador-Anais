@@ -918,18 +918,18 @@
   }
   function drawZoneEdgeDimensions(layer, zone){
     if(!layer || !zone || !appState.editor.showDims) return;
-    const cmPerUnit = Math.max(.01, getScaleCmPerUnit());
-    const edgeOffsetUnits = 30 / cmPerUnit;
-    zone.pts.forEach((a, i) => {
-      const b = zone.pts[(i+1)%zone.pts.length];
-      const len = Math.hypot(b.x-a.x,b.y-a.y) || 1;
-      const n = getZoneOutwardEdgeNormal(zone, a, b);
-      drawRackMeasureLine(layer, a.x, a.y, b.x, b.y, len, '#ff9f2f', edgeOffsetUnits, formatDistanceCm, {
-        showTextBox:false,
-        textGap:12,
-        dashed:true,
-        normalOverride:n
-      });
+    const b=zoneBounds(zone);
+    const w=Math.max(0,b.maxX-b.minX),h=Math.max(0,b.maxY-b.minY);
+    if(w<1||h<1)return;
+    const cmPerUnit=Math.max(.01,getScaleCmPerUnit());
+    const offset=36/cmPerUnit;
+    // CAD: dimensiones generales fuera de la zona. Las cotas de las aristas
+    // fragmentadas se consultan al seleccionar el elemento correspondiente.
+    drawRackMeasureLine(layer,b.minX,b.minY,b.maxX,b.minY,w,'#b88949',offset,formatDistanceCm,{
+      showTextBox:false,textGap:13/cmPerUnit,dashed:true,normalOverride:{x:0,y:-1}
+    });
+    drawRackMeasureLine(layer,b.minX,b.minY,b.minX,b.maxY,h,'#b88949',offset,formatDistanceCm,{
+      showTextBox:false,textGap:13/cmPerUnit,dashed:true,normalOverride:{x:-1,y:0}
     });
   }
   function drawSelectedRackMeasurements(layer, rack, zone){

@@ -1189,7 +1189,11 @@
   }
 
 function getSheetBranchOpenMap(){
-    if(!appState.sheetBranchOpen || typeof appState.sheetBranchOpen !== 'object') appState.sheetBranchOpen = {0:true};
+    if(!appState.sheetBranchOpen || typeof appState.sheetBranchOpen !== 'object'){
+      // Primera apertura coherente con la sucursal mostrada en el visor.
+      const active=Math.max(0,Math.min(Math.max(0,(appState.admin?.branches||[]).length-1),Number(appState.activeBranchIndex ?? appState.admin?.activeBranch ?? 0)||0));
+      appState.sheetBranchOpen = {[active]:true};
+    }
     return appState.sheetBranchOpen;
   }
   function getCurrentSheetBranchIndex(){

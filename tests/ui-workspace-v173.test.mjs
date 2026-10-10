@@ -7,9 +7,9 @@ const source = fs.readFileSync('src/frontend/30-admin-sync.js','utf8');
 const styleIndex = fs.readFileSync('public/assets/app.css','utf8');
 const html = fs.readFileSync('public/index.html','utf8');
 
-assert.match(html,/WMS Industrial V174/,'La versión entregable debe ser V174');
-assert.match(html,/wms-v174-layout-cleanup/,'Versionado de assets para evitar cache antiguo');
-assert.ok(styleIndex.trimEnd().endsWith("@import url('./styles/v174-workspace.css');"), 'Workspace CSS debe tener precedencia');
+assert.match(html,/WMS Industrial V175/,'La versión entregable debe ser V174');
+assert.match(html,/wms-v175-premium-soft-20261010/,'Versionado de assets para evitar cache antiguo');
+assert.ok(styleIndex.trimEnd().endsWith("@import url('./styles/v175-premium-soft.css');"), 'Workspace CSS debe tener precedencia');
 assert.match(core,/id="btnToggleSections"/,'Botón visible para activar secciones');
 assert.match(core,/<\/div>\s*<div id="layoutSectionWrap" class="v80-section-floating"/, 'Las secciones deben ser hermanas del canvas, no contenerse dentro de él');
 assert.match(core,/grid-template-columns/,'Se debe conservar el editor de layout');

@@ -1,23 +1,24 @@
-# WMS Industrial V173 — Interfaz CAD/3D/Sheets corregida
+# WMS Industrial V175 — CAD premium suave y estabilización visual
 
-Versión incremental basada en la V172, conserva layout arquitectónico, racks, visor 3D, importación Google Sheets, usuarios/roles, Cloudflare D1 y funciones existentes.
+Versión basada en V174. **Conserva** los módulos de inventario, Google Sheets, construcción del espacio 3D, navegación, roles, Cloudflare Pages Functions, el binding Wrangler `DB` y los esquemas D1. No altera ni elimina datos de la base.
 
-**Contenido principal:** `public/` interfaz y recursos; `src/frontend/` fuentes del frontend; `functions/api/` funciones Pages; `wrangler.toml`; `migrations/`; `scripts/` build y auditorías; `tests/` pruebas.
+## Despliegue
 
-## Cómo desplegar
+1. Extrae el ZIP y coloca el contenido de `WMS_Industrial_V175/` en la raíz de tu repositorio, o configura esa carpeta como raíz del build.
+2. Cloudflare Pages: **Framework preset `None`** · **Build command `npm run build`** · **Build output directory `public`**.
+3. Cloudflare instala dependencias. El build incorpora Three.js desde `node_modules` al despliegue cuando está disponible.
+4. Conserva el `database_id` de la base D1 y el binding **`DB`** de `wrangler.toml`; no ejecutes migraciones sobre datos reales sin respaldo previo.
+5. Prueba primero con Cloudflare Pages Preview y usa **Ctrl+Shift+R** para impedir que un CSS/JS antiguo quede cacheado. Los recursos están marcados `wms-v175-premium-soft-20261010`.
 
-1. Extrae el ZIP y sube **el contenido de `WMS_Industrial_V173/`** a la raíz de tu repositorio de GitHub (o configura esa carpeta como directorio raíz del build).
-2. En Cloudflare Pages: framework `None`, **Build command**: `npm run build`, **Build output directory**: `public`.
-3. Cloudflare instalará las dependencias con npm; el build copia Three.js a `public/vendor/three.module.js`.
-4. Conserva el binding D1 denominado **`DB`** y el `database_id` actual de `wrangler.toml`. No crees ni migres una base nueva por cambiar la UI.
-5. Publica primero una **rama Preview**, recarga con Ctrl+Shift+R y verifica escenas reales, inventario e importación antes de sustituir producción.
-
-## Pruebas en local
+## Pruebas locales
 
 ```bash
 npm ci
 npm run build
 npm run check
+python tests/visual-v175-css.py
 ```
 
-Consulta `AUDITORIA_VISUAL_V173.md` para los cambios y límites de la verificación. Las pruebas WebGL reales requieren Three.js disponible y navegador compatible con WebGL.
+La última prueba requiere Chromium y Playwright instalados. Comprueba geometría CSS y modos de color sin simular conexiones remotas.
+
+Consulta `CAMBIOS_V175.md` para los cambios y los límites de la validación.

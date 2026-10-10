@@ -405,6 +405,8 @@
   const toggleThemeCheckbox = document.getElementById('toggleThemeCheckbox');
   if(toggleThemeCheckbox) toggleThemeCheckbox.addEventListener('change', (e) => {
     applyUiTheme(e.target.checked ? 'light' : 'dark');
+    // El contenido SVG (cortes X/Y) conserva su geometría pero actualiza su paleta.
+    if(document.getElementById('layoutSectionWrap') && typeof renderLayoutSection === 'function') renderLayoutSection();
   });
 
   // V54 - Picking por lista de SKUs / códigos

@@ -1,14 +1,19 @@
 {
-  "name": "wms-industrial-studio-rebuild",
-  "version": "1.7.1-github-subdirectory",
+  "name": "wms-industrial-cloudflare",
+  "version": "1.7.0-visual-revision",
   "private": true,
+  "description": "WMS Industrial V170: revisión visual total, eliminación de la vista arquitectónica obsoleta, mejoras de muros en layout y refuerzo de contraste.",
   "type": "module",
-  "description": "WMS V171, Cloudflare Pages en subdirectorio Localizador de Productos; se conserva Wrangler y D1.",
   "scripts": {
-    "build": "npm run verify:cloudflare && node scripts/build.mjs",
-    "check": "npm run verify:cloudflare && node --check public/app/main.js && node --check public/app/data.js && node --check public/app/scene.js && node --check \"functions/api/[[path]].js\" && node tests/core.test.mjs",
-    "preview": "python3 -m http.server 4173 -d public",
-    "verify:cloudflare": "node scripts/verify-cloudflare.mjs"
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "verify:frontend": "node scripts/verify-frontend.mjs",
+    "audit:frontend": "node scripts/audit-frontend.mjs",
+    "check": "npm run verify:frontend && npm run audit:frontend && npm run test:visual-css && npm run test:virtual && npm run test:auth && node --check functions/api/[[path]].js && node --check public/assets/app-main.runtimefix.js",
+    "build": "npm run build:frontend",
+    "test:virtual": "node tests/virtual-space.test.mjs && node tests/furniture-v161.test.mjs",
+    "test:auth": "node tests/auth-compat.test.mjs",
+    "test:visual-css": "node tests/visual-css.test.mjs",
+    "test:visual-browser": "python tests/visual-smoke.py"
   },
   "dependencies": {
     "three": "0.160.0"

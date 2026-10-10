@@ -1,3 +1,9 @@
+# WMS Industrial V192
+
+**Crear mobiliario 3D → Colocar y editar en layout:** abre el editor de distribución y selecciona el nuevo mueble. Se mueve por arrastre y snap desde el plano. **Biblioteca de racks:** los muebles creados muestran miniatura paramétrica con sus piezas y colores. El despiece es opcional.
+
+Consulta `CAMBIOS_V192.md` para el resumen y pruebas.
+
 # WMS Industrial V191 — Constructor 3D rediseñado
 
 Proyecto Cloudflare Pages + D1 con los módulos WMS, inventario, edición de layout, espacio 3D y constructor paramétrico de mobiliario.

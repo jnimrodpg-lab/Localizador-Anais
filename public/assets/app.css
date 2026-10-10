@@ -7242,3 +7242,52 @@ body[data-screen="rack-builder"] #appRoot.app .rack-cad-front .rack-builder-slot
 body[data-screen="rack-builder"] #appRoot.app .rack-cad-front .rack-builder-slot{stroke:rgba(74,122,104,.25);fill:rgba(51,143,110,.025)}
 body[data-screen="rack-builder"] #appRoot.app .rack-cad-front .rack-builder-piece.selected{stroke:#17836c!important;filter:drop-shadow(0 0 2px rgba(25,131,108,.35))}
 
+/* V192 — no comprimir el encabezado de Crear mobiliario 3D: los botones deben quedar siempre visibles. */
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-shell{
+  display:flex!important;flex-direction:column!important;gap:9px!important;
+  height:auto!important;min-height:0!important;overflow:visible!important;
+  align-content:initial!important;
+}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-projectbar,
+body[data-screen="rack-builder"] #appRoot.app .fb-template-bar,
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-workflow,
+body[data-screen="rack-builder"] #appRoot.app .fb-bottom-accordion{
+  flex:0 0 auto!important;min-height:max-content!important;position:relative;overflow:visible;
+}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-projectbar{
+  display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;
+  grid-template-areas:"main actions" "meta meta";gap:8px 14px!important;
+  padding:11px 13px!important;align-items:center!important;z-index:1;
+}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-main{grid-area:main;min-width:0!important;display:grid!important;grid-template-columns:minmax(175px,1fr) minmax(180px,1.15fr);}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-actions{grid-area:actions;display:flex!important;flex-wrap:wrap;justify-content:flex-end;align-items:center;max-width:100%;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-meta{grid-area:meta;display:flex!important;align-items:center;flex-wrap:wrap;gap:6px 14px;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-projectbar :is(input,select,button){position:relative;z-index:1;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-main{flex:0 0 auto;max-height:none!important;min-height:580px!important;height:min(70vh,700px);overflow:hidden!important;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas{min-height:0!important;}
+body[data-screen="rack-builder"] #appRoot.app .rack-cad-workflow{flex-wrap:wrap;}
+body[data-screen="rack-builder"] #appRoot.app .fb-bottom-accordion[open]{overflow:hidden;}
+body[data-screen="rack-builder"] #appRoot.app .fb-parts-details{border:1px solid var(--line);border-radius:10px;margin-top:8px;overflow:hidden;}
+body[data-screen="rack-builder"] #appRoot.app .fb-parts-details>summary{padding:10px 12px;font-size:11px;font-weight:700;color:var(--ink);background:var(--surface-2);cursor:pointer;}
+body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-bom-actions{padding:9px 11px;}
+body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{margin:0 10px 10px;}
+#appRoot.app .library-item-left{display:flex;align-items:center;gap:10px;min-width:0;}
+#appRoot.app .library-item-heading{min-width:0;flex:1;}
+#appRoot.app .library-item-furniture-thumb{flex:0 0 68px;width:68px;height:76px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);overflow:hidden;}
+#appRoot.app .library-furniture-preview{width:100%;height:100%;pointer-events:none;display:block;}
+@media (max-width:1450px){
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-projectbar{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"main" "actions" "meta";}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-actions{justify-content:flex-start;}
+}
+@media (max-width:990px){
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-main{height:auto!important;min-height:0!important;overflow:visible!important;}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-canvas{min-height:510px!important;}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-inspector-col{overflow:visible!important;}
+}
+@media (max-width:640px){
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-main{grid-template-columns:minmax(0,1fr)!important;}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));}
+ body[data-screen="rack-builder"] #appRoot.app .rack-cad-project-actions button{white-space:normal!important;}
+ #appRoot.app .library-item-furniture-thumb{flex-basis:55px;width:55px;height:65px;}
+}
+

@@ -568,7 +568,7 @@
       const modelId=root.querySelector('#vspaceSavedModel')?.value;
       const model=(appState.models||[]).find(m=>m.id===modelId && m?.furniture?.enabled);
       if(!model) return vspaceToast('Selecciona un modelo del constructor.',true);
-      const rack=placeFurnitureModelInLayout(model);
+      const rack=placeFurnitureModelInLayout(model,{navigate:false});
       if(!rack) return;
       state.selectedId=rack.id;
       state.selectedLevel=1;state.selectedSlot=1;

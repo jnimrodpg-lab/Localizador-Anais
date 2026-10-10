@@ -1946,7 +1946,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     if(appRoot) appRoot.dataset.screen = screen;
     if(document?.body) document.body.dataset.screen = screen;
     persistLastAppScreen(screen);
-    menuItems.forEach(i => i.classList.toggle('active', i.dataset.screen === screen));
+    menuItems.forEach(i => i.classList.toggle('active', i.dataset.screen === screen || (screen === 'distribution' && i.dataset.screen === 'layout')));
     renderViewerMenu();
     const showSearch = ['sheet','viewer'].includes(screen);
     const compactViewport = isCompactViewport();
@@ -14897,8 +14897,9 @@ function getSheetBranchOpenMap(){
       <div class="library-item ${m.id===appState.selectedModelId?'active':''} ${open?'open':''}" data-mid="${m.id}">
         <div class="library-item-head" data-library-toggle="${m.id}">
           <div class="library-item-left">
-            <div class="library-item-title">${escapeHtml(m.name)}</div>
-            <div class="library-item-sub">${rackStyleSub(m.style)}</div>
+            ${m.furniture?.enabled ? `<div class="library-item-furniture-thumb" title="Vista del mueble construido"><svg class="library-furniture-preview" data-furniture-thumb="${escapeHtml(m.id)}" viewBox="-140 -260 280 320" aria-label="Miniatura 3D del modelo ${escapeHtml(m.name)}"></svg></div>` : ''}
+            <div class="library-item-heading"><div class="library-item-title">${escapeHtml(m.name)}</div>
+            <div class="library-item-sub">${m.furniture?.enabled ? 'Modelo 3D por piezas' : rackStyleSub(m.style)}</div></div>
           </div>
           <div class="library-inline-meta">
             <span class="library-inline-pill">${m.levels} niveles</span>
@@ -15008,6 +15009,13 @@ function getSheetBranchOpenMap(){
         </div>` : ''}
       </div>`;
     }).join('');
+    // V192: miniaturas reales del mismo modelo paramétrico guardado (no icono genérico).
+    mount.querySelectorAll('svg[data-furniture-thumb]').forEach(svg => {
+      const previewModel=rackModel(svg.dataset.furnitureThumb);
+      if(!previewModel?.furniture?.enabled)return;
+      try{renderFurnitureRackDetail(previewModel.name,null,svg,previewModel,null);}
+      catch(error){console.warn('Miniatura del mueble no disponible:',error);}
+    });
 
     $$('[data-library-toggle]').forEach(head => head.onclick = (e) => {
       if(e.target.closest('[data-library-toggle-btn]')) return;
@@ -15448,6 +15456,10 @@ function getSheetBranchOpenMap(){
     const previewRack = rack ? { ...rack, modelId: previewModel?.id || rack.modelId } : { id: previewModel?.name || 'modelo', modelId: previewModel?.id || activeModelId };
 
     renderRackDetail(rid || previewModel?.name || 'modelo', appState.selectedProduct && rid === appState.selectedProduct.rack ? appState.selectedProduct : null, svg, previewModel, previewRack);
+    if(previewModel?.furniture?.enabled){
+      const thumbnail=Array.from(document.querySelectorAll('svg[data-furniture-thumb]')).find(x=>x.dataset.furnitureThumb===previewModel.id);
+      if(thumbnail)renderFurnitureRackDetail(previewModel.name,null,thumbnail,previewModel,null);
+    }
     detailStatus.textContent = rack ? `${rack.id} • ${previewModel?.name || ''}` : (previewModel?.name || '');
     detailChip.textContent = `${previewModel?.levels || 0} niveles • Piso ${previewModel?.clearance || 0}cm`;
     enableRackPreviewNavigation(svg, previewModel?.id || activeModelId);
@@ -15472,6 +15484,8 @@ function getSheetBranchOpenMap(){
     }
     let view = { x: cx - w / 2, y: cy - h / 2, w, h };
     const model = modelId ? rackModel(modelId) : null;
+    // El render paramétrico ya calcula su encuadre: evitar zoom y desfase heredados.
+    if(model?.furniture?.enabled)return view;
     const styleKind = normalizeRackStyle(model?.style || '');
     if(styleKind === 'metallic' || styleKind === 'melamine' || styleKind === 'wood'){
       const zoomFactor = 0.9;
@@ -15822,19 +15836,53 @@ function getSheetBranchOpenMap(){
     furnitureRefitModel(model);syncFurnitureModelToLegacy(model);saveRackModels();
     renderRackConstructionWorkspace();return piece;
   }
-  function placeFurnitureModelInLayout(model){
-    if(!model||!model.furniture?.enabled)return;
-    if(typeof vspaceIsEditable==='function'&&!vspaceIsEditable())return showToast('Necesitas permisos de administrador para colocar muebles.','warning',2400);
-    if(typeof vspaceFindPosition!=='function')return showToast('El espacio 3D no está disponible.','warning',2000);
+  function placeFurnitureModelInLayout(model, options={}){
+    if(!model||!model.furniture?.enabled)return null;
+    if(typeof vspaceIsEditable==='function'&&!vspaceIsEditable()){
+      showToast('Necesitas permisos de administrador para colocar muebles.','warning',2400);
+      return null;
+    }
+    if(typeof vspaceFindPosition!=='function'){
+      showToast('No está disponible el cálculo de espacios libres.','warning',2200);
+      return null;
+    }
+    const validation=furnitureValidateModel(model);
+    if(validation.errors.length){
+      if(typeof furnitureShowValidation==='function') furnitureShowValidation(model);
+      showToast('Corrige las piezas fuera de volumen antes de colocar el modelo.','warning',2600);
+      return null;
+    }
     const scale=Math.max(.01,getScaleCmPerUnit()),width=Number(model.width||120),depth=Number(model.depth||40);
     const rack={id:'M-'+Date.now().toString(36).toUpperCase(),zoneId:appState.layout?.zones?.[0]?.id||'',modelId:model.id,x:0,y:0,w:width/scale,h:depth/scale,rot:0,baseHeight:0,rackHeight:Number(model.height||200),virtualName:model.name,virtualType:'',virtual:{width,depth,height:Number(model.height||200),levels:Number(model.levels||1),slots:Number(model.slots||1)},virtualPlacements:[],virtualContainers:[],customFurniture:true};
     const spot=vspaceFindPosition(rack);
-    if(!spot)return showToast('No hay espacio libre para este mueble. Amplía la zona o reduce sus medidas.','warning',3300);
-    recordHistorySnapshot('structure');
-    appState.layout.racks.push({...rack,...spot});
-    appState.selectedRackLayoutId=rack.id;saveRackModels();persistActiveLayout();
-    showToast('Mueble colocado. Abre «Diseñar espacio 3D» para verlo y moverlo.','success',2700);
-    return rack;
+    if(!spot){
+      showToast('No hay espacio libre para este mueble. Amplía la zona o reduce sus medidas.','warning',3300);
+      return null;
+    }
+    // La distribución tiene su propio historial: el mueble debe poder deshacerse allí.
+    recordHistorySnapshot('distribution');
+    const instance={...rack,...spot};
+    appState.layout.racks.push(instance);
+    appState.selectedRackLayoutId=instance.id;
+    appState.selectedZoneId=instance.zoneId;
+    appState.selectedStreetId='';
+    if(!appState.editor||typeof appState.editor!=='object')appState.editor={};
+    appState.editor.mode='select';
+    appState.editor.rightPanelOpen=true;
+    appState.editor.presentationMode=false;
+    appState.editor.racksVisible=true;
+    appState.editor.sectionVisible=false;
+    saveRackModels();persistActiveLayout();
+    if(options.navigate!==false && typeof setScreen==='function'){
+      // "Editar layout" en modo racks, para mover, rotar y colocar inmediatamente.
+      appState.editor.viewBoxInitialized=false;
+      appState.editor.viewBoxCustomized=false;
+      setScreen('distribution');
+      showToast('Mueble colocado y seleccionado. Arrástralo en Editar layout para moverlo.','success',3100);
+    }else{
+      showToast('Mueble añadido al almacén.','success',2000);
+    }
+    return instance;
   }
 
   function createNewFurnitureModelForConstruction(){
@@ -16056,10 +16104,10 @@ function getSheetBranchOpenMap(){
       <header class="rack-cad-projectbar">
         <div class="rack-cad-project-main"><select id="rackConstructionModelSelect">${modelOptions}</select><input id="rackConstructionName" value="${escapeHtml(model.name||'')}" aria-label="Nombre del rack"></div>
         <div class="rack-cad-project-meta"><span>${round1(model.width)} × ${round1(model.depth)} × ${round1(model.height)} cm</span><span>${furnitureMaterialLabel(f.material)} · ${round1(f.thickness)} cm</span><span>${levels.length} niveles · ${totalSlots} slots</span></div>
-        <div class="rack-cad-project-actions"><button class="mini-btn" id="rackConstructionNew">Nuevo</button><button class="mini-btn" id="rackConstructionDuplicate">Duplicar</button><button class="mini-btn" id="rackConstructionLibrary">Biblioteca</button><button class="btn" id="rackConstructionSave">Guardar</button><button class="btn rack-builder-primary" id="rackConstructionPlace" ${enabled?'':'disabled'}>Colocar en el almacén</button><button class="mini-btn" id="rackConstructionOpen3D" title="Abrir Diseñar espacio 3D">Ver espacio 3D</button></div>
+        <div class="rack-cad-project-actions"><button class="mini-btn" id="rackConstructionNew">Nuevo</button><button class="mini-btn" id="rackConstructionDuplicate">Duplicar</button><button class="mini-btn" id="rackConstructionLibrary">Biblioteca</button><button class="btn" id="rackConstructionSave">Guardar</button><button class="btn rack-builder-primary" id="rackConstructionPlace" ${enabled?'':'disabled'}>Colocar y editar en layout</button><button class="mini-btn" id="rackConstructionOpen3D" title="Abrir Diseñar espacio 3D">Ver espacio 3D</button></div>
       </header>
       <section class="fb-template-bar"><div><b>Constructor de mobiliario</b><small>Elige el sistema constructivo para generar piezas editables.</small></div><div class="fb-template-actions"><button id="fbNewMelamineShelf" class="mini-btn">+ Estante melamina</button><button id="fbNewCabinet" class="mini-btn">+ Armario melamina</button><button id="fbNewMetalWood" class="mini-btn">+ Metal + madera</button></div></section>
-      ${enabled?`<div class="rack-cad-workflow" role="navigation" aria-label="Pasos de creación"><button type="button" data-fb-step="model">01 · Medidas</button><button type="button" data-fb-step="build">02 · Zócalo y fondo</button><button type="button" data-fb-step="spaces">03 · Divisiones</button><button type="button" data-fb-step="materials">04 · Acabados</button><button type="button" data-fb-step="review">05 · Despiece</button></div><div class="rack-cad-main">
+      ${enabled?`<div class="rack-cad-workflow" role="navigation" aria-label="Pasos de creación"><button type="button" data-fb-step="model">01 · Medidas</button><button type="button" data-fb-step="build">02 · Zócalo y fondo</button><button type="button" data-fb-step="spaces">03 · Divisiones</button><button type="button" data-fb-step="materials">04 · Acabados</button><button type="button" data-fb-step="review">05 · Revisar</button></div><div class="rack-cad-main">
         <aside class="rack-cad-toolrail" aria-label="Herramientas de construcción">
           <div class="fb-rail-title">EDICIÓN</div>
           ${tool('select','↖','Seleccionar')}
@@ -16111,7 +16159,7 @@ function getSheetBranchOpenMap(){
           </section></details>
         </aside>
       </div>
-      <details class="fb-accordion fb-bottom-accordion fb-accordion-review" data-fb-panel="review" ${rb.v191Panels?.review?'open':''}><summary><span><b>05 · Despiece y revisión técnica</b><small>${(f.pieces||[]).length} piezas · Validación y exportación CSV</small></span><span class="fb-chevron">⌄</span></summary><section class="rack-cad-levelbar fb-bom-section"><div class="rack-cad-levelbar-head"><div><b>Despiece y control</b><span>Revisa piezas reales antes de guardar y colocar en Diseñar espacio 3D.</span></div><div class="fb-bom-actions"><button type="button" id="fbValidate" class="mini-btn">Comprobar modelo</button><button type="button" id="fbExportBom" class="mini-btn">Exportar despiece CSV</button></div></div><div id="fbValidationResult" role="status" aria-live="polite"></div><div id="fbPartsList" class="fb-parts-list">${furniturePartsTable(model)}</div></section></details>
+      <details class="fb-accordion fb-bottom-accordion fb-accordion-review" data-fb-panel="review" ${rb.v191Panels?.review?'open':''}><summary><span><b>05 · Verificar y guardar</b><small>${(f.pieces||[]).length} piezas · comprueba el modelo antes de colocarlo</small></span><span class="fb-chevron">⌄</span></summary><section class="rack-cad-levelbar fb-bom-section"><div class="rack-cad-levelbar-head"><div><b>Comprobación del modelo</b><span>Dimensiones y colisiones; el despiece es opcional.</span></div><div class="fb-bom-actions"><button type="button" id="fbValidate" class="mini-btn">Comprobar modelo</button></div></div><div id="fbValidationResult" role="status" aria-live="polite"></div><details class="fb-parts-details"><summary>Ver lista de piezas y exportar CSV (opcional)</summary><div class="fb-bom-actions"><button type="button" id="fbExportBom" class="mini-btn">Exportar CSV</button></div><div id="fbPartsList" class="fb-parts-list">${furniturePartsTable(model)}</div></details></section></details>
       <details class="fb-accordion fb-bottom-accordion fb-accordion-levels" data-fb-panel="levels" ${rb.v191Panels?.levels?'open':''}><summary><span><b>Niveles y ubicaciones</b><small>Capacidad y repisas distribuidas</small></span><span class="fb-chevron">⌄</span></summary><section class="rack-cad-levelbar"><div class="rack-cad-levelbar-head"><div><b>Niveles / espacios</b><span>Se derivan automáticamente de las repisas y divisiones.</span></div><button class="mini-btn" id="rackCadAutoLevels">Distribuir repisas uniformemente</button></div><div id="rackBuilderLevels" class="rack-builder-levels rack-cad-levels"></div></section></details>`:`<div class="rack-assistant-convert"><div><b>Este modelo usa el generador clásico.</b><span>Modelos de rack permanece intacto. Crea una copia editable para usar Visual Furniture CAD.</span></div><button class="btn" data-furniture-action="convert" data-mid="${model.id}">Preparar copia editable</button></div>`}
     </div>`;
     document.getElementById('rackConstructionModelSelect')?.addEventListener('change',e=>{appState.selectedModelId=e.target.value;disposeRackFurniture3DEngine();renderRackConstructionWorkspace();});
@@ -16120,7 +16168,7 @@ function getSheetBranchOpenMap(){
     document.getElementById('rackConstructionDuplicate')?.addEventListener('click',duplicateFurnitureModelForConstruction);
     document.getElementById('rackConstructionLibrary')?.addEventListener('click',()=>setScreen('racks'));
     document.getElementById('rackConstructionSave')?.addEventListener('click',saveFurnitureConstructionModel);
-    document.getElementById('rackConstructionPlace')?.addEventListener('click',()=>{if(furnitureValidateModel(model).errors.length){furnitureShowValidation(model);return;}placeFurnitureModelInLayout(model);});
+    document.getElementById('rackConstructionPlace')?.addEventListener('click',()=>placeFurnitureModelInLayout(model));
     document.getElementById('rackConstructionOpen3D')?.addEventListener('click',()=>setScreen('virtual'));
     bindFurnitureCreationExtras(model,rb);
     // V191: el panel derecho conserva la apertura entre ediciones y Undo/Redo.
@@ -16608,12 +16656,24 @@ function getSheetBranchOpenMap(){
   function renderFurnitureRackDetail(rackId,prod,holder,model,rack){
     if(!holder||!model)return;ensureRackFurnitureModel(model);furnitureRefitModel(model);holder.innerHTML='';holder.setAttribute('preserveAspectRatio','xMidYMid meet');
     const root=svgEl('g',{transform:'translate(0 86)'});holder.appendChild(root);const W=Number(model.width||120),D=Number(model.depth||40),H=Number(model.height||200),baseOffset=Math.max(0,Number(rack?.baseHeight ?? model.clearance ?? 0)||0),pieces=getFurnitureRenderPieces(model);const ox=-W/2,oy=-D/2;
-    const colors=model.furniture.material==='metal'?{top:'#5f7891',front:'#2f526e',side:'#213f58',stroke:'#8ca7bf'}:model.furniture.material==='wood'?{top:'#d9b27d',front:'#b77d43',side:'#8e5f32',stroke:'#6d4524'}:{top:'#eef2f5',front:'#d5dee8',side:'#b7c4d2',stroke:'#8498ad'};
-    const prism=(p,attrs={})=>{const x0=ox+p.x,x1=x0+p.w,y0=oy+p.y,y1=y0+p.d,z0=p.z+baseOffset,z1=p.z+p.h+baseOffset;root.appendChild(face([toIso(x0,y0,z1),toIso(x1,y0,z1),toIso(x1,y1,z1),toIso(x0,y1,z1)],{fill:attrs.top||colors.top,stroke:colors.stroke,'stroke-width':'1'}));root.appendChild(face([toIso(x0,y1,z0),toIso(x1,y1,z0),toIso(x1,y1,z1),toIso(x0,y1,z1)],{fill:attrs.front||colors.front,stroke:colors.stroke,'stroke-width':'.9'}));root.appendChild(face([toIso(x1,y0,z0),toIso(x1,y1,z0),toIso(x1,y1,z1),toIso(x1,y0,z1)],{fill:attrs.side||colors.side,stroke:colors.stroke,'stroke-width':'.9'}));};
-    pieces.filter(p=>p.type==='back').forEach(p=>prism(p,{front:'rgba(127,151,174,.32)',top:'rgba(176,194,210,.36)',side:'rgba(108,132,153,.30)'}));pieces.filter(p=>p.type!=='back'&&p.type!=='brace').forEach(p=>prism(p));pieces.filter(p=>p.type==='brace').forEach(p=>{const a=toIso(ox+Number(p.x||0),oy+D*.1,Number(p.z||0)+baseOffset),b=toIso(ox+Number(p.x2||p.x+p.w||0),oy+D*.1,Number(p.z2||p.z+p.h||0)+baseOffset);root.appendChild(svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:model.furniture.material==='metal'?'#7193ad':'#8b6541','stroke-width':Math.max(2,Number(p.d||2)),'stroke-linecap':'round'}));});
-    const levels=deriveFurnitureLevels(model),selectedLevel=Math.max(1,Number(prod?.nivel||0)||0),selectedSlot=Math.max(1,Number(prod?.slot||0)||0);if(selectedLevel&&selectedSlot){const l=levels.find(x=>x.index===selectedLevel),slot=l?.slots?.[selectedSlot-1];if(l&&slot){const p={x:slot.x0+1,y:D*.08,z:l.z0+1,w:Math.max(1,slot.width-2),d:D*.84,h:Math.max(2,l.height-2)};prism(p,{top:'rgba(196,255,91,.48)',front:'rgba(143,255,91,.34)',side:'rgba(118,238,72,.28)'});}}
-    const floorPt=toIso(0,0,baseOffset-3),floorLabel=svgEl('text',{x:floorPt.x,y:floorPt.y,class:'rack-dim','text-anchor':'middle'});floorLabel.textContent=`Piso ${round1(baseOffset)}cm`;root.appendChild(floorLabel);const base=toIso(0,0,H+baseOffset+14),label=svgEl('text',{x:base.x,y:base.y,class:'rack-title','text-anchor':'middle'});label.textContent=rack?.id||model.name||'Rack';root.appendChild(label);
-    try{const box=root.getBBox();holder.setAttribute('viewBox',`${box.x-32} ${box.y-38} ${Math.max(180,box.width+64)} ${Math.max(220,box.height+78)}`);}catch{holder.setAttribute('viewBox','-240 -360 480 520');}
+    const finish=model.furniture.finish||'oak';
+    const palettes={
+      white:{top:'#f6f4ee',front:'#e6e2d9',side:'#cbc8c1',stroke:'#b7b2a9'},
+      oak:{top:'#e3c49b',front:'#cda77c',side:'#b38b62',stroke:'#9b7650'},
+      walnut:{top:'#a98560',front:'#86603f',side:'#6a4933',stroke:'#5f4330'},
+      graphite:{top:'#6e7478',front:'#4e545a',side:'#3a4148',stroke:'#303840'},
+      metal:{top:'#8999a6',front:'#697c8b',side:'#4e626e',stroke:'#455864'}
+    };
+    const paletteFor=p=>furniturePieceFinish(model,p)==='metal'?palettes.metal:(palettes[finish]||palettes.oak);
+    const prism=(p,attrs={})=>{const colors=paletteFor(p);const x0=ox+p.x,x1=x0+p.w,y0=oy+p.y,y1=y0+p.d,z0=p.z+baseOffset,z1=p.z+p.h+baseOffset;root.appendChild(face([toIso(x0,y0,z1),toIso(x1,y0,z1),toIso(x1,y1,z1),toIso(x0,y1,z1)],{fill:attrs.top||colors.top,stroke:colors.stroke,'stroke-width':'1'}));root.appendChild(face([toIso(x0,y1,z0),toIso(x1,y1,z0),toIso(x1,y1,z1),toIso(x0,y1,z1)],{fill:attrs.front||colors.front,stroke:colors.stroke,'stroke-width':'.9'}));root.appendChild(face([toIso(x1,y0,z0),toIso(x1,y1,z0),toIso(x1,y1,z1),toIso(x1,y0,z1)],{fill:attrs.side||colors.side,stroke:colors.stroke,'stroke-width':'.9'}));};
+    pieces.filter(p=>p.type==='back').forEach(p=>prism(p));pieces.filter(p=>p.type!=='back'&&p.type!=='brace').forEach(p=>prism(p));pieces.filter(p=>p.type==='brace').forEach(p=>{const a=toIso(ox+Number(p.x||0),oy+D*.1,Number(p.z||0)+baseOffset),b=toIso(ox+Number(p.x2||p.x+p.w||0),oy+D*.1,Number(p.z2||p.z+p.h||0)+baseOffset);root.appendChild(svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'#637b87','stroke-width':Math.max(2,Number(p.d||2)),'stroke-linecap':'round'}));});
+    const levels=deriveFurnitureLevels(model),selectedLevel=prod?.nivel?Math.max(1,Number(prod.nivel)||1):0,selectedSlot=prod?.slot?Math.max(1,Number(prod.slot)||1):0;if(selectedLevel&&selectedSlot){const l=levels.find(x=>x.index===selectedLevel),slot=l?.slots?.[selectedSlot-1];if(l&&slot){const p={x:slot.x0+1,y:D*.08,z:l.z0+1,w:Math.max(1,slot.width-2),d:D*.84,h:Math.max(2,l.height-2)};prism(p,{top:'rgba(196,255,91,.48)',front:'rgba(143,255,91,.34)',side:'rgba(118,238,72,.28)'});}}
+    const thumbnail=holder.dataset?.furnitureThumb!==undefined;
+    if(!thumbnail){
+      const floorPt=toIso(0,0,baseOffset-3),floorLabel=svgEl('text',{x:floorPt.x,y:floorPt.y,class:'rack-dim','text-anchor':'middle'});floorLabel.textContent=`Piso ${round1(baseOffset)}cm`;root.appendChild(floorLabel);
+      const base=toIso(0,0,H+baseOffset+14),label=svgEl('text',{x:base.x,y:base.y,class:'rack-title','text-anchor':'middle'});label.textContent=rack?.id||model.name||'Rack';root.appendChild(label);
+    }
+    try{const box=root.getBBox();holder.setAttribute('viewBox',`${box.x-(thumbnail?9:32)} ${box.y-(thumbnail?8:38)} ${Math.max(80,box.width+(thumbnail?18:64))} ${Math.max(120,box.height+(thumbnail?16:78))}`);}catch{holder.setAttribute('viewBox','-240 -300 480 520');}
   }
 /* WMS V161: modelos 3D paramétricos de mobiliario y cajas colocadas sobre niveles.
  * Geometría y materiales creados en Three.js; sin imágenes incrustadas ni modelos remotos.
@@ -17432,7 +17492,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       const modelId=root.querySelector('#vspaceSavedModel')?.value;
       const model=(appState.models||[]).find(m=>m.id===modelId && m?.furniture?.enabled);
       if(!model) return vspaceToast('Selecciona un modelo del constructor.',true);
-      const rack=placeFurnitureModelInLayout(model);
+      const rack=placeFurnitureModelInLayout(model,{navigate:false});
       if(!rack) return;
       state.selectedId=rack.id;
       state.selectedLevel=1;state.selectedSlot=1;

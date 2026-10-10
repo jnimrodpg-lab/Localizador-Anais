@@ -931,7 +931,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     if(appRoot) appRoot.dataset.screen = screen;
     if(document?.body) document.body.dataset.screen = screen;
     persistLastAppScreen(screen);
-    menuItems.forEach(i => i.classList.toggle('active', i.dataset.screen === screen));
+    menuItems.forEach(i => i.classList.toggle('active', i.dataset.screen === screen || (screen === 'distribution' && i.dataset.screen === 'layout')));
     renderViewerMenu();
     const showSearch = ['sheet','viewer'].includes(screen);
     const compactViewport = isCompactViewport();

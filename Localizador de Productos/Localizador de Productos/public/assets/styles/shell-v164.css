@@ -1,0 +1,14 @@
+/* V164 · refinamiento visual global */
+.panel-header{padding:18px 20px}
+.panel-header h2,.panel-header h3{font-size:15px}
+.chip{background:rgba(255,255,255,.05);border-color:rgba(205,225,214,.11)}
+.btn{background:linear-gradient(180deg,#5aa088,#34745f);box-shadow:0 10px 22px rgba(34,109,77,.22)}
+.btn.secondary,.icon-btn.secondary,.action-btn.secondary,.seg-btn{background:linear-gradient(180deg,#16262d,#112027);border:1px solid rgba(205,225,214,.10)}
+input,select,textarea{border-radius:15px}
+.sidebar-top{border-bottom:1px solid rgba(205,225,214,.10)}
+.sidebar-foot{border-top:1px solid rgba(205,225,214,.10)}
+.brand-text .muted{color:#b8c7c0}
+.menu-item{border-radius:16px}
+.content-panel .panel-header,.search-panel .panel-header,.detail-panel .panel-header{backdrop-filter:blur(12px)}
+
+

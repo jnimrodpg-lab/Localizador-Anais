@@ -507,7 +507,13 @@
       const assigned=assignments[0]||null;
       const levels=Array.from({length:sp.levels},(_,i)=>`<button class="${i+1===state.selectedLevel?'active':''}" data-vspace-level="${i+1}">N${i+1}</button>`).join('');
       const slots=Array.from({length:sp.slots},(_,i)=>`<button class="${i+1===state.selectedSlot?'active':''}" data-vspace-slot="${i+1}">P${i+1}</button>`).join('');
+      const groupLevels=rack.stackGroupId?modularStackLevels(rack):[];
+      const groupPanel=groupLevels.length?`<div class="vspace-stack-panel"><b>Conjunto apilado · ${vspaceEsc(rack.stackGroupId)}</b><small class="vspace-muted">${groupLevels.length} niveles · ${groupLevels.map(v=>v.count).join(' / ')} módulos (de abajo hacia arriba)</small>
+        ${groupLevels.slice().reverse().map(level=>`<div class="vspace-stack-level" style="border-left:4px solid ${STACK_LEVEL_COLORS[level.index%STACK_LEVEL_COLORS.length]}"><strong>Nivel ${level.index+1} · ${level.count} módulos</strong><small>NPT +${Math.round(level.npt)} cm</small><div class="vspace-stack-module-buttons">${level.modules.map(m=>`<button type="button" data-vs-modular="${vspaceEsc(m.id)}" class="${m.id===rack.id?'active':''}">${level.index+1}-${String.fromCharCode(65+Number(m.stackModuleIndex||0))}</button>`).join('')}</div></div>`).join('')}
+        <button id="vsEditModularLayout" type="button">Editar conjunto en layout</button>
+        <small class="vspace-muted">Selecciona cada módulo para editar su NPT y materiales. Alt+arrastrar mueve la pila en layout.</small></div>`:'';
       host.innerHTML=`<div class="vspace-inspector-id"><b>${vspaceEsc(sp.title)}</b><small>${vspaceEsc(rack.id)} · ${vspaceEsc(VSPACE_TYPES[sp.kind].name)}</small></div>
+        ${groupPanel}
         <label class="vspace-field">Nombre<input id="vsName" value="${vspaceEsc(sp.title)}" ${lock}></label>
         <div class="vspace-grid-2"><label class="vspace-field">Ancho (cm)<input id="vsWidth" type="number" min="30" max="10000" value="${sp.width}" ${lock}></label><label class="vspace-field">Fondo (cm)<input id="vsDepth" type="number" min="20" max="5000" value="${sp.depth}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">Alto (cm)<input id="vsHeight" type="number" min="30" max="10000" value="${sp.height}" ${lock}></label><label class="vspace-field">Giro (°)<select id="vsRotation" ${lock}>${[0,90,180,270].map(d=>`<option value="${d}" ${Number(rack.rot||0)===d?'selected':''}>${d}°</option>`).join('')}</select></label></div>
@@ -529,6 +535,8 @@
         ${assignments.length>1?`<div class="vspace-muted">${assignments.length} productos importados en esta posición. La asignación manual sustituye la lista mostrada aquí.</div>`:''}
         <div class="vspace-grid-2"><button class="vspace-primary" id="vsAssign" ${lock}>Asignar SKU</button><button id="vsRemoveAssignment" ${lock}>Vaciar posición</button></div>
         <div class="vspace-divider"></div><div class="vspace-grid-2"><button id="vsDuplicate" ${lock}>Duplicar mueble</button><button id="vsDelete" class="vspace-danger" ${lock}>Eliminar mueble</button></div>`;
+      host.querySelectorAll('[data-vs-modular]').forEach(btn=>btn.onclick=()=>{const target=findRackById(btn.dataset.vsModular);if(target)state.select(target.id);});
+      host.querySelector('#vsEditModularLayout')?.addEventListener('click',()=>{appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;appState.editor.stackViewMode='expanded';setScreen('distribution');});
       host.querySelectorAll('[data-vspace-level]').forEach(b=>b.onclick=()=>{state.selectedLevel=Number(b.dataset.vspaceLevel);state.refreshInspector();state.render(false);});
       host.querySelectorAll('[data-vspace-slot]').forEach(b=>b.onclick=()=>{state.selectedSlot=Number(b.dataset.vspaceSlot);state.refreshInspector();state.render(false);});
       host.querySelector('#vsUpdate')?.addEventListener('click',()=>{
@@ -998,6 +1006,14 @@
             shared,block:addBlock,sprite:labelSprite,selected:r.id===state.selectedId,
             selectedLevel:state.selectedLevel,selectedSlot:state.selectedSlot,products:vspaceProductsForSlot
           });
+          // Cinta de nivel física: diferencia N1/N2/N3 sin alterar los materiales del modelo.
+          if(r.stackGroupId){
+            const levelColor=[0x4a86c5,0x59a66e,0xe79a45,0x9675bc,0x5096a4,0xc47c8a][Math.max(0,Number(r.stackLevel||0))%6];
+            const markerMat=new THREE.MeshStandardMaterial({color:levelColor,roughness:.72,metalness:.08});
+            const strip=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.06,spec.width/100-.012),.013,.014),markerMat);
+            strip.position.set(0,.025,spec.depth/200+.014);
+            group.add(strip);
+          }
           world.add(group);state.objects.set(r.id,group);
         };
         const rebuild=()=>{

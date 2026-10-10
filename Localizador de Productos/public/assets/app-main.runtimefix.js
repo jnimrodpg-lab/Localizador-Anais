@@ -3313,11 +3313,147 @@ const DEFAULT_GRID_SIZE = 2;
     return { w, h, baseW: base.w, baseH: base.h };
   }
 
+  // V195 — apilamiento modular: un grupo puede tener distintos módulos por nivel.
+  const STACK_LEVEL_COLORS = Object.freeze(['#4a86c5','#59a66e','#e79a45','#9675bc','#5096a4','#c47c8a']);
+  function modularStackMembers(rackOrGroupId){
+    const key=typeof rackOrGroupId==='string'?rackOrGroupId:rackOrGroupId?.stackGroupId;
+    if(!key)return [];
+    return (appState.layout?.racks||[]).filter(r=>r.stackGroupId===key).sort((a,b)=>
+      (Number(a.stackLevel||0)-Number(b.stackLevel||0)) || (Number(a.stackModuleIndex||0)-Number(b.stackModuleIndex||0)));
+  }
+  function modularStackLevels(rack){
+    const members=modularStackMembers(rack);
+    return [...new Set(members.map(r=>Number(r.stackLevel||0)))].sort((a,b)=>a-b).map(n=>{
+      const modules=members.filter(r=>Number(r.stackLevel||0)===n);
+      return {index:n,modules,count:modules.length,npt:Math.min(...modules.map(r=>Number(r.baseHeight||0))),
+        height:Math.max(...modules.map(r=>Number(r.rackHeight||0)))};
+    });
+  }
+  function modularStackBounds(members){
+    if(!members.length)return null;
+    const rects=members.map(r=>({x:Number(r.x||0),y:Number(r.y||0),right:Number(r.x||0)+Number(r.w||0),bottom:Number(r.y||0)+Number(r.h||0)}));
+    const x=Math.min(...rects.map(v=>v.x)),y=Math.min(...rects.map(v=>v.y));
+    const right=Math.max(...rects.map(v=>v.right)),bottom=Math.max(...rects.map(v=>v.bottom));
+    return {x,y,w:right-x,h:bottom-y,cx:(x+right)/2,cy:(y+bottom)/2};
+  }
+  function modularStackIsValid(proposals,groupId='',ignoreRackIds=[]){
+    // NPT + geometría XY; solo se ignoran las instancias que van a ser reemplazadas.
+    const skipIds=new Set(ignoreRackIds);
+    const outsiders=(appState.layout?.racks||[]).filter(r=>r.stackGroupId!==groupId && !skipIds.has(r.id));
+    for(const p of proposals){
+      const zone=findZoneById(p.zoneId);
+      if(!zone||!rackFullyInsideZone(p,zone))return {ok:false,msg:'El conjunto no cabe dentro de la zona. Reduce el ancho de módulo o cambia su centro.'};
+      for(const other of outsiders){
+        const lo=Number(p.baseHeight||0), hi=lo+Number(p.rackHeight||0),
+              olo=Number(other.baseHeight||0), ohi=olo+Number(other.rackHeight||rackModel(other.modelId)?.height||200);
+        if(hi<=olo+.5||ohi<=lo+.5)continue;
+        if(Number(p.x)<Number(other.x)+Number(other.w)-1 && Number(p.x)+Number(p.w)>Number(other.x)+1 &&
+           Number(p.y)<Number(other.y)+Number(other.h)-1 && Number(p.y)+Number(p.h)>Number(other.y)+1)
+          return {ok:false,msg:`Interferencia con ${other.id}. Mueve el conjunto a una zona libre.`};
+      }
+    }
+    // Módulos del mismo nivel tampoco pueden interpenetrarse.
+    for(let i=0;i<proposals.length;i++)for(let j=i+1;j<proposals.length;j++){
+      const a=proposals[i],b=proposals[j];
+      if(Number(a.stackLevel)!==Number(b.stackLevel))continue;
+      if(a.x < b.x+b.w-.4 && a.x+a.w > b.x+.4 && a.y < b.y+b.h-.4 && a.y+a.h > b.y+.4)
+        return {ok:false,msg:'Los módulos del mismo nivel están superpuestos.'};
+    }
+    return {ok:true,msg:''};
+  }
+  function applyModularStack(rackId,counts=[2,3,2],settings={}){
+    const source=findRackById(rackId);if(!source)return {ok:false,msg:'Selecciona primero un rack.'};
+    const values=(Array.isArray(counts)?counts:[2,3,2]).map(n=>Math.max(1,Math.min(8,Math.floor(Number(n)||1)))).slice(0,6);
+    const existing=modularStackMembers(source);
+    const previous=existing.length?existing:[source];
+    const groupId=source.stackGroupId||`G-${source.id}`;
+    const anchor=existing.find(r=>Number(r.stackLevel||0)===0 && Number(r.stackModuleIndex||0)===0)||source;
+    const originalBox=modularStackBounds(previous);
+    const origin={x:Number(settings.centerX??originalBox?.cx??(source.x+source.w/2)),y:Number(settings.centerY??originalBox?.cy??(source.y+source.h/2))};
+    const scale=Math.max(.01,getScaleCmPerUnit());
+    const widthCm=Math.max(20,Math.min(800,Number(settings.widthCm||source.virtual?.width||rackModel(source.modelId)?.width||120)));
+    const depthCm=Math.max(20,Math.min(500,Number(settings.depthCm||source.virtual?.depth||rackModel(source.modelId)?.depth||60)));
+    const gapCm=Math.max(0,Math.min(100,Number(settings.gapCm??2)));
+    const levelHeightCm=Math.max(30,Math.min(600,Number(settings.levelHeightCm||existing[0]?.rackHeight||Math.round(Number(source.rackHeight||rackModel(source.modelId)?.height||240)/values.length))));
+    const baseNpt=Math.max(0,Number(settings.baseNpt??(existing.length?Math.min(...existing.map(r=>Number(r.baseHeight||0))):Number(source.baseHeight||0))));
+    const align=['left','center','right'].includes(settings.align)?settings.align:'center';
+    const angle=normalizeAngle(Number(settings.rot??anchor.rot??0));
+    const rad=angle*Math.PI/180,cos=Math.cos(rad),sin=Math.sin(rad),w=widthCm/scale,d=depthCm/scale,gap=gapCm/scale;
+    const widest=Math.max(...values)*(w+gap)-gap;
+    const retained=new Map(existing.map(r=>[`${r.stackLevel}:${r.stackModuleIndex}`,r]));
+    const prototypes=[];
+    let npt=baseNpt;
+    values.forEach((count,li)=>{
+      const rowWidth=count*w+(count-1)*gap;
+      const offset=align==='left'?-widest/2:align==='right'?widest/2-rowWidth:-rowWidth/2;
+      for(let mi=0;mi<count;mi++){
+        const old=retained.get(`${li}:${mi}`);
+        const template=old||anchor;
+        const localX=offset+mi*(w+gap)+w/2;
+        const rx=localX*cos,ry=localX*sin;
+        const cx=origin.x+rx,cy=origin.y+ry;
+        const dw=Math.abs(w*cos)+Math.abs(d*sin),dh=Math.abs(w*sin)+Math.abs(d*cos);
+        const rack={...template,
+          stackGroupId:groupId,stackLevel:li,stackModuleIndex:mi,
+          x:cx-dw/2,y:cy-dh/2,w:dw,h:dh,rot:angle,
+          zoneId:source.zoneId,baseHeight:npt,rackHeight:levelHeightCm,
+          virtual:{...(template.virtual||{}),width:widthCm,depth:depthCm,height:levelHeightCm}
+        };
+        prototypes.push({rack,reuseId:old?.id||(li===0&&mi===0?anchor.id:'')});
+      }
+      npt+=levelHeightCm;
+    });
+    const proposals=prototypes.map(x=>x.rack);
+    const check=modularStackIsValid(proposals,groupId,previous.map(r=>r.id));
+    if(!check.ok)return check;
+    const oldIds=new Set(previous.map(r=>r.id));
+    const otherIds=new Set((appState.layout?.racks||[]).filter(r=>!oldIds.has(r.id)).map(r=>r.id));
+    let seq=1;
+    const newRacks=prototypes.map(({rack,reuseId})=>{
+      let id=reuseId;
+      if(!id){ do{id=`${source.id}-S${seq++}`;}while(otherIds.has(id)); }
+      otherIds.add(id);
+      return {...rack,id};
+    });
+    const keepIds=new Set(newRacks.map(r=>r.id));
+    const removed=previous.filter(r=>!keepIds.has(r.id));
+    const usedRemoved=removed.find(r=>
+      (r.virtualPlacements||[]).length || (r.virtualContainers||[]).length ||
+      (appState.products||[]).some(p=>String(p.rack||p.rackStore||'')===r.id));
+    if(usedRemoved)return {ok:false,msg:`El módulo ${usedRemoved.id} contiene ubicaciones o productos. Reubícalos antes de reducir el conjunto.`};
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+    appState.layout.racks=(appState.layout.racks||[]).filter(r=>!oldIds.has(r.id)).concat(newRacks);
+    appState.selectedRackLayoutId=newRacks[0].id;
+    appState.selectedZoneId=source.zoneId;
+    appState.editor.stackViewMode='compact';
+    persistActiveLayout();
+    return {ok:true,members:newRacks,groupId};
+  }
+  function moveModularStack(groupId,dx,dy){
+    const group=modularStackMembers(groupId);
+    if(!group.length)return {ok:false,msg:'No existe el conjunto.'};
+    const trial=group.map(r=>({...r,x:Number(r.x||0)+dx,y:Number(r.y||0)+dy}));
+    const check=modularStackIsValid(trial,groupId);
+    if(!check.ok)return check;
+    group.forEach((r,i)=>{r.x=trial[i].x;r.y=trial[i].y;});
+    return {ok:true};
+  }
+  function dissolveModularStack(groupId){
+    const members=modularStackMembers(groupId);
+    if(!members.length)return;
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+    members.forEach(r=>{delete r.stackGroupId;delete r.stackModuleIndex;delete r.stackLevel;});
+    persistActiveLayout();
+  }
   function getRackStackLevel(rack){
     return Math.max(0, parseInt(rack?.stackLevel || 0, 10) || 0);
   }
   function racksCanOverlapByLevel(a, b){
-    return getRackStackLevel(a) !== getRackStackLevel(b);
+    // La única superposición permitida es entre intervalos verticales separados.
+    const aMin=Number(a?.baseHeight||0),bMin=Number(b?.baseHeight||0);
+    const aMax=aMin+Math.max(1,Number(a?.rackHeight||a?.virtual?.height||rackModel(a?.modelId)?.height||200));
+    const bMax=bMin+Math.max(1,Number(b?.rackHeight||b?.virtual?.height||rackModel(b?.modelId)?.height||200));
+    return aMax<=bMin+.5 || bMax<=aMin+.5;
   }
   function rackStackKey(r){
     return [String(r.zoneId||''), Math.round(Number(r.x||0)), Math.round(Number(r.y||0))].join('|');
@@ -3336,9 +3472,9 @@ const DEFAULT_GRID_SIZE = 2;
     const members = Array.isArray(group) ? group.slice().sort((a,b) => (getRackStackLevel(a) - getRackStackLevel(b)) || (a.id > b.id ? 1 : -1)) : [];
     if(!members.length) return;
     if(members.length === 1){
+      // V195: respetar el NPT introducido manualmente por el usuario.
       const only = members[0];
-      const h = Math.max(60, Number(only.rackHeight || rackModel(only.modelId)?.height || 240) || 240);
-      only.baseHeight = getRackStackLevel(only) * h;
+      only.baseHeight = Math.max(0, Number(only.baseHeight||0));
       return;
     }
     let cumulative = 0;
@@ -3351,6 +3487,7 @@ const DEFAULT_GRID_SIZE = 2;
   function recalcAllRackStackHeights(){
     const groups = new Map();
     (appState.layout?.racks || []).forEach(r => {
+      if(r.stackGroupId)return; // NPT y niveles del grupo modular son independientes.
       const key = rackStackKey(r);
       if(!groups.has(key)) groups.set(key, []);
       groups.get(key).push(r);
@@ -3370,6 +3507,20 @@ const DEFAULT_GRID_SIZE = 2;
   function duplicateRackAbove(rackId){
     const rack = findRackById(rackId);
     if(!rack) return;
+    if(rack.stackGroupId){
+      const levels=modularStackLevels(rack),members=modularStackMembers(rack);
+      if(levels.length>=6){showToast('Máximo 6 niveles por conjunto.','warning',2400);return;}
+      const box=modularStackBounds(members),base=levels[0]?.modules?.[0]||rack;
+      const u=Math.max(.01,getScaleCmPerUnit());
+      const result=applyModularStack(rack.id,[...levels.map(l=>l.count),1],{
+        centerX:box.cx,centerY:box.cy,widthCm:base.virtual?.width||rackModel(base.modelId)?.width||120,
+        depthCm:base.virtual?.depth||rackModel(base.modelId)?.depth||60,
+        levelHeightCm:base.rackHeight,baseNpt:levels[0].npt,gapCm:2,align:'center'
+      });
+      if(!result.ok)showToast(result.msg,'warning',3000);
+      else renderLayoutEditor();
+      return;
+    }
     const zone = findZoneById(rack.zoneId);
     if(!zone) return;
     const cloneRack = clone(rack);
@@ -9797,6 +9948,8 @@ function getSheetBranchOpenMap(){
     if(appState.editor.selectedMeasurementId === undefined) appState.editor.selectedMeasurementId = '';
     if(appState.selectedRoomId === undefined) appState.selectedRoomId = '';
     if(appState.selectedStreetId === undefined) appState.selectedStreetId = '';
+    if(!appState.editor.stackViewMode) appState.editor.stackViewMode='compact';
+    if(appState.editor.selectedStackLevel===undefined) appState.editor.selectedStackLevel=0;
     if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
     if(appState.editor.editSiteBoundary === undefined) appState.editor.editSiteBoundary=false;
     if(appState.editor.structureClipboard === undefined) appState.editor.structureClipboard = null;
@@ -11364,6 +11517,51 @@ function getSheetBranchOpenMap(){
     return `<label class="layout-layer-toggle"><input type="checkbox" id="${id}" ${checked?'checked':''}><span>${label}</span></label>`;
   }
 
+  function modularStackCard(rack){
+    if(!rack)return '';
+    const members=modularStackMembers(rack);
+    const levels=modularStackLevels(rack);
+    const counts=levels.length?levels.map(l=>l.count):[2,3,2];
+    const sample=levels.length?levels[0].modules[0]:rack;
+    const moduleWidth=Math.round(Number(sample.virtual?.width||rackModel(sample.modelId)?.width||sample.w||120));
+    const moduleDepth=Math.round(Number(sample.virtual?.depth||rackModel(sample.modelId)?.depth||sample.h||60));
+    const levelH=Math.round(Number(sample.rackHeight||80));
+    const npt=levels.length?Math.round(levels[0].npt):Math.round(Number(rack.baseHeight||0));
+    const wholeW=levels.length?Math.round(Math.max(...levels.map(l=>l.count))*moduleWidth):moduleWidth*3;
+    const totalH=levels.length?Math.round(levels[levels.length-1].npt+levels[levels.length-1].height-npt):levelH*3;
+    const blocks=counts.map((count,index)=>{
+      const y=8+(counts.length-1-index)*38;
+      const size=Math.min(46,212/Math.max(...counts));
+      const left=(236-count*size)/2;
+      return `<g><text x="5" y="${y+20}" fill="#596659" font-size="10" font-weight="700">N${index+1}</text>${Array.from({length:count},(_,mi)=>`<rect x="${left+mi*size}" y="${y}" width="${size-3}" height="31" rx="3" stroke="#fff" stroke-width="1.5" fill="${STACK_LEVEL_COLORS[index%STACK_LEVEL_COLORS.length]}"/><text x="${left+mi*size+(size-3)/2}" y="${y+20}" fill="white" text-anchor="middle" font-size="10" font-weight="700">${index+1}${String.fromCharCode(65+mi)}</text>`).join('')}</g>`;
+    }).join('');
+    const activeLevel=Math.max(0,Number(appState.editor.selectedStackLevel||0));
+    return `<section class="layout-prop-card modular-stack-card">
+      <div class="layout-prop-title">Apilamiento modular ${members.length?`· ${escapeHtml(rack.stackGroupId)}`:''}</div>
+      <div class="tiny muted" style="margin-bottom:9px">Cada nivel puede tener diferente cantidad de módulos. El conjunto conserva sus piezas y materiales en 3D.</div>
+      <div class="modular-stack-modes">
+        <button type="button" id="stackCompact" class="seg-btn ${appState.editor.stackViewMode!=='expanded'?'active':''}">Planta compacta</button>
+        <button type="button" id="stackExpanded" class="seg-btn ${appState.editor.stackViewMode==='expanded'?'active':''}">Ver niveles</button>
+      </div>
+      <div class="modular-stack-preview"><svg viewBox="0 0 250 ${Math.max(135,counts.length*38+16)}" role="img" aria-label="Elevación de conjunto apilado">${blocks}</svg><div class="tiny muted">${counts.join(' / ')} · ${wholeW} cm ancho · ${totalH} cm alto</div></div>
+      <div class="layout-prop-grid two" style="margin-top:10px">
+        <label>Cantidad por nivel<input id="stackCounts" type="text" value="${counts.join(',')}" placeholder="2,3,2" title="De abajo hacia arriba"></label>
+        <label>Ancho de módulo (cm)<input id="stackWidth" type="number" min="20" max="800" value="${moduleWidth}"></label>
+        <label>Profundidad (cm)<input id="stackDepth" type="number" min="20" max="500" value="${moduleDepth}"></label>
+        <label>Altura por nivel (cm)<input id="stackLevelHeight" type="number" min="30" max="600" value="${members.length?levelH:Math.max(30,Math.round(levelH/3))}"></label>
+        <label>Separación (cm)<input id="stackGap" type="number" min="0" max="100" value="2"></label>
+        <label>Base NPT (cm)<input id="stackBaseNpt" type="number" min="0" max="20000" value="${npt}"></label>
+        <label>Centro X (cm)<input id="stackCenterX" type="number" value="${Math.round((modularStackBounds(members.length?members:[rack])?.cx||0)*getScaleCmPerUnit())}"></label>
+        <label>Centro Y (cm)<input id="stackCenterY" type="number" value="${Math.round((modularStackBounds(members.length?members:[rack])?.cy||0)*getScaleCmPerUnit())}"></label>
+        <label style="grid-column:1/-1">Alineación<select id="stackAlign"><option value="center">Centrado</option><option value="left">Izquierda</option><option value="right">Derecha</option></select></label>
+      </div>
+      <div class="layout-template-grid" style="margin-top:10px"><button class="seg-btn primary" id="stackApply">${members.length?'Actualizar conjunto':'Crear conjunto 2 / 3 / 2'}</button>${members.length?'<button class="seg-btn" id="stackDissolve">Desagrupar módulos</button>':''}</div>
+      ${members.length?`<div class="modular-stack-levels"><b>Niveles y módulos</b>${levels.slice().reverse().map(level=>`<div class="modular-stack-level"><div class="modular-stack-level-head" style="border-left:4px solid ${STACK_LEVEL_COLORS[level.index%STACK_LEVEL_COLORS.length]}">Nivel ${level.index+1} · ${level.count} módulos <span>NPT +${Math.round(level.npt)} cm</span></div><div class="modular-stack-member-grid">${level.modules.map(m=>`<button type="button" class="seg-btn ${m.id===rack.id?'active':''}" data-modular-rack="${escapeHtml(m.id)}" title="Seleccionar ${escapeHtml(m.id)}">${level.index+1}-${String.fromCharCode(65+Number(m.stackModuleIndex||0))}</button>`).join('')}</div></div>`).join('')}</div>
+      <div class="layout-prop-grid two" style="margin-top:9px"><label>Mover X (cm)<input type="number" id="stackMoveX" value="0"></label><label>Mover Y (cm)<input type="number" id="stackMoveY" value="0"></label></div><button type="button" class="seg-btn" id="stackMoveApply">Mover conjunto con snap</button>
+      <div class="tiny muted" style="margin-top:9px">Alt + arrastrar mueve el conjunto. La estabilidad estructural de salientes y apoyos debe verificarse antes de construir.</div>`:''}
+    </section>`;
+  }
+
   function renderLayoutRightPanelMarkup(){
     ensureLayoutEditorState();
     const zone = findZoneById(appState.selectedZoneId);
@@ -11386,6 +11584,7 @@ function getSheetBranchOpenMap(){
           <div class="layout-selected-title">${escapeHtml(summary.title)}</div>
 
         </section>
+        ${rack ? modularStackCard(rack) : ''}
         <section class="layout-prop-card">
           <div class="layout-prop-title">Capas visibles</div>
           <div class="layout-layer-grid">
@@ -11589,6 +11788,40 @@ function getSheetBranchOpenMap(){
       rightScroller.scrollTop = appState.editor?.rightPanelScrollTop || 0;
       rightScroller.onscroll = () => { appState.editor.rightPanelScrollTop = rightScroller.scrollTop || 0; };
     }
+    const stackRack=findRackById(appState.selectedRackLayoutId);
+    if($('#stackCompact')) $('#stackCompact').onclick=()=>{appState.editor.stackViewMode='compact';renderLayoutEditor();};
+    if($('#stackExpanded')) $('#stackExpanded').onclick=()=>{appState.editor.stackViewMode='expanded';renderLayoutEditor();};
+    if($('#stackApply')) $('#stackApply').onclick=()=>{
+      if(!stackRack)return;
+      const text=String($('#stackCounts')?.value||'2,3,2').trim();
+      if(!/^\d+(\s*,\s*\d+){0,5}$/.test(text)){showToast('Introduce cantidades separadas por comas, por ejemplo: 2,3,2.','warning',2800);return;}
+      const counts=text.split(',').map(v=>Number(v.trim()));
+      if(counts.some(n=>n<1||n>8)){showToast('Cada nivel admite de 1 a 8 módulos.','warning',2600);return;}
+      const options={widthCm:Number($('#stackWidth')?.value||120),depthCm:Number($('#stackDepth')?.value||60),levelHeightCm:Number($('#stackLevelHeight')?.value||80),gapCm:Number($('#stackGap')?.value||2),baseNpt:Number($('#stackBaseNpt')?.value||0),align:$('#stackAlign')?.value||'center',centerX:Number($('#stackCenterX')?.value||0)/Math.max(.01,getScaleCmPerUnit()),centerY:Number($('#stackCenterY')?.value||0)/Math.max(.01,getScaleCmPerUnit())};
+      const result=applyModularStack(stackRack.id,counts,options);
+      if(!result.ok){showToast(result.msg,'warning',3700);return;}
+      showToast(`Conjunto creado: ${counts.join(' / ')} módulos por nivel.`,'success',2800);
+      renderLayoutEditor();
+    };
+    if($('#stackDissolve')) $('#stackDissolve').onclick=()=>{if(!stackRack?.stackGroupId)return;dissolveModularStack(stackRack.stackGroupId);renderLayoutEditor();};
+    if($('#stackMoveApply')) $('#stackMoveApply').onclick=()=>{
+      if(!stackRack?.stackGroupId)return;
+      const u=Math.max(.01,getScaleCmPerUnit());
+      const dx=snapGrid(Number($('#stackMoveX')?.value||0)/u),dy=snapGrid(Number($('#stackMoveY')?.value||0)/u);
+      if(!dx&&!dy)return;
+      const group=modularStackMembers(stackRack); const original=group.map(r=>({x:r.x,y:r.y}));
+      const moved=moveModularStack(stackRack.stackGroupId,dx,dy);
+      if(!moved.ok){showToast(moved.msg,'warning',3200);return;}
+      group.forEach((r,i)=>{r.x=original[i].x;r.y=original[i].y;});
+      recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+      group.forEach((r,i)=>{r.x=original[i].x+dx;r.y=original[i].y+dy;});
+      persistActiveLayout();renderLayoutEditor();
+    };
+    document.querySelectorAll('[data-modular-rack]').forEach(btn=>btn.onclick=()=>{
+      const target=findRackById(btn.getAttribute('data-modular-rack'));if(!target)return;
+      appState.selectedRackLayoutId=target.id;appState.editor.selectedStackLevel=getRackStackLevel(target);
+      renderLayoutEditor();
+    });
     const bindCheck = (id, key, rerender=true) => {
       const el = document.getElementById(id);
       if(!el) return;
@@ -13037,11 +13270,18 @@ function getSheetBranchOpenMap(){
 
     const v117ConflictRacks = v117ConflictRackIds();
     if(appState.editor.racksVisible !== false) appState.layout.racks.forEach(r => {
+      if(r.stackGroupId && appState.editor.stackViewMode!=='expanded'){
+        const lastLevel=Math.max(...modularStackMembers(r).map(x=>Number(x.stackLevel||0)));
+        if(Number(r.stackLevel||0)!==lastLevel && r.id!==appState.selectedRackLayoutId)return;
+      }
       r.rot = normalizeAngle(r.rot || 0);
       r.front = r.front || 'top';
       const fp = getRackFootprint(r.modelId, r.rot || 0);
-      const baseW = fp.baseW, baseH = fp.baseH;
-      const bboxW = fp.w || r.w || baseW, bboxH = fp.h || r.h || baseH;
+      const unitScale=Math.max(.01,getScaleCmPerUnit());
+      const baseW = r.stackGroupId ? Number(r.virtual?.width||120)/unitScale : fp.baseW;
+      const baseH = r.stackGroupId ? Number(r.virtual?.depth||60)/unitScale : fp.baseH;
+      const bboxW = r.stackGroupId ? Number(r.w||fp.w) : (fp.w || r.w || baseW);
+      const bboxH = r.stackGroupId ? Number(r.h||fp.h) : (fp.h || r.h || baseH);
       const cx = r.x + bboxW/2, cy = r.y + bboxH/2;
       const g = svgEl('g',{
         class:'layout-rack-wrap',
@@ -13085,7 +13325,7 @@ function getSheetBranchOpenMap(){
         x:0,y:4,class:'ortho-label','text-anchor':'middle','dominant-baseline':'middle',
         style:'pointer-events:none', transform:`rotate(${-normalizeAngle(r.rot||0)})`
       });
-      t.textContent = r.id;
+      t.textContent = r.stackGroupId?`N${Number(r.stackLevel||0)+1}-${String.fromCharCode(65+Number(r.stackModuleIndex||0))}`:r.id;
       const baseHVal = Math.round(Number(r.baseHeight || 0));
       const levelBadge = svgEl('g',{transform:`translate(${-visualW/2 + 18} ${-visualH/2 + 10})`,style:'pointer-events:none'});
       levelBadge.appendChild(svgEl('rect',{x:-18,y:-12,width:36,height:18,rx:'9',fill:'rgba(8,18,30,.95)',stroke:'#56d2ff','stroke-width':'1'}));
@@ -13112,11 +13352,43 @@ function getSheetBranchOpenMap(){
         g.appendChild(stackBadge);
       }
       g.append(hit, body, outline, frontLine, frontArrow, t);
+      if(r.stackGroupId){
+        g.appendChild(svgEl('rect',{x:-visualW/2,y:-visualH/2,width:Math.min(7,visualW*.08),height:visualH,rx:'2',fill:STACK_LEVEL_COLORS[Number(r.stackLevel||0)%STACK_LEVEL_COLORS.length],style:'pointer-events:none'}));
+      }
       g.addEventListener('pointerdown', e => startRackDrag(e, r.id));
       if(isRackDistributionScreen()) g.addEventListener('dblclick', e => { e.stopPropagation(); openStackMenuForRack(r.id, e); renderLayoutStackMenu(); renderLayoutInspector(); });
       rackLayer.appendChild(g);
     });
 
+
+    // V195: resumen compacto de grupos apilados sobre la huella global.
+    if(appState.editor.racksVisible!==false){
+      const groups=new Map();
+      (appState.layout.racks||[]).forEach(r=>{if(r.stackGroupId){if(!groups.has(r.stackGroupId))groups.set(r.stackGroupId,[]);groups.get(r.stackGroupId).push(r);}});
+      groups.forEach((members,key)=>{
+        const box=modularStackBounds(members);if(!box)return;
+        const levels=modularStackLevels(members[0]);
+        const expanded=appState.editor.stackViewMode==='expanded';
+        const outline=svgEl('rect',{x:box.x-4,y:box.y-4,width:box.w+8,height:box.h+8,rx:'5',fill:'none',stroke:'#257d70','stroke-width':'2','stroke-dasharray':expanded?'4 5':'8 4',style:'pointer-events:none'});
+        guideLayer.appendChild(outline);
+        const width=Math.max(105,Math.min(215,box.w));
+        const tag=svgEl('g',{transform:`translate(${box.cx-width/2} ${box.y-40})`,style:'cursor:pointer'});
+        tag.appendChild(svgEl('rect',{width:width,height:35,rx:'9',fill:'rgba(14,49,45,.95)',stroke:'#49ae94','stroke-width':'1.4'}));
+        const text=svgEl('text',{x:width/2,y:13,'text-anchor':'middle',fill:'#fff',style:'font-size:10px;font-weight:800'});
+        text.textContent=`${key.slice(0,19)} · ${levels.length} niveles`;
+        tag.appendChild(text);
+        const small=svgEl('text',{x:width/2,y:27,'text-anchor':'middle',fill:'#e8f4dc',style:'font-size:10px;font-weight:700'});
+        small.textContent=levels.map(l=>l.count).join(' / ');
+        tag.appendChild(small);
+        tag.addEventListener('pointerdown',evt=>{
+          evt.stopPropagation();evt.preventDefault();
+          const first=members.slice().sort((a,b)=>a.stackLevel-b.stackLevel)[0];
+          if(!first)return;appState.selectedRackLayoutId=first.id;appState.selectedZoneId=first.zoneId;
+          appState.editor.stackViewMode=expanded?'compact':'expanded';renderLayoutEditor();
+        });
+        streetHandleLayer.appendChild(tag);
+      });
+    }
 
     // Vista fantasma del mueble pendiente: mismo footprint del modelo, no persiste hasta hacer clic.
     if(isRackDistributionScreen() && appState.editor?.pendingFurnitureModelId){
@@ -13825,6 +14097,13 @@ function getSheetBranchOpenMap(){
     const rack = findRackById(rackId);
     if(!rack) return;
     closeStackMenu();
+    if(e.altKey && rack.stackGroupId){
+      const members=modularStackMembers(rack);
+      const svg=$('#layoutSvg'),p=svgPoint(e,svg);
+      appState.selectedRackLayoutId=rack.id;
+      appState.editor.dragging={type:'modular-stack',groupId:rack.stackGroupId,start:p,originals:members.map(m=>({id:m.id,x:m.x,y:m.y}))};
+      renderLayoutSvg(svg);renderLayoutSection();renderLayoutInspector();return;
+    }
     if(e.shiftKey){
       toggleRackSelection(rackId);
       appState.selectedZoneId = rack.zoneId;
@@ -13964,6 +14243,14 @@ function getSheetBranchOpenMap(){
       else setOpeningPositionFromPoint(opening, p);
       clearRackSnapPreview();
       renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
+    } else if(d.type === 'modular-stack'){
+      const members=modularStackMembers(d.groupId);
+      const dx=snapGrid(p.x-d.start.x),dy=snapGrid(p.y-d.start.y);
+      const trial=members.map(r=>{const old=d.originals.find(x=>x.id===r.id)||r;return {...r,x:old.x+dx,y:old.y+dy};});
+      const check=modularStackIsValid(trial,d.groupId);
+      if(check.ok){members.forEach((r,i)=>{r.x=trial[i].x;r.y=trial[i].y;});d.lastValid={dx,dy};}
+      d.blocked=!check.ok;
+      renderLayoutSvg(svg);renderLayoutSection();
     } else if(d.type === 'rack-group'){
       const rawDX=p.x-d.start.x, rawDY=p.y-d.start.y;
       (d.rackIds||[]).forEach(id=>{ const rack=findRackById(id), orig=d.originals?.[id]; if(!rack||!orig)return; rack.x=snapGrid(orig.x+rawDX); rack.y=snapGrid(orig.y+rawDY); const host=findZoneById(orig.zoneId)||findZoneById(rack.zoneId); if(host){rack.zoneId=host.id; if(!rackFullyInsideZone(rack,host)){rack.x=orig.x;rack.y=orig.y;rack.zoneId=orig.zoneId;}} });
@@ -14001,6 +14288,13 @@ function getSheetBranchOpenMap(){
         const cut = getSectionCut(d.axis, zone);
         cut.dir *= -1;
       }
+    }
+    if(d && d.type==='modular-stack' && d.lastValid && (d.lastValid.dx||d.lastValid.dy)){
+      const members=modularStackMembers(d.groupId);
+      const final=members.map(r=>({id:r.id,x:r.x,y:r.y}));
+      members.forEach(r=>{const old=d.originals.find(v=>v.id===r.id);if(old){r.x=old.x;r.y=old.y;}});
+      recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+      members.forEach(r=>{const moved=final.find(v=>v.id===r.id);if(moved){r.x=moved.x;r.y=moved.y;}});
     }
     if(d && d.type==='rack-group'){
       normalizeZoneAndRackIds(); v117RunValidation({quiet:true});
@@ -17609,7 +17903,13 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       const assigned=assignments[0]||null;
       const levels=Array.from({length:sp.levels},(_,i)=>`<button class="${i+1===state.selectedLevel?'active':''}" data-vspace-level="${i+1}">N${i+1}</button>`).join('');
       const slots=Array.from({length:sp.slots},(_,i)=>`<button class="${i+1===state.selectedSlot?'active':''}" data-vspace-slot="${i+1}">P${i+1}</button>`).join('');
+      const groupLevels=rack.stackGroupId?modularStackLevels(rack):[];
+      const groupPanel=groupLevels.length?`<div class="vspace-stack-panel"><b>Conjunto apilado · ${vspaceEsc(rack.stackGroupId)}</b><small class="vspace-muted">${groupLevels.length} niveles · ${groupLevels.map(v=>v.count).join(' / ')} módulos (de abajo hacia arriba)</small>
+        ${groupLevels.slice().reverse().map(level=>`<div class="vspace-stack-level" style="border-left:4px solid ${STACK_LEVEL_COLORS[level.index%STACK_LEVEL_COLORS.length]}"><strong>Nivel ${level.index+1} · ${level.count} módulos</strong><small>NPT +${Math.round(level.npt)} cm</small><div class="vspace-stack-module-buttons">${level.modules.map(m=>`<button type="button" data-vs-modular="${vspaceEsc(m.id)}" class="${m.id===rack.id?'active':''}">${level.index+1}-${String.fromCharCode(65+Number(m.stackModuleIndex||0))}</button>`).join('')}</div></div>`).join('')}
+        <button id="vsEditModularLayout" type="button">Editar conjunto en layout</button>
+        <small class="vspace-muted">Selecciona cada módulo para editar su NPT y materiales. Alt+arrastrar mueve la pila en layout.</small></div>`:'';
       host.innerHTML=`<div class="vspace-inspector-id"><b>${vspaceEsc(sp.title)}</b><small>${vspaceEsc(rack.id)} · ${vspaceEsc(VSPACE_TYPES[sp.kind].name)}</small></div>
+        ${groupPanel}
         <label class="vspace-field">Nombre<input id="vsName" value="${vspaceEsc(sp.title)}" ${lock}></label>
         <div class="vspace-grid-2"><label class="vspace-field">Ancho (cm)<input id="vsWidth" type="number" min="30" max="10000" value="${sp.width}" ${lock}></label><label class="vspace-field">Fondo (cm)<input id="vsDepth" type="number" min="20" max="5000" value="${sp.depth}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">Alto (cm)<input id="vsHeight" type="number" min="30" max="10000" value="${sp.height}" ${lock}></label><label class="vspace-field">Giro (°)<select id="vsRotation" ${lock}>${[0,90,180,270].map(d=>`<option value="${d}" ${Number(rack.rot||0)===d?'selected':''}>${d}°</option>`).join('')}</select></label></div>
@@ -17631,6 +17931,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         ${assignments.length>1?`<div class="vspace-muted">${assignments.length} productos importados en esta posición. La asignación manual sustituye la lista mostrada aquí.</div>`:''}
         <div class="vspace-grid-2"><button class="vspace-primary" id="vsAssign" ${lock}>Asignar SKU</button><button id="vsRemoveAssignment" ${lock}>Vaciar posición</button></div>
         <div class="vspace-divider"></div><div class="vspace-grid-2"><button id="vsDuplicate" ${lock}>Duplicar mueble</button><button id="vsDelete" class="vspace-danger" ${lock}>Eliminar mueble</button></div>`;
+      host.querySelectorAll('[data-vs-modular]').forEach(btn=>btn.onclick=()=>{const target=findRackById(btn.dataset.vsModular);if(target)state.select(target.id);});
+      host.querySelector('#vsEditModularLayout')?.addEventListener('click',()=>{appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;appState.editor.stackViewMode='expanded';setScreen('distribution');});
       host.querySelectorAll('[data-vspace-level]').forEach(b=>b.onclick=()=>{state.selectedLevel=Number(b.dataset.vspaceLevel);state.refreshInspector();state.render(false);});
       host.querySelectorAll('[data-vspace-slot]').forEach(b=>b.onclick=()=>{state.selectedSlot=Number(b.dataset.vspaceSlot);state.refreshInspector();state.render(false);});
       host.querySelector('#vsUpdate')?.addEventListener('click',()=>{
@@ -18100,6 +18402,14 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             shared,block:addBlock,sprite:labelSprite,selected:r.id===state.selectedId,
             selectedLevel:state.selectedLevel,selectedSlot:state.selectedSlot,products:vspaceProductsForSlot
           });
+          // Cinta de nivel física: diferencia N1/N2/N3 sin alterar los materiales del modelo.
+          if(r.stackGroupId){
+            const levelColor=[0x4a86c5,0x59a66e,0xe79a45,0x9675bc,0x5096a4,0xc47c8a][Math.max(0,Number(r.stackLevel||0))%6];
+            const markerMat=new THREE.MeshStandardMaterial({color:levelColor,roughness:.72,metalness:.08});
+            const strip=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.06,spec.width/100-.012),.013,.014),markerMat);
+            strip.position.set(0,.025,spec.depth/200+.014);
+            group.add(strip);
+          }
           world.add(group);state.objects.set(r.id,group);
         };
         const rebuild=()=>{

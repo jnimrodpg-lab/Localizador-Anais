@@ -7290,3 +7290,28 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
 #appRoot.app .layout-cad-shell-v80:has(.layout-placement-prompt){grid-template-rows:auto auto auto minmax(0,1fr)}
 #appRoot.app .layout-cad-shell-v80:has(.layout-placement-prompt) .layout-cad-workspace-v80{min-height:0}
 
+/* V195 · Construcción apilada: inspector de niveles compacto y responsivo. */
+.modular-stack-card { border-color: rgba(49,128,104,.32) !important; }
+.modular-stack-modes { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px; }
+.modular-stack-modes .seg-btn,.modular-stack-member-grid .seg-btn {min-width:0;white-space:normal;}
+.modular-stack-preview {margin-top:9px;border-radius:12px;background:var(--surface-2,#f4efe4);padding:8px;text-align:center;border:1px solid rgba(125,100,71,.14);}
+.modular-stack-preview svg {width:100%;max-width:270px;height:auto;max-height:240px;display:block;margin:0 auto;}
+.modular-stack-levels {display:grid;gap:9px;margin-top:11px;}
+.modular-stack-level {border:1px solid rgba(124,103,77,.19);border-radius:10px;overflow:hidden;padding-bottom:7px;}
+.modular-stack-level-head {display:flex;justify-content:space-between;align-items:center;gap:4px;font-weight:750;padding:9px;background:rgba(126,141,133,.10);font-size:12px;}
+.modular-stack-level-head span {font-weight:600;font-size:11px;white-space:nowrap;}
+.modular-stack-member-grid {display:flex;flex-wrap:wrap;gap:6px;padding:8px 8px 0;}
+.modular-stack-member-grid .seg-btn {flex:1 1 48px;max-width:75px;padding:8px 5px;}
+.modular-stack-card .layout-prop-grid {min-width:0;}
+.modular-stack-card .layout-prop-grid label {min-width:0;overflow-wrap:anywhere;}
+.modular-stack-card .layout-prop-grid input {min-width:0;width:100%;}
+@media(max-width:1100px){.modular-stack-card .layout-prop-grid.two{grid-template-columns:1fr;}}
+.vspace-stack-panel {padding:10px;margin:10px 0;border:1px solid rgba(74,138,116,.28);border-radius:12px;display:grid;gap:9px;background:rgba(114,154,128,.09)}
+.vspace-stack-panel > small {display:block}
+.vspace-stack-level {padding:8px 10px;border-radius:8px;background:rgba(120,120,112,.11);display:grid;gap:5px}
+.vspace-stack-level strong {font-size:12px}
+.vspace-stack-level small {font-size:11px}
+.vspace-stack-module-buttons {display:flex;gap:6px;flex-wrap:wrap}
+.vspace-stack-module-buttons button {min-width:46px;padding:7px;border-radius:7px;border:1px solid rgba(120,120,112,.3);background:var(--surface-2,#eee9dc);color:var(--text-main,#3d493f);cursor:pointer}
+.vspace-stack-module-buttons button.active {background:#377f66;color:white}
+

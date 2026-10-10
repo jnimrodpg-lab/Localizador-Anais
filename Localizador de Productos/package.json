@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.9.4-rack-edicion-preview-real-npt",
+  "version": "1.9.5-apilamiento-modular-232",
   "private": true,
-  "description": "WMS Industrial V194: racks editables en arquitectura, preview WebGL de biblioteca y NPT por mueble en 3D",
+  "description": "WMS Industrial V195: conjuntos de apilamiento 2-3-2, vista de niveles y visualización 3D por NPT",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",

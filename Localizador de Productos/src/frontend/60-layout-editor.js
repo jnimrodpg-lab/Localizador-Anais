@@ -22,6 +22,8 @@
     if(appState.editor.selectedMeasurementId === undefined) appState.editor.selectedMeasurementId = '';
     if(appState.selectedRoomId === undefined) appState.selectedRoomId = '';
     if(appState.selectedStreetId === undefined) appState.selectedStreetId = '';
+    if(!appState.editor.stackViewMode) appState.editor.stackViewMode='compact';
+    if(appState.editor.selectedStackLevel===undefined) appState.editor.selectedStackLevel=0;
     if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
     if(appState.editor.editSiteBoundary === undefined) appState.editor.editSiteBoundary=false;
     if(appState.editor.structureClipboard === undefined) appState.editor.structureClipboard = null;
@@ -1589,6 +1591,51 @@
     return `<label class="layout-layer-toggle"><input type="checkbox" id="${id}" ${checked?'checked':''}><span>${label}</span></label>`;
   }
 
+  function modularStackCard(rack){
+    if(!rack)return '';
+    const members=modularStackMembers(rack);
+    const levels=modularStackLevels(rack);
+    const counts=levels.length?levels.map(l=>l.count):[2,3,2];
+    const sample=levels.length?levels[0].modules[0]:rack;
+    const moduleWidth=Math.round(Number(sample.virtual?.width||rackModel(sample.modelId)?.width||sample.w||120));
+    const moduleDepth=Math.round(Number(sample.virtual?.depth||rackModel(sample.modelId)?.depth||sample.h||60));
+    const levelH=Math.round(Number(sample.rackHeight||80));
+    const npt=levels.length?Math.round(levels[0].npt):Math.round(Number(rack.baseHeight||0));
+    const wholeW=levels.length?Math.round(Math.max(...levels.map(l=>l.count))*moduleWidth):moduleWidth*3;
+    const totalH=levels.length?Math.round(levels[levels.length-1].npt+levels[levels.length-1].height-npt):levelH*3;
+    const blocks=counts.map((count,index)=>{
+      const y=8+(counts.length-1-index)*38;
+      const size=Math.min(46,212/Math.max(...counts));
+      const left=(236-count*size)/2;
+      return `<g><text x="5" y="${y+20}" fill="#596659" font-size="10" font-weight="700">N${index+1}</text>${Array.from({length:count},(_,mi)=>`<rect x="${left+mi*size}" y="${y}" width="${size-3}" height="31" rx="3" stroke="#fff" stroke-width="1.5" fill="${STACK_LEVEL_COLORS[index%STACK_LEVEL_COLORS.length]}"/><text x="${left+mi*size+(size-3)/2}" y="${y+20}" fill="white" text-anchor="middle" font-size="10" font-weight="700">${index+1}${String.fromCharCode(65+mi)}</text>`).join('')}</g>`;
+    }).join('');
+    const activeLevel=Math.max(0,Number(appState.editor.selectedStackLevel||0));
+    return `<section class="layout-prop-card modular-stack-card">
+      <div class="layout-prop-title">Apilamiento modular ${members.length?`· ${escapeHtml(rack.stackGroupId)}`:''}</div>
+      <div class="tiny muted" style="margin-bottom:9px">Cada nivel puede tener diferente cantidad de módulos. El conjunto conserva sus piezas y materiales en 3D.</div>
+      <div class="modular-stack-modes">
+        <button type="button" id="stackCompact" class="seg-btn ${appState.editor.stackViewMode!=='expanded'?'active':''}">Planta compacta</button>
+        <button type="button" id="stackExpanded" class="seg-btn ${appState.editor.stackViewMode==='expanded'?'active':''}">Ver niveles</button>
+      </div>
+      <div class="modular-stack-preview"><svg viewBox="0 0 250 ${Math.max(135,counts.length*38+16)}" role="img" aria-label="Elevación de conjunto apilado">${blocks}</svg><div class="tiny muted">${counts.join(' / ')} · ${wholeW} cm ancho · ${totalH} cm alto</div></div>
+      <div class="layout-prop-grid two" style="margin-top:10px">
+        <label>Cantidad por nivel<input id="stackCounts" type="text" value="${counts.join(',')}" placeholder="2,3,2" title="De abajo hacia arriba"></label>
+        <label>Ancho de módulo (cm)<input id="stackWidth" type="number" min="20" max="800" value="${moduleWidth}"></label>
+        <label>Profundidad (cm)<input id="stackDepth" type="number" min="20" max="500" value="${moduleDepth}"></label>
+        <label>Altura por nivel (cm)<input id="stackLevelHeight" type="number" min="30" max="600" value="${members.length?levelH:Math.max(30,Math.round(levelH/3))}"></label>
+        <label>Separación (cm)<input id="stackGap" type="number" min="0" max="100" value="2"></label>
+        <label>Base NPT (cm)<input id="stackBaseNpt" type="number" min="0" max="20000" value="${npt}"></label>
+        <label>Centro X (cm)<input id="stackCenterX" type="number" value="${Math.round((modularStackBounds(members.length?members:[rack])?.cx||0)*getScaleCmPerUnit())}"></label>
+        <label>Centro Y (cm)<input id="stackCenterY" type="number" value="${Math.round((modularStackBounds(members.length?members:[rack])?.cy||0)*getScaleCmPerUnit())}"></label>
+        <label style="grid-column:1/-1">Alineación<select id="stackAlign"><option value="center">Centrado</option><option value="left">Izquierda</option><option value="right">Derecha</option></select></label>
+      </div>
+      <div class="layout-template-grid" style="margin-top:10px"><button class="seg-btn primary" id="stackApply">${members.length?'Actualizar conjunto':'Crear conjunto 2 / 3 / 2'}</button>${members.length?'<button class="seg-btn" id="stackDissolve">Desagrupar módulos</button>':''}</div>
+      ${members.length?`<div class="modular-stack-levels"><b>Niveles y módulos</b>${levels.slice().reverse().map(level=>`<div class="modular-stack-level"><div class="modular-stack-level-head" style="border-left:4px solid ${STACK_LEVEL_COLORS[level.index%STACK_LEVEL_COLORS.length]}">Nivel ${level.index+1} · ${level.count} módulos <span>NPT +${Math.round(level.npt)} cm</span></div><div class="modular-stack-member-grid">${level.modules.map(m=>`<button type="button" class="seg-btn ${m.id===rack.id?'active':''}" data-modular-rack="${escapeHtml(m.id)}" title="Seleccionar ${escapeHtml(m.id)}">${level.index+1}-${String.fromCharCode(65+Number(m.stackModuleIndex||0))}</button>`).join('')}</div></div>`).join('')}</div>
+      <div class="layout-prop-grid two" style="margin-top:9px"><label>Mover X (cm)<input type="number" id="stackMoveX" value="0"></label><label>Mover Y (cm)<input type="number" id="stackMoveY" value="0"></label></div><button type="button" class="seg-btn" id="stackMoveApply">Mover conjunto con snap</button>
+      <div class="tiny muted" style="margin-top:9px">Alt + arrastrar mueve el conjunto. La estabilidad estructural de salientes y apoyos debe verificarse antes de construir.</div>`:''}
+    </section>`;
+  }
+
   function renderLayoutRightPanelMarkup(){
     ensureLayoutEditorState();
     const zone = findZoneById(appState.selectedZoneId);
@@ -1611,6 +1658,7 @@
           <div class="layout-selected-title">${escapeHtml(summary.title)}</div>
 
         </section>
+        ${rack ? modularStackCard(rack) : ''}
         <section class="layout-prop-card">
           <div class="layout-prop-title">Capas visibles</div>
           <div class="layout-layer-grid">
@@ -1814,6 +1862,40 @@
       rightScroller.scrollTop = appState.editor?.rightPanelScrollTop || 0;
       rightScroller.onscroll = () => { appState.editor.rightPanelScrollTop = rightScroller.scrollTop || 0; };
     }
+    const stackRack=findRackById(appState.selectedRackLayoutId);
+    if($('#stackCompact')) $('#stackCompact').onclick=()=>{appState.editor.stackViewMode='compact';renderLayoutEditor();};
+    if($('#stackExpanded')) $('#stackExpanded').onclick=()=>{appState.editor.stackViewMode='expanded';renderLayoutEditor();};
+    if($('#stackApply')) $('#stackApply').onclick=()=>{
+      if(!stackRack)return;
+      const text=String($('#stackCounts')?.value||'2,3,2').trim();
+      if(!/^\d+(\s*,\s*\d+){0,5}$/.test(text)){showToast('Introduce cantidades separadas por comas, por ejemplo: 2,3,2.','warning',2800);return;}
+      const counts=text.split(',').map(v=>Number(v.trim()));
+      if(counts.some(n=>n<1||n>8)){showToast('Cada nivel admite de 1 a 8 módulos.','warning',2600);return;}
+      const options={widthCm:Number($('#stackWidth')?.value||120),depthCm:Number($('#stackDepth')?.value||60),levelHeightCm:Number($('#stackLevelHeight')?.value||80),gapCm:Number($('#stackGap')?.value||2),baseNpt:Number($('#stackBaseNpt')?.value||0),align:$('#stackAlign')?.value||'center',centerX:Number($('#stackCenterX')?.value||0)/Math.max(.01,getScaleCmPerUnit()),centerY:Number($('#stackCenterY')?.value||0)/Math.max(.01,getScaleCmPerUnit())};
+      const result=applyModularStack(stackRack.id,counts,options);
+      if(!result.ok){showToast(result.msg,'warning',3700);return;}
+      showToast(`Conjunto creado: ${counts.join(' / ')} módulos por nivel.`,'success',2800);
+      renderLayoutEditor();
+    };
+    if($('#stackDissolve')) $('#stackDissolve').onclick=()=>{if(!stackRack?.stackGroupId)return;dissolveModularStack(stackRack.stackGroupId);renderLayoutEditor();};
+    if($('#stackMoveApply')) $('#stackMoveApply').onclick=()=>{
+      if(!stackRack?.stackGroupId)return;
+      const u=Math.max(.01,getScaleCmPerUnit());
+      const dx=snapGrid(Number($('#stackMoveX')?.value||0)/u),dy=snapGrid(Number($('#stackMoveY')?.value||0)/u);
+      if(!dx&&!dy)return;
+      const group=modularStackMembers(stackRack); const original=group.map(r=>({x:r.x,y:r.y}));
+      const moved=moveModularStack(stackRack.stackGroupId,dx,dy);
+      if(!moved.ok){showToast(moved.msg,'warning',3200);return;}
+      group.forEach((r,i)=>{r.x=original[i].x;r.y=original[i].y;});
+      recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+      group.forEach((r,i)=>{r.x=original[i].x+dx;r.y=original[i].y+dy;});
+      persistActiveLayout();renderLayoutEditor();
+    };
+    document.querySelectorAll('[data-modular-rack]').forEach(btn=>btn.onclick=()=>{
+      const target=findRackById(btn.getAttribute('data-modular-rack'));if(!target)return;
+      appState.selectedRackLayoutId=target.id;appState.editor.selectedStackLevel=getRackStackLevel(target);
+      renderLayoutEditor();
+    });
     const bindCheck = (id, key, rerender=true) => {
       const el = document.getElementById(id);
       if(!el) return;
@@ -3262,11 +3344,18 @@
 
     const v117ConflictRacks = v117ConflictRackIds();
     if(appState.editor.racksVisible !== false) appState.layout.racks.forEach(r => {
+      if(r.stackGroupId && appState.editor.stackViewMode!=='expanded'){
+        const lastLevel=Math.max(...modularStackMembers(r).map(x=>Number(x.stackLevel||0)));
+        if(Number(r.stackLevel||0)!==lastLevel && r.id!==appState.selectedRackLayoutId)return;
+      }
       r.rot = normalizeAngle(r.rot || 0);
       r.front = r.front || 'top';
       const fp = getRackFootprint(r.modelId, r.rot || 0);
-      const baseW = fp.baseW, baseH = fp.baseH;
-      const bboxW = fp.w || r.w || baseW, bboxH = fp.h || r.h || baseH;
+      const unitScale=Math.max(.01,getScaleCmPerUnit());
+      const baseW = r.stackGroupId ? Number(r.virtual?.width||120)/unitScale : fp.baseW;
+      const baseH = r.stackGroupId ? Number(r.virtual?.depth||60)/unitScale : fp.baseH;
+      const bboxW = r.stackGroupId ? Number(r.w||fp.w) : (fp.w || r.w || baseW);
+      const bboxH = r.stackGroupId ? Number(r.h||fp.h) : (fp.h || r.h || baseH);
       const cx = r.x + bboxW/2, cy = r.y + bboxH/2;
       const g = svgEl('g',{
         class:'layout-rack-wrap',
@@ -3310,7 +3399,7 @@
         x:0,y:4,class:'ortho-label','text-anchor':'middle','dominant-baseline':'middle',
         style:'pointer-events:none', transform:`rotate(${-normalizeAngle(r.rot||0)})`
       });
-      t.textContent = r.id;
+      t.textContent = r.stackGroupId?`N${Number(r.stackLevel||0)+1}-${String.fromCharCode(65+Number(r.stackModuleIndex||0))}`:r.id;
       const baseHVal = Math.round(Number(r.baseHeight || 0));
       const levelBadge = svgEl('g',{transform:`translate(${-visualW/2 + 18} ${-visualH/2 + 10})`,style:'pointer-events:none'});
       levelBadge.appendChild(svgEl('rect',{x:-18,y:-12,width:36,height:18,rx:'9',fill:'rgba(8,18,30,.95)',stroke:'#56d2ff','stroke-width':'1'}));
@@ -3337,11 +3426,43 @@
         g.appendChild(stackBadge);
       }
       g.append(hit, body, outline, frontLine, frontArrow, t);
+      if(r.stackGroupId){
+        g.appendChild(svgEl('rect',{x:-visualW/2,y:-visualH/2,width:Math.min(7,visualW*.08),height:visualH,rx:'2',fill:STACK_LEVEL_COLORS[Number(r.stackLevel||0)%STACK_LEVEL_COLORS.length],style:'pointer-events:none'}));
+      }
       g.addEventListener('pointerdown', e => startRackDrag(e, r.id));
       if(isRackDistributionScreen()) g.addEventListener('dblclick', e => { e.stopPropagation(); openStackMenuForRack(r.id, e); renderLayoutStackMenu(); renderLayoutInspector(); });
       rackLayer.appendChild(g);
     });
 
+
+    // V195: resumen compacto de grupos apilados sobre la huella global.
+    if(appState.editor.racksVisible!==false){
+      const groups=new Map();
+      (appState.layout.racks||[]).forEach(r=>{if(r.stackGroupId){if(!groups.has(r.stackGroupId))groups.set(r.stackGroupId,[]);groups.get(r.stackGroupId).push(r);}});
+      groups.forEach((members,key)=>{
+        const box=modularStackBounds(members);if(!box)return;
+        const levels=modularStackLevels(members[0]);
+        const expanded=appState.editor.stackViewMode==='expanded';
+        const outline=svgEl('rect',{x:box.x-4,y:box.y-4,width:box.w+8,height:box.h+8,rx:'5',fill:'none',stroke:'#257d70','stroke-width':'2','stroke-dasharray':expanded?'4 5':'8 4',style:'pointer-events:none'});
+        guideLayer.appendChild(outline);
+        const width=Math.max(105,Math.min(215,box.w));
+        const tag=svgEl('g',{transform:`translate(${box.cx-width/2} ${box.y-40})`,style:'cursor:pointer'});
+        tag.appendChild(svgEl('rect',{width:width,height:35,rx:'9',fill:'rgba(14,49,45,.95)',stroke:'#49ae94','stroke-width':'1.4'}));
+        const text=svgEl('text',{x:width/2,y:13,'text-anchor':'middle',fill:'#fff',style:'font-size:10px;font-weight:800'});
+        text.textContent=`${key.slice(0,19)} · ${levels.length} niveles`;
+        tag.appendChild(text);
+        const small=svgEl('text',{x:width/2,y:27,'text-anchor':'middle',fill:'#e8f4dc',style:'font-size:10px;font-weight:700'});
+        small.textContent=levels.map(l=>l.count).join(' / ');
+        tag.appendChild(small);
+        tag.addEventListener('pointerdown',evt=>{
+          evt.stopPropagation();evt.preventDefault();
+          const first=members.slice().sort((a,b)=>a.stackLevel-b.stackLevel)[0];
+          if(!first)return;appState.selectedRackLayoutId=first.id;appState.selectedZoneId=first.zoneId;
+          appState.editor.stackViewMode=expanded?'compact':'expanded';renderLayoutEditor();
+        });
+        streetHandleLayer.appendChild(tag);
+      });
+    }
 
     // Vista fantasma del mueble pendiente: mismo footprint del modelo, no persiste hasta hacer clic.
     if(isRackDistributionScreen() && appState.editor?.pendingFurnitureModelId){
@@ -4050,6 +4171,13 @@
     const rack = findRackById(rackId);
     if(!rack) return;
     closeStackMenu();
+    if(e.altKey && rack.stackGroupId){
+      const members=modularStackMembers(rack);
+      const svg=$('#layoutSvg'),p=svgPoint(e,svg);
+      appState.selectedRackLayoutId=rack.id;
+      appState.editor.dragging={type:'modular-stack',groupId:rack.stackGroupId,start:p,originals:members.map(m=>({id:m.id,x:m.x,y:m.y}))};
+      renderLayoutSvg(svg);renderLayoutSection();renderLayoutInspector();return;
+    }
     if(e.shiftKey){
       toggleRackSelection(rackId);
       appState.selectedZoneId = rack.zoneId;
@@ -4189,6 +4317,14 @@
       else setOpeningPositionFromPoint(opening, p);
       clearRackSnapPreview();
       renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
+    } else if(d.type === 'modular-stack'){
+      const members=modularStackMembers(d.groupId);
+      const dx=snapGrid(p.x-d.start.x),dy=snapGrid(p.y-d.start.y);
+      const trial=members.map(r=>{const old=d.originals.find(x=>x.id===r.id)||r;return {...r,x:old.x+dx,y:old.y+dy};});
+      const check=modularStackIsValid(trial,d.groupId);
+      if(check.ok){members.forEach((r,i)=>{r.x=trial[i].x;r.y=trial[i].y;});d.lastValid={dx,dy};}
+      d.blocked=!check.ok;
+      renderLayoutSvg(svg);renderLayoutSection();
     } else if(d.type === 'rack-group'){
       const rawDX=p.x-d.start.x, rawDY=p.y-d.start.y;
       (d.rackIds||[]).forEach(id=>{ const rack=findRackById(id), orig=d.originals?.[id]; if(!rack||!orig)return; rack.x=snapGrid(orig.x+rawDX); rack.y=snapGrid(orig.y+rawDY); const host=findZoneById(orig.zoneId)||findZoneById(rack.zoneId); if(host){rack.zoneId=host.id; if(!rackFullyInsideZone(rack,host)){rack.x=orig.x;rack.y=orig.y;rack.zoneId=orig.zoneId;}} });
@@ -4226,6 +4362,13 @@
         const cut = getSectionCut(d.axis, zone);
         cut.dir *= -1;
       }
+    }
+    if(d && d.type==='modular-stack' && d.lastValid && (d.lastValid.dx||d.lastValid.dy)){
+      const members=modularStackMembers(d.groupId);
+      const final=members.map(r=>({id:r.id,x:r.x,y:r.y}));
+      members.forEach(r=>{const old=d.originals.find(v=>v.id===r.id);if(old){r.x=old.x;r.y=old.y;}});
+      recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+      members.forEach(r=>{const moved=final.find(v=>v.id===r.id);if(moved){r.x=moved.x;r.y=moved.y;}});
     }
     if(d && d.type==='rack-group'){
       normalizeZoneAndRackIds(); v117RunValidation({quiet:true});

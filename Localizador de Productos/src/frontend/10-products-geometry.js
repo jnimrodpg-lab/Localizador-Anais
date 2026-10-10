@@ -2298,11 +2298,147 @@ const DEFAULT_GRID_SIZE = 2;
     return { w, h, baseW: base.w, baseH: base.h };
   }
 
+  // V195 — apilamiento modular: un grupo puede tener distintos módulos por nivel.
+  const STACK_LEVEL_COLORS = Object.freeze(['#4a86c5','#59a66e','#e79a45','#9675bc','#5096a4','#c47c8a']);
+  function modularStackMembers(rackOrGroupId){
+    const key=typeof rackOrGroupId==='string'?rackOrGroupId:rackOrGroupId?.stackGroupId;
+    if(!key)return [];
+    return (appState.layout?.racks||[]).filter(r=>r.stackGroupId===key).sort((a,b)=>
+      (Number(a.stackLevel||0)-Number(b.stackLevel||0)) || (Number(a.stackModuleIndex||0)-Number(b.stackModuleIndex||0)));
+  }
+  function modularStackLevels(rack){
+    const members=modularStackMembers(rack);
+    return [...new Set(members.map(r=>Number(r.stackLevel||0)))].sort((a,b)=>a-b).map(n=>{
+      const modules=members.filter(r=>Number(r.stackLevel||0)===n);
+      return {index:n,modules,count:modules.length,npt:Math.min(...modules.map(r=>Number(r.baseHeight||0))),
+        height:Math.max(...modules.map(r=>Number(r.rackHeight||0)))};
+    });
+  }
+  function modularStackBounds(members){
+    if(!members.length)return null;
+    const rects=members.map(r=>({x:Number(r.x||0),y:Number(r.y||0),right:Number(r.x||0)+Number(r.w||0),bottom:Number(r.y||0)+Number(r.h||0)}));
+    const x=Math.min(...rects.map(v=>v.x)),y=Math.min(...rects.map(v=>v.y));
+    const right=Math.max(...rects.map(v=>v.right)),bottom=Math.max(...rects.map(v=>v.bottom));
+    return {x,y,w:right-x,h:bottom-y,cx:(x+right)/2,cy:(y+bottom)/2};
+  }
+  function modularStackIsValid(proposals,groupId='',ignoreRackIds=[]){
+    // NPT + geometría XY; solo se ignoran las instancias que van a ser reemplazadas.
+    const skipIds=new Set(ignoreRackIds);
+    const outsiders=(appState.layout?.racks||[]).filter(r=>r.stackGroupId!==groupId && !skipIds.has(r.id));
+    for(const p of proposals){
+      const zone=findZoneById(p.zoneId);
+      if(!zone||!rackFullyInsideZone(p,zone))return {ok:false,msg:'El conjunto no cabe dentro de la zona. Reduce el ancho de módulo o cambia su centro.'};
+      for(const other of outsiders){
+        const lo=Number(p.baseHeight||0), hi=lo+Number(p.rackHeight||0),
+              olo=Number(other.baseHeight||0), ohi=olo+Number(other.rackHeight||rackModel(other.modelId)?.height||200);
+        if(hi<=olo+.5||ohi<=lo+.5)continue;
+        if(Number(p.x)<Number(other.x)+Number(other.w)-1 && Number(p.x)+Number(p.w)>Number(other.x)+1 &&
+           Number(p.y)<Number(other.y)+Number(other.h)-1 && Number(p.y)+Number(p.h)>Number(other.y)+1)
+          return {ok:false,msg:`Interferencia con ${other.id}. Mueve el conjunto a una zona libre.`};
+      }
+    }
+    // Módulos del mismo nivel tampoco pueden interpenetrarse.
+    for(let i=0;i<proposals.length;i++)for(let j=i+1;j<proposals.length;j++){
+      const a=proposals[i],b=proposals[j];
+      if(Number(a.stackLevel)!==Number(b.stackLevel))continue;
+      if(a.x < b.x+b.w-.4 && a.x+a.w > b.x+.4 && a.y < b.y+b.h-.4 && a.y+a.h > b.y+.4)
+        return {ok:false,msg:'Los módulos del mismo nivel están superpuestos.'};
+    }
+    return {ok:true,msg:''};
+  }
+  function applyModularStack(rackId,counts=[2,3,2],settings={}){
+    const source=findRackById(rackId);if(!source)return {ok:false,msg:'Selecciona primero un rack.'};
+    const values=(Array.isArray(counts)?counts:[2,3,2]).map(n=>Math.max(1,Math.min(8,Math.floor(Number(n)||1)))).slice(0,6);
+    const existing=modularStackMembers(source);
+    const previous=existing.length?existing:[source];
+    const groupId=source.stackGroupId||`G-${source.id}`;
+    const anchor=existing.find(r=>Number(r.stackLevel||0)===0 && Number(r.stackModuleIndex||0)===0)||source;
+    const originalBox=modularStackBounds(previous);
+    const origin={x:Number(settings.centerX??originalBox?.cx??(source.x+source.w/2)),y:Number(settings.centerY??originalBox?.cy??(source.y+source.h/2))};
+    const scale=Math.max(.01,getScaleCmPerUnit());
+    const widthCm=Math.max(20,Math.min(800,Number(settings.widthCm||source.virtual?.width||rackModel(source.modelId)?.width||120)));
+    const depthCm=Math.max(20,Math.min(500,Number(settings.depthCm||source.virtual?.depth||rackModel(source.modelId)?.depth||60)));
+    const gapCm=Math.max(0,Math.min(100,Number(settings.gapCm??2)));
+    const levelHeightCm=Math.max(30,Math.min(600,Number(settings.levelHeightCm||existing[0]?.rackHeight||Math.round(Number(source.rackHeight||rackModel(source.modelId)?.height||240)/values.length))));
+    const baseNpt=Math.max(0,Number(settings.baseNpt??(existing.length?Math.min(...existing.map(r=>Number(r.baseHeight||0))):Number(source.baseHeight||0))));
+    const align=['left','center','right'].includes(settings.align)?settings.align:'center';
+    const angle=normalizeAngle(Number(settings.rot??anchor.rot??0));
+    const rad=angle*Math.PI/180,cos=Math.cos(rad),sin=Math.sin(rad),w=widthCm/scale,d=depthCm/scale,gap=gapCm/scale;
+    const widest=Math.max(...values)*(w+gap)-gap;
+    const retained=new Map(existing.map(r=>[`${r.stackLevel}:${r.stackModuleIndex}`,r]));
+    const prototypes=[];
+    let npt=baseNpt;
+    values.forEach((count,li)=>{
+      const rowWidth=count*w+(count-1)*gap;
+      const offset=align==='left'?-widest/2:align==='right'?widest/2-rowWidth:-rowWidth/2;
+      for(let mi=0;mi<count;mi++){
+        const old=retained.get(`${li}:${mi}`);
+        const template=old||anchor;
+        const localX=offset+mi*(w+gap)+w/2;
+        const rx=localX*cos,ry=localX*sin;
+        const cx=origin.x+rx,cy=origin.y+ry;
+        const dw=Math.abs(w*cos)+Math.abs(d*sin),dh=Math.abs(w*sin)+Math.abs(d*cos);
+        const rack={...template,
+          stackGroupId:groupId,stackLevel:li,stackModuleIndex:mi,
+          x:cx-dw/2,y:cy-dh/2,w:dw,h:dh,rot:angle,
+          zoneId:source.zoneId,baseHeight:npt,rackHeight:levelHeightCm,
+          virtual:{...(template.virtual||{}),width:widthCm,depth:depthCm,height:levelHeightCm}
+        };
+        prototypes.push({rack,reuseId:old?.id||(li===0&&mi===0?anchor.id:'')});
+      }
+      npt+=levelHeightCm;
+    });
+    const proposals=prototypes.map(x=>x.rack);
+    const check=modularStackIsValid(proposals,groupId,previous.map(r=>r.id));
+    if(!check.ok)return check;
+    const oldIds=new Set(previous.map(r=>r.id));
+    const otherIds=new Set((appState.layout?.racks||[]).filter(r=>!oldIds.has(r.id)).map(r=>r.id));
+    let seq=1;
+    const newRacks=prototypes.map(({rack,reuseId})=>{
+      let id=reuseId;
+      if(!id){ do{id=`${source.id}-S${seq++}`;}while(otherIds.has(id)); }
+      otherIds.add(id);
+      return {...rack,id};
+    });
+    const keepIds=new Set(newRacks.map(r=>r.id));
+    const removed=previous.filter(r=>!keepIds.has(r.id));
+    const usedRemoved=removed.find(r=>
+      (r.virtualPlacements||[]).length || (r.virtualContainers||[]).length ||
+      (appState.products||[]).some(p=>String(p.rack||p.rackStore||'')===r.id));
+    if(usedRemoved)return {ok:false,msg:`El módulo ${usedRemoved.id} contiene ubicaciones o productos. Reubícalos antes de reducir el conjunto.`};
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+    appState.layout.racks=(appState.layout.racks||[]).filter(r=>!oldIds.has(r.id)).concat(newRacks);
+    appState.selectedRackLayoutId=newRacks[0].id;
+    appState.selectedZoneId=source.zoneId;
+    appState.editor.stackViewMode='compact';
+    persistActiveLayout();
+    return {ok:true,members:newRacks,groupId};
+  }
+  function moveModularStack(groupId,dx,dy){
+    const group=modularStackMembers(groupId);
+    if(!group.length)return {ok:false,msg:'No existe el conjunto.'};
+    const trial=group.map(r=>({...r,x:Number(r.x||0)+dx,y:Number(r.y||0)+dy}));
+    const check=modularStackIsValid(trial,groupId);
+    if(!check.ok)return check;
+    group.forEach((r,i)=>{r.x=trial[i].x;r.y=trial[i].y;});
+    return {ok:true};
+  }
+  function dissolveModularStack(groupId){
+    const members=modularStackMembers(groupId);
+    if(!members.length)return;
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
+    members.forEach(r=>{delete r.stackGroupId;delete r.stackModuleIndex;delete r.stackLevel;});
+    persistActiveLayout();
+  }
   function getRackStackLevel(rack){
     return Math.max(0, parseInt(rack?.stackLevel || 0, 10) || 0);
   }
   function racksCanOverlapByLevel(a, b){
-    return getRackStackLevel(a) !== getRackStackLevel(b);
+    // La única superposición permitida es entre intervalos verticales separados.
+    const aMin=Number(a?.baseHeight||0),bMin=Number(b?.baseHeight||0);
+    const aMax=aMin+Math.max(1,Number(a?.rackHeight||a?.virtual?.height||rackModel(a?.modelId)?.height||200));
+    const bMax=bMin+Math.max(1,Number(b?.rackHeight||b?.virtual?.height||rackModel(b?.modelId)?.height||200));
+    return aMax<=bMin+.5 || bMax<=aMin+.5;
   }
   function rackStackKey(r){
     return [String(r.zoneId||''), Math.round(Number(r.x||0)), Math.round(Number(r.y||0))].join('|');
@@ -2321,9 +2457,9 @@ const DEFAULT_GRID_SIZE = 2;
     const members = Array.isArray(group) ? group.slice().sort((a,b) => (getRackStackLevel(a) - getRackStackLevel(b)) || (a.id > b.id ? 1 : -1)) : [];
     if(!members.length) return;
     if(members.length === 1){
+      // V195: respetar el NPT introducido manualmente por el usuario.
       const only = members[0];
-      const h = Math.max(60, Number(only.rackHeight || rackModel(only.modelId)?.height || 240) || 240);
-      only.baseHeight = getRackStackLevel(only) * h;
+      only.baseHeight = Math.max(0, Number(only.baseHeight||0));
       return;
     }
     let cumulative = 0;
@@ -2336,6 +2472,7 @@ const DEFAULT_GRID_SIZE = 2;
   function recalcAllRackStackHeights(){
     const groups = new Map();
     (appState.layout?.racks || []).forEach(r => {
+      if(r.stackGroupId)return; // NPT y niveles del grupo modular son independientes.
       const key = rackStackKey(r);
       if(!groups.has(key)) groups.set(key, []);
       groups.get(key).push(r);
@@ -2355,6 +2492,20 @@ const DEFAULT_GRID_SIZE = 2;
   function duplicateRackAbove(rackId){
     const rack = findRackById(rackId);
     if(!rack) return;
+    if(rack.stackGroupId){
+      const levels=modularStackLevels(rack),members=modularStackMembers(rack);
+      if(levels.length>=6){showToast('Máximo 6 niveles por conjunto.','warning',2400);return;}
+      const box=modularStackBounds(members),base=levels[0]?.modules?.[0]||rack;
+      const u=Math.max(.01,getScaleCmPerUnit());
+      const result=applyModularStack(rack.id,[...levels.map(l=>l.count),1],{
+        centerX:box.cx,centerY:box.cy,widthCm:base.virtual?.width||rackModel(base.modelId)?.width||120,
+        depthCm:base.virtual?.depth||rackModel(base.modelId)?.depth||60,
+        levelHeightCm:base.rackHeight,baseNpt:levels[0].npt,gapCm:2,align:'center'
+      });
+      if(!result.ok)showToast(result.msg,'warning',3000);
+      else renderLayoutEditor();
+      return;
+    }
     const zone = findZoneById(rack.zoneId);
     if(!zone) return;
     const cloneRack = clone(rack);

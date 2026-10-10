@@ -1,0 +1,173 @@
+/* V170 — estabilización visual. No modifica componentes ni lógica de inventario.
+   Mantener el selector de tema para evitar filtraciones entre modo claro/oscuro. */
+body.theme-light, body.theme-dark {
+  --wms-card:var(--surface-1);
+  --wms-subcard:var(--surface-2);
+  --wms-control:var(--surface-1);
+  --wms-text:var(--ink);
+  --wms-help:var(--ink-soft);
+  --wms-stroke:var(--line);
+}
+/* Biblioteca: los paneles de Rack Builder conservaban un fondo azul noche fijado en CSS antiguo. */
+body.theme-light .rack-models-page .rack-block,
+body.theme-dark .rack-models-page .rack-block {
+  background:var(--wms-card)!important;
+  border:1px solid var(--wms-stroke)!important;
+  color:var(--wms-text)!important;
+  box-shadow:var(--panel-shadow)!important;
+}
+body.theme-light .rack-models-page :is(.rack-block-head h3,.library-item-title,.model-editor-library-head h4,.library-item-head,.rack-block strong,.rack-block b),
+body.theme-dark .rack-models-page :is(.rack-block-head h3,.library-item-title,.model-editor-library-head h4,.library-item-head,.rack-block strong,.rack-block b){color:var(--wms-text)!important}
+body.theme-light .rack-models-page :is(.rack-block-sub,.library-item-sub,.model-editor-library-sub,.library-inline-pill,.rack-block label,.rack-block .muted,.rack-block .tiny),
+body.theme-dark .rack-models-page :is(.rack-block-sub,.library-item-sub,.model-editor-library-sub,.library-inline-pill,.rack-block label,.rack-block .muted,.rack-block .tiny){color:var(--wms-help)!important}
+body.theme-light .rack-models-page :is(.library-item,.model-editor-library-pane,.library-config-item,.level-row,.summary-item,.rack-help-tip),
+body.theme-dark .rack-models-page :is(.library-item,.model-editor-library-pane,.library-config-item,.level-row,.summary-item,.rack-help-tip) {
+  background:var(--wms-subcard)!important;
+  border-color:var(--wms-stroke)!important;
+  color:var(--wms-text)!important;
+}
+body.theme-light .rack-models-page .library-item.active,
+body.theme-dark .rack-models-page .library-item.active{
+  background:color-mix(in srgb,var(--primary) 10%,var(--surface-1))!important;
+  border-color:var(--primary)!important;
+  box-shadow:inset 3px 0 0 var(--primary)!important;
+}
+body.theme-light .rack-models-page .library-item.open,
+body.theme-dark .rack-models-page .library-item.open{background:var(--surface-1)!important}
+body.theme-light .rack-models-page .library-item.active::before,
+body.theme-dark .rack-models-page .library-item.active::before{background:var(--primary)!important}
+body.theme-light .rack-models-page .library-item.active .library-item-head,
+body.theme-dark .rack-models-page .library-item.active .library-item-head{background:var(--accent-soft)!important}
+body.theme-light .rack-models-page .library-item.open .library-item-body,
+body.theme-dark .rack-models-page .library-item.open .library-item-body{border-top-color:var(--line)!important}
+body.theme-light .rack-models-page :is(.library-inline-pill,.rack-block .tag,.rack-block .mini-btn,.library-toggle),
+body.theme-dark .rack-models-page :is(.library-inline-pill,.rack-block .tag,.rack-block .mini-btn,.library-toggle){
+  background:var(--surface-2)!important;
+  border:1px solid var(--line)!important;
+  color:var(--ink)!important;
+}
+body.theme-light .rack-models-page .model-actions .btn.alt,
+body.theme-dark .rack-models-page .model-actions .btn.alt{
+  background:var(--surface-2)!important;
+  color:var(--ink)!important;
+  border:1px solid var(--line-2)!important;
+  box-shadow:none!important;
+}
+body.theme-light .rack-models-page .model-actions .btn.alt:hover,
+body.theme-dark .rack-models-page .model-actions .btn.alt:hover{border-color:var(--primary)!important;background:var(--accent-soft)!important}
+body.theme-light .rack-models-page :is(input,select,textarea),
+body.theme-dark .rack-models-page :is(input,select,textarea){background:var(--surface-1)!important;color:var(--ink)!important;border:1px solid var(--border-ui)!important}
+body.theme-light .rack-models-page :is(.model-editor-fields,.library-item-body,.construction-field,.rack-builder-level-card) label,
+body.theme-dark .rack-models-page :is(.model-editor-fields,.library-item-body,.construction-field,.rack-builder-level-card) label{color:var(--ink-soft)!important}
+body.theme-light .rack-models-page .preview-box-3d .detail-stage,
+body.theme-dark .rack-models-page .preview-box-3d .detail-stage {background:var(--canvas-bg)!important;border:1px solid var(--line)!important}
+/* Vistas internas de construcción (no tapar los SVG ni cambiar materiales del modelo). */
+body.theme-light :is(.rack-cad-projectbar,.rack-cad-toolrail,.rack-cad-levelbar,.rack-cad-inspector-card,.rack-cad-canvas-head,.rack-cad-canvas-foot,.rack-builder-level-card,.rack-builder-pro,.rack-builder-front-wrap,.rack-builder-inspector,.rack-builder-piece-metrics>div),
+body.theme-dark :is(.rack-cad-projectbar,.rack-cad-toolrail,.rack-cad-levelbar,.rack-cad-inspector-card,.rack-cad-canvas-head,.rack-cad-canvas-foot,.rack-builder-level-card,.rack-builder-pro,.rack-builder-front-wrap,.rack-builder-inspector,.rack-builder-piece-metrics>div){background:var(--surface-1)!important;border-color:var(--line)!important;color:var(--ink)!important}
+body.theme-light :is(.rack-cad-projectbar,.rack-cad-toolrail,.rack-cad-levelbar,.rack-cad-inspector-card,.rack-builder-level-card) :is(h3,h4,b,strong),
+body.theme-dark :is(.rack-cad-projectbar,.rack-cad-toolrail,.rack-cad-levelbar,.rack-cad-inspector-card,.rack-builder-level-card) :is(h3,h4,b,strong){color:var(--ink)!important}
+
+/* Categorías y filtros: algunas etiquetas seguían tomando colores de la versión azul. */
+body.theme-light :is(.category-filter-btn,.category-gender-pill,.category-pinterest-card,.category-pinterest-actions .chip),
+body.theme-dark :is(.category-filter-btn,.category-gender-pill,.category-pinterest-card,.category-pinterest-actions .chip){background:var(--surface-1)!important;color:var(--ink)!important;border:1px solid var(--line-2)!important}
+body.theme-light :is(.category-filter-btn,.category-pinterest-head .chip,.category-pinterest-card-body b,.category-pinterest-card-body span,.category-gender-pill),
+body.theme-dark :is(.category-filter-btn,.category-pinterest-head .chip,.category-pinterest-card-body b,.category-pinterest-card-body span,.category-gender-pill){color:var(--ink)!important}
+body.theme-light .category-filter-btn::before,
+body.theme-dark .category-filter-btn::before{color:var(--primary)!important}
+body.theme-light .category-pinterest-grid .empty.compact,
+body.theme-dark .category-pinterest-grid .empty.compact{color:var(--ink-soft)!important;background:var(--surface-2)!important}
+body.theme-light .category-pinterest-card.active,.theme-light .category-gender-pill.active,
+body.theme-dark .category-pinterest-card.active,.theme-dark .category-gender-pill.active{background:var(--accent-soft)!important;border-color:var(--primary)!important}
+body.theme-light .category-pinterest-card.active .category-pinterest-card-body>span,
+body.theme-dark .category-pinterest-card.active .category-pinterest-card-body>span{background:var(--primary)!important;color:var(--primary-ink)!important}
+
+/* Ambiente virtual 3D. Usa exactamente las mismas superficies que el resto del sistema. */
+body.theme-light .vspace-root,body.theme-dark .vspace-root{
+  --vs-ink:var(--ink);--vs-muted:var(--ink-soft);--vs-line:var(--line);--vs-accent:var(--primary);--vs-panel:var(--surface-1);
+  color:var(--ink)!important;background:var(--surface-1)!important;border-color:var(--line)!important;
+}
+body.theme-light :is(.vspace-toolbar,.vspace-left,.vspace-inspector,.vspace-bottom,.vspace-sidebar-section),
+body.theme-dark :is(.vspace-toolbar,.vspace-left,.vspace-inspector,.vspace-bottom,.vspace-sidebar-section){background:var(--surface-2)!important;border-color:var(--line)!important;color:var(--ink)!important}
+body.theme-light :is(.vspace-toolbar>strong,.vspace-sidebar-section h4,.vspace-inspector h4,.vspace-catalog-btn span,.vspace-catalog-btn b,.vspace-object b,.vspace-inspector-id b),
+body.theme-dark :is(.vspace-toolbar>strong,.vspace-sidebar-section h4,.vspace-inspector h4,.vspace-catalog-btn span,.vspace-catalog-btn b,.vspace-object b,.vspace-inspector-id b){color:var(--ink)!important}
+body.theme-light :is(.vspace-sidebar-section p,.vspace-catalog-btn small,.vspace-object small,.vspace-field,.vspace-inspector-id small,.vspace-chip,.vspace-edit-note,.vspace-muted),
+body.theme-dark :is(.vspace-sidebar-section p,.vspace-catalog-btn small,.vspace-object small,.vspace-field,.vspace-inspector-id small,.vspace-chip,.vspace-edit-note,.vspace-muted){color:var(--ink-soft)!important}
+body.theme-light :is(.vspace-catalog-btn,.vspace-object,.vspace-inspector-id,.vspace-empty),
+body.theme-dark :is(.vspace-catalog-btn,.vspace-object,.vspace-inspector-id,.vspace-empty){background:var(--surface-1)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
+body.theme-light .vspace-object.active,body.theme-dark .vspace-object.active{background:var(--accent-soft)!important;border-color:var(--primary)!important}
+body.theme-light :is(.vspace-toolbar-right button,.vspace-inspector button:not(.vspace-primary),.vspace-search button,.vspace-numbers button,.vspace-mode-switch button),
+body.theme-dark :is(.vspace-toolbar-right button,.vspace-inspector button:not(.vspace-primary),.vspace-search button,.vspace-numbers button,.vspace-mode-switch button){background:var(--surface-1)!important;border-color:var(--line-2)!important;color:var(--ink)!important}
+body.theme-light :is(.vspace-toolbar-right button.active,.vspace-numbers button.active,.vspace-mode-switch button.active),
+body.theme-dark :is(.vspace-toolbar-right button.active,.vspace-numbers button.active,.vspace-mode-switch button.active){background:var(--primary)!important;color:var(--primary-ink)!important;border-color:var(--primary)!important}
+body.theme-light :is(.vspace-toolbar-right .vspace-save,.vspace-primary),
+body.theme-dark :is(.vspace-toolbar-right .vspace-save,.vspace-primary){background:var(--primary)!important;color:var(--primary-ink)!important;border-color:var(--primary)!important}
+body.theme-light :is(.vspace-field input,.vspace-field select,.vspace-search input),
+body.theme-dark :is(.vspace-field input,.vspace-field select,.vspace-search input){background:var(--surface-1)!important;border-color:var(--border-ui)!important;color:var(--ink)!important}
+body.theme-light .vspace-loc-code,body.theme-dark .vspace-loc-code{color:var(--ink)!important;background:var(--accent-soft)!important;border-color:var(--line-2)!important}
+body.theme-light .vspace-assignment-name,body.theme-dark .vspace-assignment-name{color:var(--ink)!important}
+body.theme-light .vspace-floating span,body.theme-dark .vspace-floating span{background:var(--surface-1)!important;color:var(--ink-soft)!important;border-color:var(--line)!important;opacity:.96}
+body.theme-light .vspace-compass,body.theme-dark .vspace-compass{background:var(--surface-1)!important;color:var(--primary)!important;border-color:var(--line)!important}
+body.theme-light .vspace-stage,body.theme-dark .vspace-stage{background:var(--canvas-bg)!important}
+body.theme-light .vspace-loading,body.theme-dark .vspace-loading{background:color-mix(in srgb,var(--canvas-bg) 89%,transparent)!important;color:var(--ink)!important}
+body.theme-light .vspace-bottom,body.theme-dark .vspace-bottom{color:var(--ink-soft)!important}
+/* Layout 2D: no cambiar el color de textos técnicos indiscriminadamente (cotas y geometría). */
+body.theme-light .layout-cad-v80 :is(.layout-prop-card,.layout-contextual-bar,.layout-right-head,.layout-right-panel,.v80-minimap-card,.layout-cad-localbar-v80),
+body.theme-dark .layout-cad-v80 :is(.layout-prop-card,.layout-contextual-bar,.layout-right-head,.layout-right-panel,.v80-minimap-card,.layout-cad-localbar-v80){background:var(--surface-1)!important;color:var(--ink)!important;border-color:var(--line)!important}
+body.theme-light .layout-cad-v80 :is(.layout-right-head b,.layout-prop-title,.layout-selected-title,.layout-contextual-copy b),
+body.theme-dark .layout-cad-v80 :is(.layout-right-head b,.layout-prop-title,.layout-selected-title,.layout-contextual-copy b){color:var(--ink)!important}
+body.theme-light .layout-cad-v80 :is(.layout-compact-help,.layout-panel-hint,.layout-right-head small,.layout-contextual-copy small),
+body.theme-dark .layout-cad-v80 :is(.layout-compact-help,.layout-panel-hint,.layout-right-head small,.layout-contextual-copy small){color:var(--ink-soft)!important}
+/* Sheet y cards de inventario: prevenir blancos sobre tonos crema. */
+body.theme-light :is(.sheet-preview-chip,.sheet-branch-card,.sheet-mini-preview,.search-card,.search-meta-block,.variant-chip),
+body.theme-dark :is(.sheet-preview-chip,.sheet-branch-card,.sheet-mini-preview,.search-card,.search-meta-block,.variant-chip){color:var(--ink)!important;border-color:var(--line)!important}
+body.theme-light .sheet-preview-chip,body.theme-dark .sheet-preview-chip{background:var(--surface-3)!important;color:var(--ink)!important}
+body.theme-light :is(.search-card-sku,.search-meta-label,.search-card-variant-copy),
+body.theme-dark :is(.search-card-sku,.search-meta-label,.search-card-variant-copy){color:var(--ink-soft)!important}
+body.theme-light :is(.search-card-title,.search-meta-value),body.theme-dark :is(.search-card-title,.search-meta-value){color:var(--ink)!important}
+body.theme-light :is(.searchbar input,.search-branch-host select),body.theme-dark :is(.searchbar input,.search-branch-host select){min-width:0;max-width:100%;color:var(--ink)!important}
+body.theme-light .category-filter-btn:disabled,body.theme-dark .category-filter-btn:disabled{opacity:.55}
+/* At 100% zoom right-side searchable product information must not exceed its column. */
+.app[data-screen='sheet'] .search-panel, .app[data-screen='sheet'] .search-panel *{min-width:0}
+.app[data-screen='sheet'] .search-card{width:100%;max-width:100%;min-width:0;overflow:hidden}
+.app[data-screen='sheet'] .search-card-body{min-width:0;overflow-wrap:anywhere}
+.app[data-screen='sheet'] .search-card-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
+.app[data-screen='sheet'] .search-meta-value{overflow-wrap:anywhere}
+.app[data-screen='sheet'] .searchbar{grid-template-columns:minmax(0,1fr) 40px!important;gap:7px}
+.app[data-screen='sheet'] .searchbar .category-filter-btn{grid-column:1/2;min-width:0}
+.app[data-screen='sheet'] .searchbar .action-btn{grid-column:1/-1!important;min-width:0}
+.app[data-screen='sheet'] .search-panel .search-header-actions{min-width:0;max-width:100%;flex-wrap:wrap}
+@media(max-width:1450px){.rack-models-page{grid-template-columns:minmax(0,1.1fr) minmax(340px,.85fr)} .rack-block-head{flex-wrap:wrap}}
+@media(max-width:1180px){.rack-models-page{grid-template-columns:minmax(0,1fr)}}
+
+/* Biblioteca de modelos: reemplazo de fondos inline nocturnos por tarjeta semántica. */
+body.theme-light .rack-models-page .model-inline-section,
+body.theme-dark .rack-models-page .model-inline-section{
+  background:var(--surface-2)!important; border:1px solid var(--line)!important;
+  border-radius:12px; padding:12px; color:var(--ink)!important;
+}
+body.theme-light .rack-models-page .model-inline-section :is(.field-label,.tiny,.muted),
+body.theme-dark .rack-models-page .model-inline-section :is(.field-label,.tiny,.muted){color:var(--ink-soft)!important}
+body.theme-light .sidebar-foot .dot.green + b {color:#27613b!important}
+body.theme-dark .sidebar-foot .dot.green + b {color:#9de7ad!important}
+body.theme-light .category-filter-btn,body.theme-dark .category-filter-btn{font-weight:750!important}
+body.theme-light .rack-models-page .rack-block button:disabled,body.theme-dark .rack-models-page .rack-block button:disabled{opacity:.55}
+/* Herramientas del layout legibles en temas claros y oscuros. */
+body.theme-light .layout-cad-v80 .v80-tool-btn.seg-btn,
+body.theme-dark .layout-cad-v80 .v80-tool-btn.seg-btn{color:var(--ink)!important}
+body.theme-light .layout-cad-v80 .v80-tool-btn.seg-btn.active,
+body.theme-dark .layout-cad-v80 .v80-tool-btn.seg-btn.active{background:var(--accent-soft)!important;color:var(--ink)!important}
+body.theme-light .layout-cad-v80 .v80-tool-ico,
+body.theme-dark .layout-cad-v80 .v80-tool-ico{color:var(--primary)!important;border-color:var(--line-2)!important}
+body.theme-light .layout-cad-v80 .v80-canvas-footer :is(span,button),
+body.theme-dark .layout-cad-v80 .v80-canvas-footer :is(span,button){background:var(--surface-1)!important;color:var(--ink)!important;border-color:var(--line)!important}
+/* Modal secundario del visor WebGL: separar tarjetas de navegación del canvas 3D. */
+body.theme-light .nav3d-shell :is(.nav3d-head,.nav3d-side,.nav3d-rack-card,.nav3d-product-card,.nav3d-wms-legend,.nav3d-selection-card,.nav3d-minimap),
+body.theme-dark .nav3d-shell :is(.nav3d-head,.nav3d-side,.nav3d-rack-card,.nav3d-product-card,.nav3d-wms-legend,.nav3d-selection-card,.nav3d-minimap){border-color:var(--line)!important;color:var(--ink)!important}
+body.theme-light .nav3d-shell :is(.nav3d-head,.nav3d-rack-card,.nav3d-product-card,.nav3d-wms-legend,.nav3d-selection-card,.nav3d-minimap) :is(h2,h3,h4,b,strong),
+body.theme-dark .nav3d-shell :is(.nav3d-head,.nav3d-rack-card,.nav3d-product-card,.nav3d-wms-legend,.nav3d-selection-card,.nav3d-minimap) :is(h2,h3,h4,b,strong){color:var(--ink)!important}
+body.theme-light .nav3d-shell :is(.nav3d-head,.nav3d-rack-card,.nav3d-product-card,.nav3d-wms-legend,.nav3d-selection-card,.nav3d-minimap) :is(p,small,label),
+body.theme-dark .nav3d-shell :is(.nav3d-head,.nav3d-rack-card,.nav3d-product-card,.nav3d-wms-legend,.nav3d-selection-card,.nav3d-minimap) :is(p,small,label){color:var(--ink-soft)!important}
+/* Filtro sin datos: el estado vacío no debe ocupar una ventana gigante. */
+.category-pinterest-shell:has(.category-pinterest-grid .empty.compact){height:auto!important;min-height:350px;max-height:min(78vh,630px)}
+.category-pinterest-shell:has(.category-pinterest-grid .empty.compact) .category-pinterest-grid{min-height:255px;max-height:460px}
+.category-pinterest-shell:has(.category-pinterest-grid .empty.compact) .empty.compact{min-height:210px}

@@ -16033,7 +16033,9 @@ function getSheetBranchOpenMap(){
     if(!appState.ui)appState.ui={};
     if(!appState.ui.rackBuilder||typeof appState.ui.rackBuilder!=='object')appState.ui.rackBuilder={shelfZ:80,dividerX:60,dividerFrom:0,dividerTo:120,snap:1};
     const rb=appState.ui.rackBuilder;
-    rb.viewMode=['3d','front'].includes(rb.viewMode)?rb.viewMode:'3d';
+    if(!rb.v191ViewInitialized){rb.viewMode='front';rb.v191ViewInitialized=true;}
+    rb.viewMode=['3d','front'].includes(rb.viewMode)?rb.viewMode:'front';
+    rb.v191Panels=rb.v191Panels||{build:false,spaces:false,review:false,levels:false};
     rb.cadTool=['select','shelf','divider','back'].includes(rb.cadTool)?rb.cadTool:'select';
     rb.hCount=Math.max(1,Math.min(12,Math.round(Number(rb.hCount||3))));
     rb.vCount=Math.max(1,Math.min(12,Math.round(Number(rb.vCount||2))));
@@ -16041,13 +16043,15 @@ function getSheetBranchOpenMap(){
     rb.vMode=rb.vMode==='custom'?'custom':'equal';
     rb.hValues=Array.isArray(rb.hValues)?rb.hValues:[];
     rb.vValues=Array.isArray(rb.vValues)?rb.vValues:[];
-    if(!appState.selectedModelId || !appState.models.some(m=>m.id===appState.selectedModelId)){
-      appState.selectedModelId=appState.models.find(m=>m.furniture?.enabled)?.id || appState.models[0].id;
+    // Abrir el constructor con un modelo editable, aunque el último seleccionado sea un rack clásico.
+    const activeModel=appState.models.find(m=>m.id===appState.selectedModelId);
+    if(!activeModel?.furniture?.enabled){
+      appState.selectedModelId=appState.models.find(m=>m.furniture?.enabled)?.id || appState.selectedModelId || appState.models[0].id;
     }
     const model=rackModel(appState.selectedModelId);ensureRackFurnitureModel(model);const f=model.furniture;
     const enabled=!!f.enabled;const levels=enabled?deriveFurnitureLevels(model):[];const totalSlots=levels.reduce((s,l)=>s+l.slots.length,0);
     const modelOptions=appState.models.map(m=>`<option value="${escapeHtml(m.id)}" ${m.id===model.id?'selected':''}>${escapeHtml(m.name)}</option>`).join('');
-    const tool=(id,icon,label)=>`<button type="button" class="rack-cad-tool ${rb.cadTool===id?'active':''}" data-rack-cad-tool="${id}"><i>${icon}</i><span>${label}</span></button>`;
+    const tool=(id,icon,label)=>`<button type="button" class="rack-cad-tool ${rb.cadTool===id?'active':''}" data-rack-cad-tool="${id}" title="${label}: haz clic en el modelo para utilizar esta herramienta"><i>${icon}</i><span>${label}</span></button>`;
     contentWrap.innerHTML=`<div class="rack-cad-shell">
       <header class="rack-cad-projectbar">
         <div class="rack-cad-project-main"><select id="rackConstructionModelSelect">${modelOptions}</select><input id="rackConstructionName" value="${escapeHtml(model.name||'')}" aria-label="Nombre del rack"></div>
@@ -16055,53 +16059,60 @@ function getSheetBranchOpenMap(){
         <div class="rack-cad-project-actions"><button class="mini-btn" id="rackConstructionNew">Nuevo</button><button class="mini-btn" id="rackConstructionDuplicate">Duplicar</button><button class="mini-btn" id="rackConstructionLibrary">Biblioteca</button><button class="btn" id="rackConstructionSave">Guardar</button><button class="btn rack-builder-primary" id="rackConstructionPlace" ${enabled?'':'disabled'}>Colocar en el almacén</button><button class="mini-btn" id="rackConstructionOpen3D" title="Abrir Diseñar espacio 3D">Ver espacio 3D</button></div>
       </header>
       <section class="fb-template-bar"><div><b>Constructor de mobiliario</b><small>Elige el sistema constructivo para generar piezas editables.</small></div><div class="fb-template-actions"><button id="fbNewMelamineShelf" class="mini-btn">+ Estante melamina</button><button id="fbNewCabinet" class="mini-btn">+ Armario melamina</button><button id="fbNewMetalWood" class="mini-btn">+ Metal + madera</button></div></section>
-      ${enabled?`<section class="fb-construction-quick" aria-label="Construcción básica">
+      ${enabled?`<div class="rack-cad-workflow" role="navigation" aria-label="Pasos de creación"><button type="button" data-fb-step="model">01 · Medidas</button><button type="button" data-fb-step="build">02 · Zócalo y fondo</button><button type="button" data-fb-step="spaces">03 · Divisiones</button><button type="button" data-fb-step="materials">04 · Acabados</button><button type="button" data-fb-step="review">05 · Despiece</button></div><div class="rack-cad-main">
+        <aside class="rack-cad-toolrail" aria-label="Herramientas de construcción">
+          <div class="fb-rail-title">EDICIÓN</div>
+          ${tool('select','↖','Seleccionar')}
+          <div class="fb-rail-title">INTERIOR</div>
+          ${tool('shelf','▬','Repisa')}
+          ${tool('divider','│','División')}
+          <div class="fb-rail-title">ESTRUCTURA</div>
+          <button type="button" class="rack-cad-tool" data-furniture-action="back" data-mid="${model.id}" title="Crear fondo completo automáticamente"><i>▤</i><span>+ Fondo</span></button>
+          <button type="button" class="rack-cad-tool" id="fbAddDoor"><i>▯</i><span>Puerta</span></button>
+          <button type="button" class="rack-cad-tool" id="fbAddDrawer"><i>▣</i><span>Cajón</span></button>
+          <button type="button" class="rack-cad-tool" data-furniture-action="brace" data-mid="${model.id}"><i>╱</i><span>Refuerzo</span></button>
+          <div class="fb-rail-title">PIEZAS</div>
+          <button type="button" class="rack-cad-tool" data-furniture-action="duplicate-piece" data-mid="${model.id}"><i>⧉</i><span>Duplicar</span></button>
+          <button type="button" class="rack-cad-tool" data-furniture-action="distribute-shelves" data-mid="${model.id}"><i>↕</i><span>Distribuir</span></button>
+        </aside>
+        <section class="rack-cad-canvas">
+          <div class="rack-cad-canvas-head"><div><b>Diseño del mueble</b><span id="rackCadModeHint">${rb.cadTool==='select'?'Selecciona una pieza o un espacio interno.':rb.cadTool==='shelf'?'Haz clic dentro de un espacio para insertar una repisa a esa altura.':rb.cadTool==='divider'?'Haz clic dentro de un espacio para dividirlo verticalmente.':'El fondo se configura arriba en «② Fondo posterior».'}</span></div><div class="rack-view-switch" role="group" aria-label="Vista del modelo"><button class="${rb.viewMode==='front'?'active':''}" data-rack-view="front">Vista frontal</button><button class="${rb.viewMode==='3d'?'active':''}" data-rack-view="3d">Vista 3D</button></div></div>
+          <div class="rack-cad-stage-stack">
+            <div id="rackFurniture3D" class="rack-furniture-3d-stage rack-cad-3d ${rb.viewMode==='3d'?'':'is-hidden'}" data-model-id="${model.id}"></div>
+            <div class="rack-cad-front ${rb.viewMode==='front'?'':'is-hidden'}"><svg id="rackBuilderFront" viewBox="0 0 820 590" preserveAspectRatio="xMidYMid meet"></svg></div>
+          </div>
+          <div class="rack-cad-canvas-foot"><span>Frontal: coloca y ajusta piezas</span><span>3D: arrastra para orbitar · rueda para zoom</span><button class="mini-btn" data-furniture-action="reset-3d-camera" data-mid="${model.id}">Centrar</button></div>
+        </section>
+        <aside class="rack-cad-inspector-col">
+          <details class="fb-accordion fb-accordion-build" data-fb-panel="build" ${rb.v191Panels?.build?'open':''}>
+            <summary><span><b>02 · Zócalo y fondo</b><small>Base elevada y panel posterior, sin dibujar a mano</small></span><span class="fb-chevron">⌄</span></summary>
+<section class="fb-construction-quick" aria-label="Construcción básica">
         <div class="fb-quick-head"><b>Construcción básica</b><small>1. Zócalo y base elevada → 2. Fondo posterior → 3. Divisiones y repisas</small></div>
         <div class="fb-quick-columns">
           <div class="fb-quick-group"><strong>① Zócalo</strong><label class="fb-checkbox"><input id="fbPlinthEnabled" type="checkbox" ${f.plinthEnabled?'checked':''} ${furnitureIsMetalFrame(f.material)?'disabled':''}> Activar zócalo</label><label>Altura (cm)<input id="fbPlinthHeight" type="number" min="4" max="30" step="0.5" value="${round1(f.plinthHeight)}" ${!f.plinthEnabled?'disabled':''}></label><label>Retranqueo (cm)<input id="fbPlinthRecess" type="number" min="0" max="20" step="0.5" value="${round1(f.plinthRecess)}" ${!f.plinthEnabled?'disabled':''}></label><small>La base y el primer espacio útil comienzan encima del zócalo.</small></div>
           <div class="fb-quick-group"><strong>② Fondo posterior</strong><label>Aplicación<select id="fbBackMode"><option value="none" ${f.backMode==='none'?'selected':''}>Sin fondo</option><option value="full" ${f.backMode==='full'?'selected':''}>Fondo completo</option><option value="modules" ${f.backMode==='modules'?'selected':''}>Fondo por compartimento</option></select></label><label>Espesor (cm)<input id="fbBackThickness" type="number" min="0.2" max="3" step="0.1" value="${round1(f.backThickness)}"></label><label>Retranqueo posterior (cm)<input id="fbBackInset" type="number" min="0" max="12" step="0.5" value="${round1(f.backInset)}"></label><small>La opción se aplica automáticamente; no necesitas seleccionar la parte trasera.</small></div>
         </div>
-      </section><div class="rack-cad-main">
-        <aside class="rack-cad-toolrail">
-          ${tool('select','↖','Seleccionar')}
-          ${tool('shelf','▬','Repisa')}
-          ${tool('divider','│','División')}
-          <button type="button" class="rack-cad-tool" data-furniture-action="back" data-mid="${model.id}" title="Crear fondo completo automáticamente"><i>▤</i><span>+ Fondo</span></button>
-          <button type="button" class="rack-cad-tool" id="fbAddDoor"><i>▯</i><span>Puerta</span></button>
-          <button type="button" class="rack-cad-tool" id="fbAddDrawer"><i>▣</i><span>Cajón</span></button>
-          <button type="button" class="rack-cad-tool" data-furniture-action="brace" data-mid="${model.id}"><i>╱</i><span>Refuerzo</span></button>
-          <div class="rack-cad-toolrail-sep"></div>
-          <button type="button" class="rack-cad-tool" data-furniture-action="duplicate-piece" data-mid="${model.id}"><i>⧉</i><span>Duplicar</span></button>
-          <button type="button" class="rack-cad-tool" data-furniture-action="distribute-shelves" data-mid="${model.id}"><i>↕</i><span>Distribuir</span></button>
-        </aside>
-        <section class="rack-cad-canvas">
-          <div class="rack-cad-canvas-head"><div><b>Editor visual</b><span id="rackCadModeHint">${rb.cadTool==='select'?'Selecciona una pieza o un espacio interno.':rb.cadTool==='shelf'?'Haz clic dentro de un espacio para insertar una repisa a esa altura.':rb.cadTool==='divider'?'Haz clic dentro de un espacio para dividirlo verticalmente.':'El fondo se configura arriba en «② Fondo posterior».'}</span></div><div class="rack-view-switch"><button class="${rb.viewMode==='3d'?'active':''}" data-rack-view="3d">3D</button><button class="${rb.viewMode==='front'?'active':''}" data-rack-view="front">Frontal</button></div></div>
-          <div class="rack-cad-stage-stack">
-            <div id="rackFurniture3D" class="rack-furniture-3d-stage rack-cad-3d ${rb.viewMode==='3d'?'':'is-hidden'}" data-model-id="${model.id}"></div>
-            <div class="rack-cad-front ${rb.viewMode==='front'?'':'is-hidden'}"><svg id="rackBuilderFront" viewBox="0 0 820 590" preserveAspectRatio="xMidYMid meet"></svg></div>
-          </div>
-          <div class="rack-cad-canvas-foot"><span>Fondo: orbitar</span><span>Rueda: zoom</span><span>Ctrl/Cmd + clic: selección múltiple de repisas</span><button class="mini-btn" data-furniture-action="reset-3d-camera" data-mid="${model.id}">Centrar</button></div>
-        </section>
-        <aside class="rack-cad-inspector-col">
+      </section>
+          </details>
           <section class="rack-cad-inspector-card"><div class="rack-panel-title"><div><b>Propiedades</b><span id="rackCadInspectorHint">Contexto de la selección</span></div></div><div id="rackBuilderInspector" class="rack-builder-inspector rack-3d-inspector"></div></section>
-          <section class="rack-cad-inspector-card rack-cad-general"><div class="rack-panel-title"><div><b>Mueble</b><span>Dimensiones y material</span></div></div>
+          <details open class="fb-accordion fb-accordion-model" data-fb-panel="model"><summary><span><b>01 · Dimensiones y materiales</b><small>Medidas generales del mueble seleccionado</small></span><span class="fb-chevron">⌄</span></summary><section class="rack-cad-inspector-card rack-cad-general">
             <div class="construction-grid-2"><label class="construction-field">Ancho<input type="number" min="30" step="1" data-furniture-model-field="width" data-mid="${model.id}" value="${round1(model.width)}"></label><label class="construction-field">Profundidad<input type="number" min="20" step="1" data-furniture-model-field="depth" data-mid="${model.id}" value="${round1(model.depth)}"></label><label class="construction-field">Alto<input type="number" min="60" step="1" data-furniture-model-field="height" data-mid="${model.id}" value="${round1(model.height)}"></label><label class="construction-field">Grosor<input type="number" min=".3" step=".1" data-furniture-field="thickness" data-mid="${model.id}" value="${round1(f.thickness)}"></label></div>
             <label class="construction-field">Material<select data-furniture-field="material" data-mid="${model.id}"><option value="melamine" ${f.material==='melamine'?'selected':''}>Melamina</option><option value="wood" ${f.material==='wood'?'selected':''}>Madera</option><option value="metal" ${f.material==='metal'?'selected':''}>Metal</option><option value="metal-wood" ${f.material==='metal-wood'?'selected':''}>Metal + madera</option></select></label>
             <label class="construction-field">Acabado<select data-furniture-field="finish" data-mid="${model.id}"><option value="oak" ${f.finish==='oak'?'selected':''}>Roble natural</option><option value="white" ${f.finish==='white'?'selected':''}>Blanco</option><option value="walnut" ${f.finish==='walnut'?'selected':''}>Nogal</option><option value="graphite" ${f.finish==='graphite'?'selected':''}>Grafito</option></select></label>
             <label class="construction-field">Forma superior<select data-furniture-field="roofMode" data-mid="${model.id}"><option value="flat" ${f.roofMode==='flat'?'selected':''}>Recto</option><option value="slope" ${f.roofMode==='slope'?'selected':''}>Pendiente</option></select></label>
             ${f.roofMode==='slope'?`<div class="construction-grid-2"><label class="construction-field">Altura izq.<input type="number" min="20" step="1" data-furniture-field="leftHeight" data-mid="${model.id}" value="${round1(f.leftHeight)}"></label><label class="construction-field">Altura der.<input type="number" min="20" step="1" data-furniture-field="rightHeight" data-mid="${model.id}" value="${round1(f.rightHeight)}"></label></div>`:''}
             <div class="fb-edit-options"><label class="construction-field">Snap (cm)<input id="fbSnapStep" type="number" min="0.1" max="50" step="0.1" value="${round1(f.snap)}"></label><label class="fb-checkbox"><input id="fbShowDims" type="checkbox" ${f.showDims?'checked':''}> Mostrar cotas</label><label class="fb-checkbox"><input id="fbShowSlots" type="checkbox" ${f.showSlots?'checked':''}> Mostrar ubicaciones</label></div>
-          </section>
-          <section class="rack-cad-inspector-card fb-spaces-panel">
+          </section></details>
+          <details class="fb-accordion fb-accordion-spaces" data-fb-panel="spaces" ${rb.v191Panels?.spaces?'open':''}><summary><span><b>03 · Divisiones y compartimentos</b><small>Distribución equitativa o personalizada</small></span><span class="fb-chevron">⌄</span></summary><section class="rack-cad-inspector-card fb-spaces-panel">
             <div class="rack-panel-title"><div><b>Distribución paramétrica</b><span>Divisiones iguales o con medidas personalizadas</span></div></div>
             <div class="fb-space-group"><strong>Espacios horizontales (altura)</strong><div class="fb-space-controls"><label>Cantidad<input id="fbHorizontalCount" type="number" min="1" max="12" value="${rb.hCount}"></label><label>Distribución<select id="fbHorizontalMode"><option value="equal" ${rb.hMode==='equal'?'selected':''}>Equitativa</option><option value="custom" ${rb.hMode==='custom'?'selected':''}>Personalizada</option></select></label></div><div id="fbHorizontalValues" class="fb-space-values"></div><button type="button" id="fbApplyHorizontal" class="mini-btn fb-apply-partitions">Aplicar divisiones horizontales</button></div>
             <div class="fb-space-group"><strong>Espacios verticales (ancho)</strong><div class="fb-space-controls"><label>Cantidad<input id="fbVerticalCount" type="number" min="1" max="12" value="${rb.vCount}"></label><label>Distribución<select id="fbVerticalMode"><option value="equal" ${rb.vMode==='equal'?'selected':''}>Equitativa</option><option value="custom" ${rb.vMode==='custom'?'selected':''}>Personalizada</option></select></label><label>Aplicar a<select id="fbVerticalTarget"><option value="all">Todos los niveles</option>${levels.map(l=>`<option value="${l.index}">Nivel ${l.index}</option>`).join('')}</select></label></div><div id="fbVerticalValues" class="fb-space-values"></div><button type="button" id="fbApplyVertical" class="mini-btn fb-apply-partitions">Aplicar divisiones verticales</button></div>
             <div class="fb-space-note">Las medidas son libres, descontando espesores. Al modificar el volumen se recalculan las piezas del mueble.</div>
-          </section>
+          </section></details>
         </aside>
       </div>
-      <section class="rack-cad-levelbar fb-bom-section"><div class="rack-cad-levelbar-head"><div><b>Despiece y control</b><span>Revisa piezas reales antes de guardar y colocar en Diseñar espacio 3D.</span></div><div class="fb-bom-actions"><button type="button" id="fbValidate" class="mini-btn">Comprobar modelo</button><button type="button" id="fbExportBom" class="mini-btn">Exportar despiece CSV</button></div></div><div id="fbValidationResult" role="status" aria-live="polite"></div><div id="fbPartsList" class="fb-parts-list">${furniturePartsTable(model)}</div></section>
-      <section class="rack-cad-levelbar"><div class="rack-cad-levelbar-head"><div><b>Niveles / espacios</b><span>Se derivan automáticamente de las repisas y divisiones.</span></div><button class="mini-btn" id="rackCadAutoLevels">Distribuir repisas uniformemente</button></div><div id="rackBuilderLevels" class="rack-builder-levels rack-cad-levels"></div></section>`:`<div class="rack-assistant-convert"><div><b>Este modelo usa el generador clásico.</b><span>Modelos de rack permanece intacto. Crea una copia editable para usar Visual Furniture CAD.</span></div><button class="btn" data-furniture-action="convert" data-mid="${model.id}">Preparar copia editable</button></div>`}
+      <details class="fb-accordion fb-bottom-accordion fb-accordion-review" data-fb-panel="review" ${rb.v191Panels?.review?'open':''}><summary><span><b>05 · Despiece y revisión técnica</b><small>${(f.pieces||[]).length} piezas · Validación y exportación CSV</small></span><span class="fb-chevron">⌄</span></summary><section class="rack-cad-levelbar fb-bom-section"><div class="rack-cad-levelbar-head"><div><b>Despiece y control</b><span>Revisa piezas reales antes de guardar y colocar en Diseñar espacio 3D.</span></div><div class="fb-bom-actions"><button type="button" id="fbValidate" class="mini-btn">Comprobar modelo</button><button type="button" id="fbExportBom" class="mini-btn">Exportar despiece CSV</button></div></div><div id="fbValidationResult" role="status" aria-live="polite"></div><div id="fbPartsList" class="fb-parts-list">${furniturePartsTable(model)}</div></section></details>
+      <details class="fb-accordion fb-bottom-accordion fb-accordion-levels" data-fb-panel="levels" ${rb.v191Panels?.levels?'open':''}><summary><span><b>Niveles y ubicaciones</b><small>Capacidad y repisas distribuidas</small></span><span class="fb-chevron">⌄</span></summary><section class="rack-cad-levelbar"><div class="rack-cad-levelbar-head"><div><b>Niveles / espacios</b><span>Se derivan automáticamente de las repisas y divisiones.</span></div><button class="mini-btn" id="rackCadAutoLevels">Distribuir repisas uniformemente</button></div><div id="rackBuilderLevels" class="rack-builder-levels rack-cad-levels"></div></section></details>`:`<div class="rack-assistant-convert"><div><b>Este modelo usa el generador clásico.</b><span>Modelos de rack permanece intacto. Crea una copia editable para usar Visual Furniture CAD.</span></div><button class="btn" data-furniture-action="convert" data-mid="${model.id}">Preparar copia editable</button></div>`}
     </div>`;
     document.getElementById('rackConstructionModelSelect')?.addEventListener('change',e=>{appState.selectedModelId=e.target.value;disposeRackFurniture3DEngine();renderRackConstructionWorkspace();});
     document.getElementById('rackConstructionName')?.addEventListener('change',e=>{const name=String(e.target.value||'').trim()||'Rack sin nombre';if(model.name===name)return;recordHistorySnapshot('racks');model.name=name;saveRackModels();});
@@ -16112,6 +16123,21 @@ function getSheetBranchOpenMap(){
     document.getElementById('rackConstructionPlace')?.addEventListener('click',()=>{if(furnitureValidateModel(model).errors.length){furnitureShowValidation(model);return;}placeFurnitureModelInLayout(model);});
     document.getElementById('rackConstructionOpen3D')?.addEventListener('click',()=>setScreen('virtual'));
     bindFurnitureCreationExtras(model,rb);
+    // V191: el panel derecho conserva la apertura entre ediciones y Undo/Redo.
+    document.querySelectorAll('.fb-accordion[data-fb-panel]').forEach(panel=>panel.addEventListener('toggle',()=>{
+      if(panel.dataset.fbPanel==='model')return;
+      rb.v191Panels[panel.dataset.fbPanel]=panel.open;
+    }));
+    const openStep=(step)=>{
+      const target=step==='build'?'.fb-accordion-build':step==='spaces'?'.fb-accordion-spaces':step==='review'?'.fb-accordion-review':'.fb-accordion-model';
+      const el=document.querySelector(target);
+      if(!el)return;
+      if(el.tagName==='DETAILS'&&!el.open)el.open=true;
+      requestAnimationFrame(()=>{el.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});});
+      document.querySelectorAll('[data-fb-step]').forEach(btn=>btn.classList.toggle('active',btn.dataset.fbStep===step));
+      if(step==='materials')document.querySelector('[data-furniture-field="finish"]')?.focus({preventScroll:true});
+    };
+    document.querySelectorAll('[data-fb-step]').forEach(btn=>btn.addEventListener('click',()=>openStep(btn.dataset.fbStep)));
     document.getElementById('fbNewMelamineShelf')?.addEventListener('click',()=>createFurnitureTemplate('melamine-shelf'));
     document.getElementById('fbNewCabinet')?.addEventListener('click',()=>createFurnitureTemplate('melamine-cabinet'));
     document.getElementById('fbNewMetalWood')?.addEventListener('click',()=>createFurnitureTemplate('metal-wood'));
@@ -16159,7 +16185,7 @@ function getSheetBranchOpenMap(){
     if(enabled){
       if(document.getElementById('rackBuilderFront')) renderRackFurnitureBuilder(model.id);
       refreshRackConstructionPanels(model);
-      renderRackFurniture3D(model.id);
+      if(rb.viewMode==='3d')renderRackFurniture3D(model.id);
     }
     updateUndoRedoUi();contentStatus.textContent='Modo activo: VISUAL FURNITURE CAD • modela directamente sobre el mueble.';contentFootRight.textContent=`${appState.models.length} modelos`;
   }
@@ -16498,10 +16524,10 @@ function getSheetBranchOpenMap(){
 
   function createRackFurniture3DEngine(THREE,host,model){
     const constructionMode=isRackConstructionScreen();
-    host.innerHTML='';const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(1.5,window.devicePixelRatio||1));renderer.setClearColor(constructionMode?0x102536:0x07131d,1);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;host.appendChild(renderer.domElement);
-    const scene=new THREE.Scene();scene.background=new THREE.Color(constructionMode?0x102536:0x07131d);const camera=new THREE.PerspectiveCamera(34,1,.1,10000);const target=new THREE.Vector3();
-    scene.add(new THREE.HemisphereLight(constructionMode?0xf0fbff:0xd9efff,constructionMode?0x354653:0x24313b,constructionMode?1.8:1.45));const key=new THREE.DirectionalLight(0xffffff,constructionMode?1.9:1.55);key.position.set(250,360,220);key.castShadow=true;key.shadow.mapSize.set(1024,1024);scene.add(key);const fill=new THREE.DirectionalLight(constructionMode?0xb7dcf4:0x89b8d8,constructionMode ? .95 : .65);fill.position.set(-220,160,-180);scene.add(fill);
-    const root=new THREE.Group();root.name='furnitureRoot';scene.add(root);const grid=new THREE.GridHelper(700,35,constructionMode?0x5b98bf:0x355064,constructionMode?0x2a536c:0x1c3444);grid.position.y=-.03;scene.add(grid);
+    host.innerHTML='';const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(1.5,window.devicePixelRatio||1));renderer.setClearColor(constructionMode?0xedece7:0x07131d,1);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;host.appendChild(renderer.domElement);
+    const scene=new THREE.Scene();scene.background=new THREE.Color(constructionMode?0xedece7:0x07131d);const camera=new THREE.PerspectiveCamera(34,1,.1,10000);const target=new THREE.Vector3();
+    scene.add(new THREE.HemisphereLight(constructionMode?0xf0fbff:0xd9efff,constructionMode?0xcbc9c1:0x24313b,constructionMode?1.8:1.45));const key=new THREE.DirectionalLight(0xffffff,constructionMode?1.9:1.55);key.position.set(250,360,220);key.castShadow=true;key.shadow.mapSize.set(1024,1024);scene.add(key);const fill=new THREE.DirectionalLight(constructionMode?0xf5e8d8:0x89b8d8,constructionMode ? .95 : .65);fill.position.set(-220,160,-180);scene.add(fill);
+    const root=new THREE.Group();root.name='furnitureRoot';scene.add(root);const grid=new THREE.GridHelper(700,35,constructionMode?0xc9c9c3:0x355064,constructionMode?0xdfded8:0x1c3444);grid.position.y=-.03;scene.add(grid);
     const e={THREE,host,renderer,scene,camera,target,root,raycaster:new THREE.Raycaster(),pointer:new THREE.Vector2(),modelId:model.id,yaw:-.75,pitch:.42,distance:320,raf:0,drag:null,orbit:null,meshByPiece:new Map(),spaceMeshes:[]};
     const resize=()=>{const w=Math.max(320,host.clientWidth),h=Math.max(360,host.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRackFurniture3DRender(e);};resize();e.resizeObserver=new ResizeObserver(resize);e.resizeObserver.observe(host);
     renderer.domElement.style.touchAction='none';
@@ -16515,7 +16541,7 @@ function getSheetBranchOpenMap(){
     const palette=constructionMode?(material==='metal'?{main:0x8aaac0}:material==='wood'?{main:0xca9360}:{main:0xe7edf3}):(material==='metal'?{main:0x607f98}:material==='wood'?{main:0xb77d43}:{main:0xdce5ed});
     const finishes={white:0xf2f0e8,oak:0xd2af85,walnut:0x86603f,graphite:0x4b5055};
     const actualColor=material==='metal'?palette.main:(finishes[finish]||palette.main);
-    return new THREE.MeshStandardMaterial({color:selected?0x55f3af:actualColor,roughness:material==='metal'?(constructionMode ? .28 : .38):(constructionMode ? .62 : .72),metalness:material==='metal'?(constructionMode ? .72 : .65):.05,emissive:selected?0x0c3f2c:(constructionMode?0x071019:0x000000),emissiveIntensity:selected?.55:(constructionMode ? .08 : 0)});
+    return new THREE.MeshStandardMaterial({color:actualColor,roughness:material==='metal'?(constructionMode ? .28 : .38):(constructionMode ? .62 : .72),metalness:material==='metal'?(constructionMode ? .72 : .65):.05,emissive:0x000000,emissiveIntensity:0});
   }
 
   function clearRackFurniture3DRoot(e){
@@ -16526,11 +16552,16 @@ function getSheetBranchOpenMap(){
     const {THREE}=e;clearRackFurniture3DRoot(e);ensureRackFurnitureModel(model);furnitureRefitModel(model);const f=model.furniture,W=Number(model.width||120),D=Number(model.depth||40),H=Number(model.height||200),selectedIds=new Set(f.selectedPieceIds||[]);if(f.selectedPieceId)selectedIds.add(f.selectedPieceId);
     const pieces=getFurnitureRenderPieces(model);
     const topPiece=pieces.find(p=>p.type==='top'&&p.slopeTop&&f.roofMode==='slope');
+    const addSelectionOutline=(mesh,geom)=>{
+      const edgeGeo=new THREE.EdgesGeometry(geom);
+      const outline=new THREE.LineSegments(edgeGeo,new THREE.LineBasicMaterial({color:0x16a687,depthTest:false,transparent:true,opacity:.95}));
+      outline.position.copy(mesh.position);outline.rotation.copy(mesh.rotation);outline.renderOrder=6;outline.userData={decorative:true};e.root.add(outline);
+    };
     pieces.forEach(p=>{
-      if(p===topPiece){const lh=Number(f.leftHeight||H),rh=Number(f.rightHeight||H),dx=Math.max(1,W-2*f.thickness),dh=rh-lh,len=Math.sqrt(dx*dx+dh*dh),angle=Math.atan2(dh,dx);const geom=new THREE.BoxGeometry(len,Math.max(.1,p.h),D);const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set(W/2,(lh+rh)/2-f.thickness/2,D/2);mesh.rotation.z=angle;mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);return;}
-      if(p.type==='brace'){const x1=Number(p.x||0),z1=Number(p.z||0),x2=Number(p.x2||p.x+p.w||0),z2=Number(p.z2||p.z+p.h||0),dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);const geom=new THREE.BoxGeometry(len,Math.max(.5,Number(p.d||1)),Math.max(.5,Number(p.d||1)));const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set((x1+x2)/2,(z1+z2)/2,D*.05);mesh.rotation.z=Math.atan2(dz,dx);mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);return;}
-      const geom=new THREE.BoxGeometry(Math.max(.1,p.w),Math.max(.1,p.h),Math.max(.1,p.d));const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set(Number(p.x||0)+p.w/2,Number(p.z||0)+p.h/2,Number(p.y||0)+p.d/2);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);
-      if(selectedIds.has(p.id)){const edges=new THREE.EdgesGeometry(geom);const line=new THREE.LineSegments(edges,new THREE.LineBasicMaterial({color:0x75ffc2}));line.position.copy(mesh.position);line.rotation.copy(mesh.rotation);e.root.add(line);}
+      if(p===topPiece){const lh=Number(f.leftHeight||H),rh=Number(f.rightHeight||H),dx=Math.max(1,W-2*f.thickness),dh=rh-lh,len=Math.sqrt(dx*dx+dh*dh),angle=Math.atan2(dh,dx);const geom=new THREE.BoxGeometry(len,Math.max(.1,p.h),D);const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set(W/2,(lh+rh)/2-f.thickness/2,D/2);mesh.rotation.z=angle;mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);if(selectedIds.has(p.id))addSelectionOutline(mesh,geom);return;}
+      if(p.type==='brace'){const x1=Number(p.x||0),z1=Number(p.z||0),x2=Number(p.x2||p.x+p.w||0),z2=Number(p.z2||p.z+p.h||0),dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);const geom=new THREE.BoxGeometry(len,Math.max(.5,Number(p.d||1)),Math.max(.5,Number(p.d||1)));const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set((x1+x2)/2,(z1+z2)/2,D*.05);mesh.rotation.z=Math.atan2(dz,dx);mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);if(selectedIds.has(p.id))addSelectionOutline(mesh,geom);return;}
+      const geom=new THREE.BoxGeometry(Math.max(.1,p.w),Math.max(.1,p.h),Math.max(.1,p.d));const mat=rackFurnitureMaterialSet(THREE,furniturePieceFinish(model,p),selectedIds.has(p.id),f.finish);const mesh=new THREE.Mesh(geom,mat);mesh.position.set(Number(p.x||0)+p.w/2,Number(p.z||0)+p.h/2,Number(p.y||0)+p.d/2);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={pieceId:p.id,type:p.type};e.root.add(mesh);e.meshByPiece.set(p.id,mesh);if(selectedIds.has(p.id))addSelectionOutline(mesh,geom);
+
     });
     // espacios internos seleccionables en el constructor visual
     deriveFurnitureLevels(model).forEach(l=>l.slots.forEach(slot=>{const selected=!!(isRackConstructionScreen()&&f.selectedSpace&&Number(f.selectedSpace.levelIndex)===Number(l.index)&&Number(f.selectedSpace.slotIndex)===Number(slot.index));const geom=new THREE.BoxGeometry(Math.max(.1,slot.width-1),Math.max(.1,l.height-1),Math.max(1,D*.82));const mat=new THREE.MeshBasicMaterial({color:selected?0x42e7a5:0x5ec7f0,transparent:true,opacity:selected?.18:(isRackConstructionScreen()?.055:.025),depthWrite:false,side:THREE.DoubleSide});const m=new THREE.Mesh(geom,mat);m.position.set((slot.x0+slot.x1)/2,(l.z0+l.z1)/2,D*.5);m.userData={space:true,levelIndex:l.index,slotIndex:slot.index};e.root.add(m);e.spaceMeshes.push(m);}));
@@ -16608,7 +16639,7 @@ function vspaceSetSlotContainers(rack,level,slot,kind,count){
 function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
   const {shared, block:box, sprite:label, selected, selectedLevel, selectedSlot, products}=options;
   const w=spec.width/100, d=spec.depth/100, h=spec.height/100;
-  const metal=selected?shared.metalSelected:shared.metal;
+  const metal=shared.metal; // selección mediante contorno, sin sustituir los acabados del resto
   const part=(x,y,z,bw,bh,bd,mat,l=0,s=0)=>box(group,x,y,z,bw,bh,bd,mat,l,s);
   const sign=(text,x,y,z,width=.33)=>{const sp=label(text,width);sp.position.set(x,y,z);group.add(sp);return sp;};
   const shelfSlot=(l,s)=>({l,s,selectedSlot: selected && l===selectedLevel && s===selectedSlot});
@@ -16686,7 +16717,14 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         part(cx,cy,cz,Math.max(.004,pw*physicalScaleX/100),Math.max(.004,ph*physicalScaleH/100),Math.max(.004,pd*physicalScaleD/100),mat);
       }
     });
-    if(selected)sign(spec.title,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
+    if(selected){
+      // El resaltado se dibuja separado de las mallas: no modifica pintura ni veta del mueble.
+      const boundary=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2],[-w/2,-d/2]];
+      const geo=new THREE.BufferGeometry().setFromPoints(boundary.map(([x,z])=>new THREE.Vector3(x,.022,z)));
+      const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0x15a889,depthTest:false}));
+      line.renderOrder=8;group.add(line);
+      sign(spec.title,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
+    }
     return;
   }
   const frame=Math.max(.023,Math.min(.047,w*.025));
@@ -17517,7 +17555,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         const applyPointer=e=>{const r=canvas.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;raycaster.setFromCamera(mouse,camera);};
         const meshMat=(color,extra={})=>new THREE.MeshStandardMaterial({color,metalness:.14,roughness:.6,...extra});
         const shared={
-          metal:meshMat(0x6e7674,{metalness:.63,roughness:.43}),
+          metal:meshMat(0x939e9c,{metalness:.53,roughness:.48}),
           metalDark:meshMat(0x424947,{metalness:.58,roughness:.41}),
           metalSelected:meshMat(0x3b8d7e,{metalness:.43,roughness:.35}),
           hole:meshMat(0x353b39),

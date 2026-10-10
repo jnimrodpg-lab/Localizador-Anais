@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import vm from 'node:vm';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const read=p=>readFileSync(path.join(root,p),'utf8');
+const src=read('src/frontend/70-rack-editor.js'), core=read('src/frontend/00-core-state.js'), css=read('src/styles/modern.css');
+for(const token of ['fbPlinthEnabled','fbPlinthHeight','fbPlinthRecess','fbBackMode','fbBackThickness','fbBackInset','undoBuilder.onclick=()=>undoHistory','redoBuilder.onclick=()=>redoHistory'])assert.ok(src.includes(token),`Missing ${token}`);
+assert.ok(css.includes('.fb-construction-quick'));
+const env={appState:{models:[],ui:{rackBuilder:{}},history:{},screen:'rack-builder',selectedModelId:'',layout:{zones:[],racks:[],meta:{scaleCmPerUnit:1}}},Math,console,document:{querySelector:()=>null,getElementById:()=>null},escapeHtml:s=>String(s),clone:o=>JSON.parse(JSON.stringify(o)),normalizeRackStyle:s=>s,recordHistorySnapshot:()=>{},saveRackModels:()=>{},showToast:()=>{},getScaleCmPerUnit:()=>1,round1:n=>Math.round(Number(n)*10)/10,saveRemoteAppState:async()=>{},contentWrap:{innerHTML:''}};
+vm.createContext(env);
+vm.runInContext(src+'\nrenderRackConstructionWorkspace=()=>{};disposeRackFurniture3DEngine=()=>{};rackModel=id=>appState.models.find(m=>m.id===id)||null;',env);
+const ev=s=>vm.runInContext(s,env);
+for(const type of ['melamine-shelf','melamine-cabinet','metal-wood']){
+  ev(`createFurnitureTemplate('${type}')`);
+  let m=env.appState.models[0];
+  const errors=ev('furnitureValidateModel(appState.models[0]).errors');
+  assert.deepEqual(Array.from(errors),[],type+': '+errors.join(', '));
+  if(type==='melamine-shelf'||type==='melamine-cabinet'){
+    assert.equal(m.furniture.plinthEnabled,true);
+    assert.ok(m.furniture.pieces.some(p=>p.type==='plinth'));
+    assert.equal(m.furniture.pieces.find(p=>p.type==='base').z,10);
+    assert.ok(ev('deriveFurnitureLevels(appState.models[0])[0].z0')>=11.8);
+    assert.equal(ev('deriveFurnitureLevels(appState.models[0])[0].index'),1,'No fake floor level');
+    ev('furnitureSetPlinth(appState.models[0],false)');
+    m=env.appState.models[0];assert.equal(m.furniture.pieces.some(p=>p.type==='plinth'),false);
+    assert.equal(m.furniture.pieces.find(p=>p.type==='base').z,0);
+    ev('furnitureSetPlinth(appState.models[0],true)');
+    assert.ok(m.furniture.pieces.some(p=>p.type==='plinth'));
+  }else assert.ok(!m.furniture.pieces.some(p=>p.type==='plinth'));
+  ev('appState.models[0].furniture.backMode="full";furnitureSyncBackPanels(appState.models[0]);furnitureRefitModel(appState.models[0]);');
+  m=env.appState.models[0];const back=m.furniture.pieces.filter(p=>p.type==='back');
+  assert.equal(back.length,1);assert.ok(back[0].h>20);assert.ok(back[0].d>0);
+  ev('appState.models[0].furniture.backMode="modules";furnitureSyncBackPanels(appState.models[0]);syncFurnitureModelToLegacy(appState.models[0]);');
+  m=env.appState.models[0];const beforeCount=m.furniture.pieces.filter(p=>p.type==='back').length;
+  assert.ok(beforeCount>=1);
+  ev('applyConstructionHorizontalSpaces(appState.models[0],5,true,[])');
+  m=env.appState.models[0];const afterCount=m.furniture.pieces.filter(p=>p.type==='back').length;
+  assert.ok(afterCount>=5,`module back count ${afterCount}`);
+  assert.deepEqual(Array.from(ev('furnitureValidateModel(appState.models[0]).errors')),[],type);
+}
+// Exercise the actual core history controller against the model editor.
+const start=core.indexOf('  function getHistoryBucket(type){'),end=core.indexOf('  let productSearchDebounce',start);
+assert.ok(start>=0&&end>start);
+vm.runInContext(core.slice(start,end),env);
+env.appState.history={};
+ev('recordHistorySnapshot("racks");');
+const m=env.appState.models[0],oldH=m.furniture.plinthHeight;
+ev('appState.models[0].furniture.plinthHeight=17;');
+ev('undoHistory("racks");');
+assert.equal(env.appState.models[0].furniture.plinthHeight,oldH);
+assert.ok(env.appState.history.racks.redoStack.length>0);
+ev('redoHistory("racks");');
+assert.equal(env.appState.models[0].furniture.plinthHeight,17);
+console.log('V190 OK: zócalo físico, altura útil, fondo completo/modular, 3D, historial Undo/Redo.');

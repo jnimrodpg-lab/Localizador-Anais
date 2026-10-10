@@ -59,3 +59,16 @@ Documentación de cambios técnicos: `CAMBIOS_V187.md`.
 6. **Colocar en el almacén** (requiere una zona con espacio disponible) y abrir **Diseñar espacio 3D**; las piezas se renderizan a partir del modelo guardado.
 
 Para publicar en Cloudflare Pages: ejecutar `npm install && npm run build`, seleccionar directorio de salida `public`; preservar la configuración D1 en `wrangler.toml`.
+
+## V190 — Constructor de mobiliario (zócalo/fondo/historial)
+
+En el sidebar, entra a **Crear mobiliario 3D**. Elige una plantilla de melamina o de metal+madera.
+La sección **Construcción básica** permite activar el zócalo, definir su altura y retranqueo, y escoger
+**Sin fondo**, **Fondo completo** o **Fondo por compartimento**, sin tener que seleccionar la cara trasera.
+Al guardar/colocar el mueble, los paneles y las piezas quedan vinculados a Diseñar espacio 3D.
+
+Deshacer y rehacer se encuentran en la cabecera. Fuera de campos de texto también admiten
+Ctrl/Cmd+Z, Ctrl/Cmd+Y y Ctrl/Cmd+Shift+Z. Puedes verificar la integración mediante `npm run check`.
+
+Para Cloudflare Pages usar `npm ci && npm run build`; directorio de salida `public`.
+Para detalles de validación y limitaciones, consulta `CAMBIOS_V190.md`.

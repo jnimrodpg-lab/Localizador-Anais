@@ -1,5 +1,5 @@
 {
-  "version": "189",
+  "version": "190",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V189: constructor de mobiliario en sidebar, divisiones paramétricas, despiece CSV, validación y modelo por piezas en 3D; Cloudflare D1 conservado."
+  "notes": "V190: zócalo estructural que eleva la base útil, fondo posterior completo/por módulos, controles guiados y Undo/Redo corregidos; D1 y CAD/3D conservados."
 }

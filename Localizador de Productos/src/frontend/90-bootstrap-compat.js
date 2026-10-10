@@ -1,4 +1,4 @@
-console.info('WMS Industrial V176 · frontend reconstruido');
+console.info('WMS Industrial V180 · arquitectura 2D/3D');
   async function bootstrapApp(){
     ensureAppRuntimeState();
     loadUiTheme();

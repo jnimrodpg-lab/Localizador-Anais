@@ -1,4 +1,4 @@
-/* WMS_V176_CAD_SHEETS_REBUILD */
+/* WMS_V180_ARCHITECTURE_SYNC */
 /* WMS_V147_ASSISTED_MODULAR_RACK */
 /* WMS_V134_SYNC_VISUAL_WMS */
 /* WMS_V130_UNIFIED_WALLS_VIEWS */
@@ -1491,7 +1491,47 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     return `C${Math.max(0, ...nums) + 1}`;
   }
   function getStreetCornerStyle(){ return String(appState.layout?.meta?.defaultStreetCornerStyle || 'right') === 'diagonal' ? 'diagonal' : 'right'; }
-  function setStreetCornerStyle(style='right'){ ensureLayoutMeta(); appState.layout.meta.defaultStreetCornerStyle = String(style) === 'diagonal' ? 'diagonal' : 'right'; }
+  function normalizeStreetDims(source={}, fallback={}){
+    const sidewalkWidth = Math.max(20, Number(source.sidewalkWidth ?? fallback.sidewalkWidth ?? 42) || 42);
+    const roadWidth = Math.max(26, Number(source.roadWidth ?? fallback.roadWidth ?? 92) || 92);
+    return { sidewalkWidth, roadWidth, totalWidth: sidewalkWidth * 2 + roadWidth, side: source.side || fallback.side || '' };
+  }
+  function getStreetSpecsMap(network = appState.layout?.streets || [], overrides = {}){
+    const map = {};
+    ['top','bottom','left','right'].forEach(side => {
+      const source = side === overrides.side ? overrides : (Array.isArray(network) ? network.find(street => street?.side === side) : null) || {};
+      map[side] = normalizeStreetDims(source, { side });
+    });
+    return map;
+  }
+  function rebuildStreetNetwork(){
+    ensureLayoutMeta();
+    if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    const network = appState.layout.streets.map(street => ({
+      side: street?.side,
+      sidewalkWidth: street?.sidewalkWidth,
+      roadWidth: street?.roadWidth,
+      cornerStyle: street?.cornerStyle || appState.layout?.meta?.defaultStreetCornerStyle || 'right'
+    }));
+    appState.layout.streets = appState.layout.streets.map(street => {
+      if(!street?.side) return street;
+      return {
+        ...street,
+        ...buildStreetGeometry(street.side, {
+          network,
+          sidewalkWidth: street.sidewalkWidth,
+          roadWidth: street.roadWidth,
+          cornerStyle: street.cornerStyle || appState.layout?.meta?.defaultStreetCornerStyle || 'right'
+        })
+      };
+    });
+    return appState.layout.streets;
+  }
+  function setStreetCornerStyle(style='right'){
+    ensureLayoutMeta();
+    appState.layout.meta.defaultStreetCornerStyle = String(style) === 'diagonal' ? 'diagonal' : 'right';
+    rebuildStreetNetwork();
+  }
   function nearestBoundaryEdge(point){
     const b = layoutBoundaryBounds();
     const dTop = Math.abs(Number(point?.y || 0) - b.minY);
@@ -1508,28 +1548,87 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   }
   function buildStreetGeometry(side='top', opts={}){
     const b = layoutBoundaryBounds();
-    const sidewalk = Math.max(20, Number(opts.sidewalkWidth || 42) || 42);
-    const road = Math.max(26, Number(opts.roadWidth || 92) || 92);
-    const bevel = String(opts.cornerStyle || getStreetCornerStyle()) === 'diagonal' ? Math.max(16, Math.min(42, sidewalk * .6)) : 0;
+    const streetDims = normalizeStreetDims(opts, { side });
+    const sidewalk = streetDims.sidewalkWidth;
+    const road = streetDims.roadWidth;
+    const networkMap = getStreetSpecsMap(opts.network || appState.layout?.streets || [], { side, sidewalkWidth:sidewalk, roadWidth:road });
+    const hasTop = !!(opts.side === 'top' || networkMap.top?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'top'));
+    const hasBottom = !!(opts.side === 'bottom' || networkMap.bottom?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'bottom'));
+    const hasLeft = !!(opts.side === 'left' || networkMap.left?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'left'));
+    const hasRight = !!(opts.side === 'right' || networkMap.right?.sidewalkWidth && (Array.isArray(opts.network) ? opts.network : appState.layout?.streets || []).some(street => street?.side === 'right'));
+    const diagonal = String(opts.cornerStyle || getStreetCornerStyle()) === 'diagonal';
+    const bevel = diagonal ? Math.max(16, Math.min(42, sidewalk * .6)) : 0;
+    const left = networkMap.left || normalizeStreetDims({}, {});
+    const right = networkMap.right || normalizeStreetDims({}, {});
+    const top = networkMap.top || normalizeStreetDims({}, {});
+    const bottom = networkMap.bottom || normalizeStreetDims({}, {});
     let sidewalkPts = [], roadPts = [], outerSidewalkPts = [];
     if(side === 'top'){
-      sidewalkPts = [{x:b.minX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY-sidewalk},{x:b.maxX,y:b.minY},{x:b.minX,y:b.minY}];
-      roadPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}] : [{x:b.minX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.maxX,y:b.minY-sidewalk},{x:b.minX,y:b.minY-sidewalk}];
-      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX-bevel,y:b.minY-sidewalk-road},{x:b.minX+bevel,y:b.minY-sidewalk-road}] : [{x:b.minX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX,y:b.minY-sidewalk-road},{x:b.minX,y:b.minY-sidewalk-road}];
+      const sideL = hasLeft ? left.sidewalkWidth : 0;
+      const sideR = hasRight ? right.sidewalkWidth : 0;
+      const roadL = hasLeft ? (left.sidewalkWidth + left.roadWidth) : 0;
+      const roadR = hasRight ? (right.sidewalkWidth + right.roadWidth) : 0;
+      const outerL = hasLeft ? left.totalWidth : 0;
+      const outerR = hasRight ? right.totalWidth : 0;
+      const cutL = hasLeft ? bevel : 0;
+      const cutR = hasRight ? bevel : 0;
+      sidewalkPts = [{x:b.minX-sideL,y:b.minY-sidewalk},{x:b.maxX+sideR,y:b.minY-sidewalk},{x:b.maxX,y:b.minY},{x:b.minX,y:b.minY}];
+      roadPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-roadL+cutL,y:b.minY-sidewalk-road},{x:b.maxX+roadR-cutR,y:b.minY-sidewalk-road},{x:b.maxX+roadR,y:b.minY-sidewalk},{x:b.minX-roadL,y:b.minY-sidewalk}]
+        : [{x:b.minX-roadL,y:b.minY-sidewalk-road},{x:b.maxX+roadR,y:b.minY-sidewalk-road},{x:b.maxX+roadR,y:b.minY-sidewalk},{x:b.minX-roadL,y:b.minY-sidewalk}];
+      outerSidewalkPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-outerL+cutL,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+outerR-cutR,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+roadR-cutR,y:b.minY-sidewalk-road},{x:b.minX-roadL+cutL,y:b.minY-sidewalk-road}]
+        : [{x:b.minX-outerL,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+outerR,y:b.minY-sidewalk-road-sidewalk},{x:b.maxX+roadR,y:b.minY-sidewalk-road},{x:b.minX-roadL,y:b.minY-sidewalk-road}];
     }else if(side === 'bottom'){
-      sidewalkPts = [{x:b.minX,y:b.maxY},{x:b.maxX,y:b.maxY},{x:b.maxX,y:b.maxY+sidewalk},{x:b.minX,y:b.maxY+sidewalk}];
-      roadPts = bevel ? [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.minX+bevel,y:b.maxY+sidewalk+road}] : [{x:b.minX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.minX,y:b.maxY+sidewalk+road}];
-      outerSidewalkPts = bevel ? [{x:b.minX+bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road},{x:b.maxX-bevel,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX+bevel,y:b.maxY+sidewalk+road+sidewalk}] : [{x:b.minX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road},{x:b.maxX,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX,y:b.maxY+sidewalk+road+sidewalk}];
+      const sideL = hasLeft ? left.sidewalkWidth : 0;
+      const sideR = hasRight ? right.sidewalkWidth : 0;
+      const roadL = hasLeft ? (left.sidewalkWidth + left.roadWidth) : 0;
+      const roadR = hasRight ? (right.sidewalkWidth + right.roadWidth) : 0;
+      const outerL = hasLeft ? left.totalWidth : 0;
+      const outerR = hasRight ? right.totalWidth : 0;
+      const cutL = hasLeft ? bevel : 0;
+      const cutR = hasRight ? bevel : 0;
+      sidewalkPts = [{x:b.minX,y:b.maxY},{x:b.maxX,y:b.maxY},{x:b.maxX+sideR,y:b.maxY+sidewalk},{x:b.minX-sideL,y:b.maxY+sidewalk}];
+      roadPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-roadL,y:b.maxY+sidewalk},{x:b.maxX+roadR,y:b.maxY+sidewalk},{x:b.maxX+roadR-cutR,y:b.maxY+sidewalk+road},{x:b.minX-roadL+cutL,y:b.maxY+sidewalk+road}]
+        : [{x:b.minX-roadL,y:b.maxY+sidewalk},{x:b.maxX+roadR,y:b.maxY+sidewalk},{x:b.maxX+roadR,y:b.maxY+sidewalk+road},{x:b.minX-roadL,y:b.maxY+sidewalk+road}];
+      outerSidewalkPts = diagonal && (cutL || cutR)
+        ? [{x:b.minX-roadL+cutL,y:b.maxY+sidewalk+road},{x:b.maxX+roadR-cutR,y:b.maxY+sidewalk+road},{x:b.maxX+outerR-cutR,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX-outerL+cutL,y:b.maxY+sidewalk+road+sidewalk}]
+        : [{x:b.minX-roadL,y:b.maxY+sidewalk+road},{x:b.maxX+roadR,y:b.maxY+sidewalk+road},{x:b.maxX+outerR,y:b.maxY+sidewalk+road+sidewalk},{x:b.minX-outerL,y:b.maxY+sidewalk+road+sidewalk}];
     }else if(side === 'left'){
-      sidewalkPts = [{x:b.minX-sidewalk,y:b.minY},{x:b.minX,y:b.minY},{x:b.minX,y:b.maxY},{x:b.minX-sidewalk,y:b.maxY}];
-      roadPts = bevel ? [{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk,y:b.minY},{x:b.minX-sidewalk,y:b.maxY},{x:b.minX-sidewalk-road,y:b.maxY}];
-      outerSidewalkPts = bevel ? [{x:b.minX-sidewalk-road-sidewalk,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.minY+bevel},{x:b.minX-sidewalk-road,y:b.maxY-bevel},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY-bevel}] : [{x:b.minX-sidewalk-road-sidewalk,y:b.minY},{x:b.minX-sidewalk-road,y:b.minY},{x:b.minX-sidewalk-road,y:b.maxY},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY}];
+      const sideT = hasTop ? top.sidewalkWidth : 0;
+      const sideB = hasBottom ? bottom.sidewalkWidth : 0;
+      const roadT = hasTop ? (top.sidewalkWidth + top.roadWidth) : 0;
+      const roadB = hasBottom ? (bottom.sidewalkWidth + bottom.roadWidth) : 0;
+      const outerT = hasTop ? top.totalWidth : 0;
+      const outerB = hasBottom ? bottom.totalWidth : 0;
+      const cutT = hasTop ? bevel : 0;
+      const cutB = hasBottom ? bevel : 0;
+      sidewalkPts = [{x:b.minX-sidewalk,y:b.minY-sideT},{x:b.minX,y:b.minY},{x:b.minX,y:b.maxY},{x:b.minX-sidewalk,y:b.maxY+sideB}];
+      roadPts = diagonal && (cutT || cutB)
+        ? [{x:b.minX-sidewalk-road,y:b.minY-roadT+cutT},{x:b.minX-sidewalk,y:b.minY-sideT},{x:b.minX-sidewalk,y:b.maxY+sideB},{x:b.minX-sidewalk-road,y:b.maxY+roadB-cutB}]
+        : [{x:b.minX-sidewalk-road,y:b.minY-roadT},{x:b.minX-sidewalk,y:b.minY-sideT},{x:b.minX-sidewalk,y:b.maxY+sideB},{x:b.minX-sidewalk-road,y:b.maxY+roadB}];
+      outerSidewalkPts = diagonal && (cutT || cutB)
+        ? [{x:b.minX-sidewalk-road-sidewalk,y:b.minY-outerT+cutT},{x:b.minX-sidewalk-road,y:b.minY-roadT+cutT},{x:b.minX-sidewalk-road,y:b.maxY+roadB-cutB},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY+outerB-cutB}]
+        : [{x:b.minX-sidewalk-road-sidewalk,y:b.minY-outerT},{x:b.minX-sidewalk-road,y:b.minY-roadT},{x:b.minX-sidewalk-road,y:b.maxY+roadB},{x:b.minX-sidewalk-road-sidewalk,y:b.maxY+outerB}];
     }else{
-      sidewalkPts = [{x:b.maxX,y:b.minY},{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk,y:b.maxY},{x:b.maxX,y:b.maxY}];
-      roadPts = bevel ? [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel},{x:b.maxX+sidewalk,y:b.maxY}] : [{x:b.maxX+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road,y:b.maxY},{x:b.maxX+sidewalk,y:b.maxY}];
-      outerSidewalkPts = bevel ? [{x:b.maxX+sidewalk+road,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY+bevel},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY-bevel},{x:b.maxX+sidewalk+road,y:b.maxY-bevel}] : [{x:b.maxX+sidewalk+road,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY},{x:b.maxX+sidewalk+road,y:b.maxY}];
+      const sideT = hasTop ? top.sidewalkWidth : 0;
+      const sideB = hasBottom ? bottom.sidewalkWidth : 0;
+      const roadT = hasTop ? (top.sidewalkWidth + top.roadWidth) : 0;
+      const roadB = hasBottom ? (bottom.sidewalkWidth + bottom.roadWidth) : 0;
+      const outerT = hasTop ? top.totalWidth : 0;
+      const outerB = hasBottom ? bottom.totalWidth : 0;
+      const cutT = hasTop ? bevel : 0;
+      const cutB = hasBottom ? bevel : 0;
+      sidewalkPts = [{x:b.maxX,y:b.minY},{x:b.maxX+sidewalk,y:b.minY-sideT},{x:b.maxX+sidewalk,y:b.maxY+sideB},{x:b.maxX,y:b.maxY}];
+      roadPts = diagonal && (cutT || cutB)
+        ? [{x:b.maxX+sidewalk,y:b.minY-sideT},{x:b.maxX+sidewalk+road,y:b.minY-roadT+cutT},{x:b.maxX+sidewalk+road,y:b.maxY+roadB-cutB},{x:b.maxX+sidewalk,y:b.maxY+sideB}]
+        : [{x:b.maxX+sidewalk,y:b.minY-sideT},{x:b.maxX+sidewalk+road,y:b.minY-roadT},{x:b.maxX+sidewalk+road,y:b.maxY+roadB},{x:b.maxX+sidewalk,y:b.maxY+sideB}];
+      outerSidewalkPts = diagonal && (cutT || cutB)
+        ? [{x:b.maxX+sidewalk+road,y:b.minY-roadT+cutT},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY-outerT+cutT},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY+outerB-cutB},{x:b.maxX+sidewalk+road,y:b.maxY+roadB-cutB}]
+        : [{x:b.maxX+sidewalk+road,y:b.minY-roadT},{x:b.maxX+sidewalk+road+sidewalk,y:b.minY-outerT},{x:b.maxX+sidewalk+road+sidewalk,y:b.maxY+outerB},{x:b.maxX+sidewalk+road,y:b.maxY+roadB}];
     }
-    return { side, sidewalkPts, roadPts, outerSidewalkPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: bevel ? 'diagonal' : 'right' };
+    return { side, sidewalkPts, roadPts, outerSidewalkPts, sidewalkWidth:sidewalk, roadWidth:road, cornerStyle: diagonal ? 'diagonal' : 'right' };
   }
   function addStreetFromPoint(point, opts={}){
     ensureLayoutMeta();
@@ -1537,9 +1636,13 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const side = opts.side || nearestBoundaryEdge(point);
     const existing = appState.layout.streets.find(s => s.side === side);
     const geo = buildStreetGeometry(side, opts);
-    if(existing){ Object.assign(existing, geo); return existing; }
-    const street = { id:nextStreetId(), name:`Calle ${side}`, ...geo };
-    appState.layout.streets.push(street);
+    let street = existing;
+    if(existing){ Object.assign(existing, geo); street = existing; }
+    else {
+      street = { id:nextStreetId(), name:`Calle ${side}`, ...geo };
+      appState.layout.streets.push(street);
+    }
+    rebuildStreetNetwork();
     return street;
   }
   function unitsToCm(units){ return Number(units || 0) * getScaleCmPerUnit(); }
@@ -11864,26 +11967,36 @@ function getSheetBranchOpenMap(){
     }
     (appState.layout?.streets || []).forEach(street => {
       const selected = appState.selectedStreetId === street.id;
+      const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
+      if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
+        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(235,229,216,.98)':'rgba(244,239,230,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.6':'1.15', 'data-street-id':street.id, style:'cursor:pointer' });
+        sw2.addEventListener('pointerdown', pickStreet);
+        streetsLayer.appendChild(sw2);
+      }
       if(Array.isArray(street.roadPts) && street.roadPts.length >= 4){
-        const road = svgEl('path',{ d:pathFromPts(street.roadPts), fill:selected?'rgba(136,145,151,.98)':'rgba(128,136,142,.92)', stroke:selected?'#f7f3df':'rgba(89,92,95,.85)', 'stroke-width':selected?'1.8':'1.2', 'data-street-id':street.id, style:'cursor:pointer' });
-        road.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
+        const road = svgEl('path',{ d:pathFromPts(street.roadPts), fill:selected?'rgba(136,145,151,.98)':'rgba(130,137,143,.94)', stroke:selected?'#f7f3df':'rgba(89,92,95,.88)', 'stroke-width':selected?'1.9':'1.25', 'data-street-id':street.id, style:'cursor:pointer' });
+        road.addEventListener('pointerdown', pickStreet);
         streetsLayer.appendChild(road);
+        const xs = street.roadPts.map(pt => Number(pt?.x || 0));
+        const ys = street.roadPts.map(pt => Number(pt?.y || 0));
+        const lane = street.side === 'top' || street.side === 'bottom'
+          ? svgEl('line',{ x1:Math.min(...xs)+10, y1:(Math.min(...ys)+Math.max(...ys))/2, x2:Math.max(...xs)-10, y2:(Math.min(...ys)+Math.max(...ys))/2, stroke:'rgba(248,240,222,.9)', 'stroke-width':'1.25', 'stroke-dasharray':'12 8', 'vector-effect':'non-scaling-stroke', 'pointer-events':'none' })
+          : svgEl('line',{ x1:(Math.min(...xs)+Math.max(...xs))/2, y1:Math.min(...ys)+10, x2:(Math.min(...xs)+Math.max(...xs))/2, y2:Math.max(...ys)-10, stroke:'rgba(248,240,222,.9)', 'stroke-width':'1.25', 'stroke-dasharray':'12 8', 'vector-effect':'non-scaling-stroke', 'pointer-events':'none' });
+        streetsLayer.appendChild(lane);
       }
       if(Array.isArray(street.sidewalkPts) && street.sidewalkPts.length >= 4){
-        const sw = svgEl('path',{ d:pathFromPts(street.sidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(236,231,219,.92)', stroke:selected?'#d2b07a':'rgba(205,188,158,.95)', 'stroke-width':selected?'1.5':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
-        sw.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
+        const sw = svgEl('path',{ d:pathFromPts(street.sidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(236,231,219,.94)', stroke:selected?'#d2b07a':'rgba(205,188,158,.95)', 'stroke-width':selected?'1.55':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
+        sw.addEventListener('pointerdown', pickStreet);
         streetsLayer.appendChild(sw);
-      }
-      if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
-        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:selected?'rgba(232,226,212,.98)':'rgba(242,238,228,.96)', stroke:selected?'#d2b07a':'rgba(205,188,158,.92)', 'stroke-width':selected?'1.5':'1.1', 'data-street-id':street.id, style:'cursor:pointer' });
-        sw2.addEventListener('pointerdown', evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); });
-        streetsLayer.appendChild(sw2);
       }
       const labelPts = street.roadPts?.length ? street.roadPts : (street.sidewalkPts?.length ? street.sidewalkPts : street.outerSidewalkPts);
       if(Array.isArray(labelPts) && labelPts.length){
         const c = polygonCentroid(labelPts);
+        const label = `${street.side === 'top' ? 'Calle superior' : street.side === 'bottom' ? 'Calle inferior' : street.side === 'left' ? 'Calle lateral izq.' : 'Calle lateral der.'} · ${street.cornerStyle === 'diagonal' ? 'esquina diagonal' : '90°'}`;
+        const approxW = Math.max(116, label.length * 5.9);
+        streetsLayer.appendChild(svgEl('rect',{ x:c.x - approxW/2, y:c.y - 11, width:approxW, height:22, rx:'11', fill:'rgba(246,241,231,.92)', stroke:selected?'rgba(34,96,82,.88)':'rgba(188,164,127,.88)', 'stroke-width':'1.05', 'pointer-events':'none' }));
         const txt = svgEl('text',{ x:c.x, y:c.y+4, 'text-anchor':'middle', style:'font-size:10px;font-weight:800;fill:rgba(48,54,60,.95);pointer-events:none' });
-        txt.textContent = `${street.side === 'top' ? 'Calle superior' : street.side === 'bottom' ? 'Calle inferior' : street.side === 'left' ? 'Calle lateral izq.' : 'Calle lateral der.'} · ${street.cornerStyle === 'diagonal' ? 'esquina diagonal' : '90°'}`;
+        txt.textContent = label;
         streetsLayer.appendChild(txt);
       }
     });
@@ -12742,7 +12855,7 @@ function getSheetBranchOpenMap(){
       else if(action === 'toggle-lock-zones') appState.editor.zonesLocked = !appState.editor.zonesLocked;
       else if(action === 'toggle-dims') appState.editor.showDims = !appState.editor.showDims;
       else if(action === 'toggle-snap') { appState.editor.snapEnabled = !isSnapEnabled(); clearRackSnapPreview(); }
-      else if(action === 'toggle-section'){ appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; }
+      else if(action === 'toggle-section'){ appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; appState.editor.viewBoxInitialized = false; appState.editor.viewBoxCustomized = false; }
       else if(action === 'toggle-walls') appState.editor.wallsVisible = appState.editor.wallsVisible === false ? true : false;
       else if(action === 'toggle-openings') appState.editor.openingsVisible = appState.editor.openingsVisible === false ? true : false;
       else if(action === 'toggle-racks') appState.editor.racksVisible = appState.editor.racksVisible === false ? true : false;
@@ -12786,7 +12899,7 @@ function getSheetBranchOpenMap(){
     if($('#btnSaveLayoutTop')) $('#btnSaveLayoutTop').onclick = runSaveLayout;
     if($('#btnSaveLayoutVisible')) $('#btnSaveLayoutVisible').onclick = runSaveLayout;
     if($('#btnSaveLayoutFloat')) $('#btnSaveLayoutFloat').onclick = runSaveLayout;
-    if($('#btnToggleSections')) $('#btnToggleSections').onclick = () => { appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; renderLayoutEditor(); };
+    if($('#btnToggleSections')) $('#btnToggleSections').onclick = () => { appState.editor.sectionVisible = !appState.editor.sectionVisible; if(appState.editor.sectionVisible) appState.editor.racksVisible = true; appState.editor.viewBoxInitialized = false; appState.editor.viewBoxCustomized = false; renderLayoutEditor(); };
     if($('#btnPresentationMode')) $('#btnPresentationMode').onclick = () => { appState.editor.presentationMode = !appState.editor.presentationMode; renderLayoutEditor(); };
     if($('#btnExitPresentation')) $('#btnExitPresentation').onclick = () => { appState.editor.presentationMode = false; renderLayoutEditor(); };
     $$('[data-layout-context-action]').forEach(btn=>btn.onclick = () => {
@@ -15944,7 +16057,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
   }
   function vspaceCommit(label='ambiente virtual'){
     persistActiveLayout();
-    if(vspaceActive){vspaceActive.modified=true;vspaceActive.render(true);}
+    if(vspaceActive){vspaceActive.modified=true;vspaceActive.render?.(true);}
     vspaceToast(`Cambios locales guardados · ${label}. Usa «Guardar en nube» para sincronizarlos.`);
   }
   function vspaceCreate(kind){
@@ -16025,6 +16138,26 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     contentFootRight.textContent='';
     setTags([]);
     const canEdit=vspaceIsEditable();
+    ensureLayoutDecorations();
+    // La maqueta y el CAD comparten muros. Convertir el perímetro inicial una sola vez
+    // para que las paredes que antes eran solo visuales también sean editables.
+    ensureLayoutMeta();
+    if(!appState.layout.meta.architectureInitializedV180){
+      if(!(appState.layout.walls || []).length){
+        (appState.layout.zones || []).forEach(zone => {
+          (zone.pts || []).forEach((pt,i,pts)=>{
+            const next=pts[(i+1)%pts.length];
+            if(next && Math.hypot(next.x-pt.x,next.y-pt.y)>=20){
+              const w=createWallSegment(pt,next);
+              if(w){w.name=`Muro ${zone.id}-${i+1}`; w.zoneBoundarySource={zoneId:zone.id,edgeIndex:i};}
+            }
+          });
+        });
+      }
+      appState.layout.meta.architectureInitializedV180=true;
+      // Los usuarios de solo lectura pueden visualizar el perímetro sin generar escrituras.
+      if(canEdit) persistActiveLayout();
+    }
     const typelist=Object.entries(VSPACE_TYPES).map(([id,p])=>`<button type="button" class="vspace-catalog-btn" data-vspace-add="${id}" ${canEdit?'':'disabled'}><b>${p.icon}</b><span>${vspaceEsc(p.name)}</span><small>${p.levels} niveles</small></button>`).join('');
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
@@ -16035,7 +16168,9 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       <section class="vspace-stage"><canvas id="vspaceCanvas" aria-label="Visualizador tridimensional interactivo del almacén"></canvas>
       <details class="vspace-help"><summary title="Controles de navegación 3D" aria-label="Mostrar ayuda de navegación">? Ayuda</summary><div>Arrastrar: orbitar · Shift + arrastrar: desplazar · Rueda: zoom · Doble clic: enfocar · F: enfocar · 1/2/3: vistas</div></details>
       <div class="vspace-compass">ISO</div><div class="vspace-loading" id="vspaceLoading">Preparando el espacio tridimensional…</div></section>
-      <aside class="vspace-inspector"><h4>Inspector de ubicaciones</h4><div id="vspaceInspector" class="vspace-inspector-body">Selecciona un mueble para editar, ubicar productos y gestionar niveles.</div></aside></div>
+      <aside class="vspace-inspector"><h4 id="vspaceInspectorHeading">Inspector de ubicaciones</h4>
+      <div class="vspace-panel-tabs" role="group" aria-label="Editor activo"><button type="button" data-vspace-panel="furniture" class="active">Mobiliario</button><button type="button" data-vspace-panel="architecture">Arquitectura</button></div>
+      <div id="vspaceInspector" class="vspace-inspector-body">Selecciona un mueble o abre Arquitectura para modificar muros y vanos.</div></aside></div>
       <div class="vspace-bottom"><span id="vspaceNotice" aria-live="polite">Los cambios se guardan localmente; «Guardar en nube» sincroniza la sucursal.</span></div>
     </div>`;
     contentStatus.textContent='Ambiente 3D listo para diseñar';
@@ -16046,17 +16181,27 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       `;document.head.appendChild(style);
     }
     const root=document.getElementById('vspaceRoot'),canvas=root.querySelector('#vspaceCanvas');
-    const state={root,canvas,selectedId:appState.selectedRackLayoutId||'',selectedLevel:1,selectedSlot:1,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map()};
+    const state={root,canvas,selectedId:appState.selectedRackLayoutId||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
     vspaceActive=state;
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
-    const zoneBounds=[];(appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>zoneBounds.push(p)));
-    const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
-    sitePts.forEach(p=>zoneBounds.push(p));
-    (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>zoneBounds.push(p)));
-    if(!zoneBounds.length)(appState.layout.racks||[]).forEach(r=>zoneBounds.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
+    const collectScenePoints=()=>{
+      const pts=[];
+      (appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>pts.push(p)));
+      const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
+      sitePts.forEach(p=>pts.push(p));
+      (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>pts.push(p)));
+      if(!pts.length)(appState.layout.racks||[]).forEach(r=>pts.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
+      return pts;
+    };
+    let zoneBounds=collectScenePoints();
     let mx=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.x)))+Math.max(...zoneBounds.map(p=>Number(p.x))))/2:200;
     let my=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.y)))+Math.max(...zoneBounds.map(p=>Number(p.y))))/2:180;
+    const refreshSceneFrame=()=>{
+      zoneBounds=collectScenePoints();
+      mx=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.x)))+Math.max(...zoneBounds.map(p=>Number(p.x))))/2:mx;
+      my=zoneBounds.length?(Math.min(...zoneBounds.map(p=>Number(p.y)))+Math.max(...zoneBounds.map(p=>Number(p.y))))/2:my;
+    };
     const coord=p=>({x:(p.x-mx)*getScaleCmPerUnit()/100,z:(p.y-my)*getScaleCmPerUnit()/100});
     const invCoord=p=>({x:p.x*100/getScaleCmPerUnit()+mx,y:p.z*100/getScaleCmPerUnit()+my});
     const formatPosition=r=>`${Math.round(Number(r.x))}, ${Math.round(Number(r.y))}`;
@@ -16081,7 +16226,119 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       const assigned=vspaceAllAssignments();
       root.querySelector('#vspaceStats').textContent=`${(appState.layout.racks||[]).length} muebles · ${assigned.length} ubicaciones`;
     };
+    const archUnit = () => Math.max(.0001,getScaleCmPerUnit());
+    const wallLen = wall => Math.hypot(Number(wall.x2)-Number(wall.x1),Number(wall.y2)-Number(wall.y1));
+    const safeArchNum = (raw,min,max, fallback) => {
+      const n=Number(raw); return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
+    };
+    const selectArch = (wallId, openingId='') => {
+      state.inspectorMode='architecture';state.selectedWallId=wallId||'';state.selectedOpeningId=openingId||'';
+      appState.selectedWallId=state.selectedWallId;appState.selectedOpeningId=state.selectedOpeningId;
+      state.drawWallStart=null;state.refreshInspector();state.render?.(true);
+    };
+    state.selectArch=selectArch;
+    const validOpening = (candidate,wall,omitId='') => {
+      const L=wallLen(wall), u=archUnit();
+      const width=Number(candidate.width||0), sill=Number(candidate.sill||0), h=Number(candidate.height||0), H=Number(wall.height||290);
+      const position=safeArchNum(candidate.t,0,1,.5)*L;
+      if(L<60/u) return 'El muro es demasiado corto para instalar una abertura.';
+      if(width<35/u || width>L-20/u) return 'El ancho no cabe entre los extremos del muro.';
+      if(sill<0||h<=0||sill+h>H+0.01) return 'La abertura excede la altura del muro.';
+      if(position-width/2<10/u||position+width/2>L-10/u) return 'Deja al menos 10 cm libres en cada extremo.';
+      const collision=(appState.layout.openings||[]).find(other=>other.wallId===wall.id && other.id!==omitId &&
+        Math.abs(safeArchNum(other.t,0,1,.5)*L-position)<(Number(other.width||90)+width)/2+8/u);
+      return collision?`Se superpone con la abertura ${collision.id}.`:'';
+    };
+    state.refreshArchitecturalInspector=()=>{
+      ensureLayoutDecorations();
+      const host=root.querySelector('#vspaceInspector');
+      const walls=appState.layout.walls||[];
+      const wall=walls.find(w=>w.id===state.selectedWallId)||null;
+      const op=(appState.layout.openings||[]).find(o=>o.id===state.selectedOpeningId && o.wallId===wall?.id)||null;
+      const u=archUnit();
+      const list=walls.map(w=>`<button type="button" class="vspace-arch-entry ${w.id===state.selectedWallId?'selected':''}" data-vs-wall="${vspaceEsc(w.id)}"><b>${vspaceEsc(w.name||w.id)}</b><small>${Math.round(wallLen(w)*u)} cm · ${Math.round(Number(w.thickness||12)*u)} cm espesor</small></button>`).join('');
+      const wallOpenings=wall?(appState.layout.openings||[]).filter(o=>o.wallId===wall.id):[];
+      host.innerHTML=`<div class="vspace-arch-toolbar"><button type="button" id="vsArchUndo">Deshacer</button><button type="button" id="vsArchRedo">Rehacer</button></div>
+        <div class="vspace-arch-toolbar"><button type="button" id="vsDrawArchWall" ${canWrite()?'':'disabled'}>${state.drawWallStart?'Primer punto fijado…':'Dibujar muro'}</button><button type="button" id="vsCancelArchDraw" ${state.drawWallStart?'':'disabled'}>Cancelar</button></div>
+        <small class="vspace-muted">${state.drawWallStart?'Marca el segundo extremo sobre el piso 3D.':'Selecciona un muro o dibuja uno con dos clics sobre el piso.'}</small>
+        <div class="vspace-arch-list">${list||'<div class="vspace-empty">No hay muros. Utiliza «Dibujar muro» para empezar.</div>'}</div>
+        ${wall?`<div class="vspace-inspector-id"><b>${vspaceEsc(wall.name||wall.id)}</b><small>${vspaceEsc(wall.id)} · geometría compartida con Editar layout</small></div>
+          <label class="vspace-field">Nombre<input id="vsWallName" value="${vspaceEsc(wall.name||'Muro')}" ${lock}></label>
+          <div class="vspace-grid-2"><label class="vspace-field">Longitud (cm)<input id="vsWallLen" type="number" min="40" max="10000" step="1" value="${Math.round(wallLen(wall)*u)}" ${lock}></label>
+          <label class="vspace-field">Espesor (cm)<input id="vsWallThick" type="number" min="4" max="80" step="1" value="${Math.round(Number(wall.thickness||12)*u)}" ${lock}></label></div>
+          <div class="vspace-grid-2"><label class="vspace-field">Altura (cm)<input id="vsWallHeight" type="number" min="120" max="600" step="5" value="${Math.round(Number(wall.height||290)*u)}" ${lock}></label>
+          <label class="vspace-field">Acabado<select id="vsWallFinish" ${lock}><option value="ivory" ${!wall.material||wall.material==='ivory'?'selected':''}>Marfil mate</option><option value="concrete" ${wall.material==='concrete'?'selected':''}>Concreto suave</option><option value="white" ${wall.material==='white'?'selected':''}>Blanco cálido</option></select></label></div>
+          <button type="button" class="vspace-primary" id="vsApplyWall" ${lock}>Aplicar propiedades del muro</button>
+          <div class="vspace-arch-subtitle">Agregar al muro</div>
+          <div class="vspace-arch-toolbar"><button type="button" data-vs-create-opening="door" ${lock}>Puerta</button><button type="button" data-vs-create-opening="free" ${lock}>Abertura libre</button><button type="button" data-vs-create-opening="window" ${lock}>Ventanal</button></div>
+          <div class="vspace-arch-list">${wallOpenings.map(o=>`<button class="vspace-arch-entry ${state.selectedOpeningId===o.id?'selected':''}" data-vs-opening="${vspaceEsc(o.id)}"><b>${o.type==='window'?'Ventanal':o.type==='free'?'Abertura':o.type==='door'?'Puerta':'Portón'} · ${vspaceEsc(o.id)}</b><small>${Math.round(Number(o.width||90)*u)} × ${Math.round(Number(o.height||210)*u)} cm</small></button>`).join('')||'<small class="vspace-muted">Sin aberturas.</small>'}</div>
+          ${op?`<div class="vspace-arch-subtitle">Propiedades de ${vspaceEsc(op.id)}</div>
+            <div class="vspace-grid-2"><label class="vspace-field">Ancho (cm)<input id="vsOpeningWidth" type="number" min="35" value="${Math.round(Number(op.width||90)*u)}" ${lock}></label>
+            <label class="vspace-field">Alto (cm)<input id="vsOpeningHeight" type="number" min="30" value="${Math.round(Number(op.height||210)*u)}" ${lock}></label></div>
+            <div class="vspace-grid-2"><label class="vspace-field">Antepecho (cm)<input id="vsOpeningSill" type="number" min="0" value="${Math.round(Number(op.sill||0)*u)}" ${lock}></label>
+            <label class="vspace-field">Posición (%)<input id="vsOpeningPosition" type="number" min="1" max="99" value="${Math.round(Number(op.t||.5)*100)}" ${lock}></label></div>
+            <div class="vspace-grid-2"><button type="button" class="vspace-primary" id="vsApplyOpening" ${lock}>Aplicar abertura</button><button type="button" id="vsRemoveOpening" ${lock}>Eliminar abertura</button></div>`:''}
+          <button type="button" class="vspace-danger" id="vsRemoveWall" ${lock}>Eliminar muro</button>`:''}`;
+      host.querySelector('#vsArchUndo')?.addEventListener('click',()=>{if(!canWrite())return;undoHistory('structure');ensureLayoutDecorations();state.refreshInspector();state.render?.(true);});
+      host.querySelector('#vsArchRedo')?.addEventListener('click',()=>{if(!canWrite())return;redoHistory('structure');ensureLayoutDecorations();state.refreshInspector();state.render?.(true);});
+      host.querySelectorAll('[data-vs-wall]').forEach(btn=>btn.onclick=()=>selectArch(btn.dataset.vsWall));
+      host.querySelectorAll('[data-vs-opening]').forEach(btn=>btn.onclick=()=>selectArch(wall?.id||'',btn.dataset.vsOpening));
+      host.querySelector('#vsDrawArchWall')?.addEventListener('click',()=>{
+        if(!canWrite())return;
+        state.drawWallStart=null;state.archDrawMode=true;state.refreshInspector();vspaceToast('Pulsa dos puntos en el piso para crear el muro. ESC cancela.');
+      });
+      host.querySelector('#vsCancelArchDraw')?.addEventListener('click',()=>{state.archDrawMode=false;state.drawWallStart=null;state.refreshInspector();});
+      host.querySelector('#vsApplyWall')?.addEventListener('click',()=>{
+        if(!canWrite()||!wall)return;
+        const nextLength=safeArchNum(host.querySelector('#vsWallLen').value,40,10000,wallLen(wall)*u)/u;
+        const nextThick=safeArchNum(host.querySelector('#vsWallThick').value,4,80,12)/u;
+        const nextH=safeArchNum(host.querySelector('#vsWallHeight').value,120,600,290)/u;
+        if((appState.layout.openings||[]).filter(o=>o.wallId===wall.id).some(o=> Number(o.sill||0)+Number(o.height||0)>nextH || Number(o.width||0)>nextLength-20/u))return vspaceToast('Reduce las aberturas antes de acortar o bajar el muro.',true);
+        recordHistorySnapshot('structure');
+        if(Math.abs(nextLength-wallLen(wall))>.01 && !setManualWallLength(wall,nextLength))return vspaceToast('No se puede alargar este muro por restricciones geométricas.',true);
+        wall.name=String(host.querySelector('#vsWallName').value||'Muro').trim().slice(0,75)||'Muro';
+        wall.thickness=nextThick;wall.height=nextH;wall.material=host.querySelector('#vsWallFinish').value;
+        syncManualWallsFromNodes();ensureOpeningAttachmentOffsets();vspaceCommit(`muro ${wall.id}`);state.refreshInspector();
+      });
+      host.querySelectorAll('[data-vs-create-opening]').forEach(btn=>btn.onclick=()=>{
+        if(!canWrite()||!wall)return;
+        const type=btn.dataset.vsCreateOpening,def=openingDefaultForType(type);
+        const opening={id:nextOpeningId(),wallId:wall.id,type,width:def.width/u,height:def.height/u,sill:def.sill/u,t:.5,offset:wallLen(wall)*.5,depth:wall.thickness,frame:true};
+        const err=validOpening(opening,wall);
+        if(err)return vspaceToast(err,true);
+        if(!Array.isArray(appState.layout.openings))appState.layout.openings=[];
+        recordHistorySnapshot('structure');appState.layout.openings.push(opening);state.selectedOpeningId=opening.id;appState.selectedOpeningId=opening.id;
+        vspaceCommit(`${type==='window'?'ventanal':type==='door'?'puerta':'abertura'} ${opening.id}`);state.refreshInspector();
+      });
+      host.querySelector('#vsApplyOpening')?.addEventListener('click',()=>{
+        if(!canWrite()||!wall||!op)return;
+        const next={...op,width:safeArchNum(host.querySelector('#vsOpeningWidth').value,35,1000,op.width*u)/u,
+          height:safeArchNum(host.querySelector('#vsOpeningHeight').value,30,500,op.height*u)/u,
+          sill:op.type==='door'?0:safeArchNum(host.querySelector('#vsOpeningSill').value,0,500,op.sill*u)/u,
+          t:safeArchNum(host.querySelector('#vsOpeningPosition').value,1,99,50)/100};
+        const err=validOpening(next,wall,op.id);if(err)return vspaceToast(err,true);
+        recordHistorySnapshot('structure');next.offset=next.t*wallLen(wall);Object.assign(op,next);vspaceCommit(`abertura ${op.id}`);state.refreshInspector();
+      });
+      host.querySelector('#vsRemoveOpening')?.addEventListener('click',()=>{
+        if(!canWrite()||!op)return;recordHistorySnapshot('structure');appState.layout.openings=appState.layout.openings.filter(o=>o.id!==op.id);
+        state.selectedOpeningId='';appState.selectedOpeningId='';vspaceCommit('abertura eliminada');state.refreshInspector();
+      });
+      host.querySelector('#vsRemoveWall')?.addEventListener('click',()=>{
+        if(!canWrite()||!wall||!confirm(`¿Eliminar ${wall.name||wall.id} y sus aberturas?`))return;
+        recordHistorySnapshot('structure');appState.layout.walls=appState.layout.walls.filter(w=>w.id!==wall.id);
+        appState.layout.openings=appState.layout.openings.filter(o=>o.wallId!==wall.id);
+        pruneOrphanWallNodes();state.selectedWallId='';state.selectedOpeningId='';appState.selectedWallId='';appState.selectedOpeningId='';
+        vspaceCommit('muro eliminado');state.refreshInspector();
+      });
+    };
+    root.querySelectorAll('[data-vspace-panel]').forEach(btn=>btn.addEventListener('click',()=>{
+      state.inspectorMode=btn.dataset.vspacePanel;state.archDrawMode=false;state.drawWallStart=null;
+      root.querySelectorAll('[data-vspace-panel]').forEach(b=>b.classList.toggle('active',b===btn));
+      root.querySelector('#vspaceInspectorHeading').textContent=state.inspectorMode==='architecture'?'Inspector arquitectónico':'Inspector de ubicaciones';
+      state.refreshInspector();state.render?.(true);
+    }));
     state.refreshInspector=()=>{
+      if(state.inspectorMode==='architecture') return state.refreshArchitecturalInspector();
       const rack=getRack(),host=root.querySelector('#vspaceInspector');
       state.refreshObjects();
       if(!rack){host.innerHTML='<div class="vspace-empty">Selecciona un mueble en 3D o desde la lista de la izquierda.</div>';return;}
@@ -16139,6 +16396,9 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       });
     };
     state.select=(id,level=null,slot=null)=>{
+      state.inspectorMode='furniture';state.archDrawMode=false;state.drawWallStart=null;
+      root.querySelectorAll('[data-vspace-panel]').forEach(btn=>btn.classList.toggle('active',btn.dataset.vspacePanel==='furniture'));
+      root.querySelector('#vspaceInspectorHeading').textContent='Inspector de ubicaciones';
       state.selectedId=id;appState.selectedRackLayoutId=id;appState.selectedRack=id;
       if(level!=null)state.selectedLevel=Number(level)||1;
       if(slot!=null)state.selectedSlot=Number(slot)||1;
@@ -16231,15 +16491,16 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       try{
         const THREE=await loadThreeRuntime();if(state.destroyed||vspaceActive!==state)return;
         const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
         renderer.outputColorSpace=THREE.SRGBColorSpace;
-        renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.33;
+        renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.28;
         renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+        if('physicallyCorrectLights' in renderer) renderer.physicallyCorrectLights = true;
         const scene=new THREE.Scene();scene.background=new THREE.Color(0xf6f3ed);
         const camera=new THREE.OrthographicCamera(-5,5,5,-5,.05,260);
-        scene.add(new THREE.HemisphereLight(0xfffaf1,0xb6ada0,2.15));
-        const fill=new THREE.AmbientLight(0xffffff,.5);scene.add(fill);
-        const sun=new THREE.DirectionalLight(0xffedcf,3.2);
+        scene.add(new THREE.HemisphereLight(0xfffaf1,0xb8b2a8,2.35));
+        const fill=new THREE.AmbientLight(0xffffff,.62);scene.add(fill);
+        const sun=new THREE.DirectionalLight(0xffedcf,3.45);
         sun.position.set(-5,12,8);sun.castShadow=true;
         sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-32;sun.shadow.camera.right=32;
         sun.shadow.camera.top=32;sun.shadow.camera.bottom=-32;
@@ -16314,18 +16575,125 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent:true, opacity }));
           world.add(line);
         };
-        const addStreetBand = (pts=[], color=0x8a8f92, y=0, depth=.02, outlineColor=0xe9dcc2) => {
-          if(!Array.isArray(pts) || pts.length < 3) return;
-          const shape = shapeFromLayoutPts(pts);
-          const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:false}), meshMat(color,{metalness:.03,roughness:.92}));
-          mesh.rotation.x = -Math.PI/2; mesh.position.y = y - depth; mesh.receiveShadow = true; mesh.castShadow = false; world.add(mesh);
-          addOutlineFromPts(pts, outlineColor, y + .02, .92);
+        const rectFromPts = (pts=[]) => {
+          if(!Array.isArray(pts) || !pts.length) return [];
+          const xs = pts.map(pt => Number(pt?.x || 0));
+          const ys = pts.map(pt => Number(pt?.y || 0));
+          const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys);
+          return [{x:minX,y:minY},{x:maxX,y:minY},{x:maxX,y:maxY},{x:minX,y:maxY}];
         };
+        const addTopSurfaceFromPts = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0) => {
+          if(!Array.isArray(pts) || pts.length < 3) return null;
+          const shape = shapeFromLayoutPts(pts);
+          const material = meshMat(color,{metalness:.03,roughness:.92,transparent:opacity < 1,opacity,polygonOffset:true,polygonOffsetFactor:-1-order*.15,polygonOffsetUnits:-1,side:THREE.DoubleSide});
+          const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
+          mesh.rotation.x = -Math.PI/2;
+          mesh.position.y = y;
+          mesh.receiveShadow = true;
+          mesh.castShadow = false;
+          world.add(mesh);
+          if(outlineColor !== null) addOutlineFromPts(pts, outlineColor, y + .0035, .92);
+          return mesh;
+        };
+        const addDioramaBase = (pts=[]) => {
+          const basePts = rectFromPts(pts);
+          if(basePts.length < 4) return [];
+          const shape = shapeFromLayoutPts(basePts);
+          const base = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.24,bevelEnabled:false}),[
+            meshMat(0xf1e7d6,{metalness:0,roughness:.94}),
+            meshMat(0xcebb9f,{metalness:0,roughness:.98})
+          ]);
+          base.rotation.x = -Math.PI/2;
+          base.position.y = -.24;
+          base.receiveShadow = true;
+          base.castShadow = true;
+          world.add(base);
+          addTopSurfaceFromPts(basePts, 0xf7f1e4, .002, 0xe0caaa, .99, 0);
+          addOutlineFromPts(basePts, 0xb09068, .026, .98);
+          addOutlineFromPts(basePts, 0xf6ead5, .042, .84);
+          return basePts;
+        };
+        const addStreetBand = (pts=[], color=0x8a8f92, y=.012, outlineColor=0xe9dcc2, opacity=.98, order=0) => addTopSurfaceFromPts(pts, color, y, outlineColor, opacity, order);
         const addStreetLabel = (street, pts=[]) => {
           if(!Array.isArray(pts) || !pts.length) return;
           const c = { x:pts.reduce((v,p)=>v+Number(p.x||0),0)/pts.length, y:pts.reduce((v,p)=>v+Number(p.y||0),0)/pts.length };
           const tag = labelSprite(`Calle ${street.side}`, 1.2);
           const cc = coord(c); tag.position.set(cc.x, .065, cc.z); world.add(tag);
+        };
+        const buildArchitecturalWall=(wall,zoneCenters=[])=>{
+          const scale=getScaleCmPerUnit()/100;
+          const dx=Number(wall.x2||0)-Number(wall.x1||0),dy=Number(wall.y2||0)-Number(wall.y1||0);
+          const L=Math.hypot(dx,dy);if(L<8)return;
+          const selected=wall.id===state.selectedWallId && state.inspectorMode==='architecture';
+          const wallCenter={x:(Number(wall.x1||0)+Number(wall.x2||0))/2,y:(Number(wall.y1||0)+Number(wall.y2||0))/2};
+          const zone=(appState.layout.zones||[]).find(z=>z.id===wall.zoneBoundarySource?.zoneId)||null;
+          const center=zone && zone.pts?.length?{x:zone.pts.reduce((sum,p)=>sum+Number(p.x||0),0)/zone.pts.length,y:zone.pts.reduce((sum,p)=>sum+Number(p.y||0),0)/zone.pts.length}:null;
+          if(center && !selected){
+            const outward=new THREE.Vector2(wallCenter.x-center.x,wallCenter.y-center.y);
+            const cameraFacing=new THREE.Vector2(Math.sin(orbit.theta),Math.cos(orbit.theta));
+            if(outward.dot(cameraFacing)>=0)return; // Corte arquitectónico para no tapar muebles
+          }
+          const group=new THREE.Group();
+          const pos=coord({x:Number(wall.x1||0),y:Number(wall.y1||0)});
+          group.position.set(pos.x,0,pos.z);group.rotation.y=-Math.atan2(dy,dx);
+          group.userData={wallId:wall.id,entityType:'wall'};
+          const wallHeight=Math.max(100,Number(wall.height||290))*scale;
+          const thickness=Math.max(4,Number(wall.thickness||12))*scale;
+          const length=L*scale;
+          const color=wall.material==='concrete'?0xc6c7c1:wall.material==='white'?0xf9f7f0:0xf1e8d9;
+          const mat=meshMat(selected?0xd8eadf:color,{metalness:0,roughness:.89,side:THREE.DoubleSide});
+          const lineMat=new THREE.LineBasicMaterial({color:selected?0x398d70:0xc2ae92,transparent:true,opacity:selected?.78:.38});
+          const openings=(appState.layout.openings||[]).filter(o=>o.wallId===wall.id).map(o=>{
+            const w=Math.min(Math.max(35,Number(o.width||90))*scale,length*.93);
+            const t=vspaceClamp(Number(o.t??.5),.03,.97),c=t*length;
+            const sill=Math.max(0,Number(o.sill||0))*scale;
+            const h=Math.min(Math.max(20,Number(o.height||210))*scale,Math.max(.001,wallHeight-sill));
+            return {o,left:Math.max(0,c-w/2),right:Math.min(length,c+w/2),c,w,sill,h};
+          }).sort((a,b)=>a.left-b.left);
+          const cuts=[0,length,...openings.flatMap(o=>[o.left,o.right])].sort((a,b)=>a-b);
+          const breaks=cuts.filter((n,i)=>i===0||Math.abs(n-cuts[i-1])>.001);
+          const addWallPiece=(l,r,y0,y1)=>{
+            if(r-l<.008||y1-y0<.008)return;
+            const geo=new THREE.BoxGeometry(r-l,y1-y0,thickness);
+            const mesh=new THREE.Mesh(geo,mat);
+            mesh.position.set((l+r)/2,(y0+y1)/2,0);
+            mesh.castShadow=true;mesh.receiveShadow=true;
+            mesh.userData={wallId:wall.id,entityType:'wall'};
+            group.add(mesh);state.architectureMeshes.push(mesh);
+            const edge=new THREE.LineSegments(new THREE.EdgesGeometry(geo),lineMat);
+            edge.position.copy(mesh.position);group.add(edge);
+          };
+          for(let i=0;i<breaks.length-1;i++){
+            const l=breaks[i],r=breaks[i+1],mid=(l+r)/2;
+            if(r-l<.008)continue;
+            const voids=openings.filter(o=>o.left<=mid+.001&&o.right>=mid-.001).map(o=>[o.sill,Math.min(wallHeight,o.sill+o.h)]).sort((a,b)=>a[0]-b[0]);
+            let cursor=0;
+            voids.forEach(([a,b])=>{if(a>cursor+.008)addWallPiece(l,r,cursor,a);cursor=Math.max(cursor,b);});
+            if(wallHeight>cursor+.008)addWallPiece(l,r,cursor,wallHeight);
+          }
+          const frameMat=meshMat(0x515a55,{metalness:.38,roughness:.48});
+          const glassMat=meshMat(0xadc9c5,{metalness:.08,roughness:.18,transparent:true,opacity:.33,depthWrite:false,side:THREE.DoubleSide});
+          const addTrim=(o,cx,cy,w,h,d,material)=>{
+            const mesh=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.012,w),Math.max(.012,h),Math.max(.015,d)),material);
+            mesh.position.set(cx,cy,0);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
+            mesh.userData={openingId:o.id,wallId:wall.id,entityType:'opening'};
+            group.add(mesh);state.architectureMeshes.push(mesh);
+            return mesh;
+          };
+          openings.forEach(({o,left,right,c,w,sill,h})=>{
+            const kind=normalizeOpeningType(o.type);
+            if(kind==='free')return;
+            const trim=Math.min(.055,Math.max(.025,w*.035));
+            addTrim(o,left+trim/2,sill+h/2,trim,h,thickness*1.12,frameMat);
+            addTrim(o,right-trim/2,sill+h/2,trim,h,thickness*1.12,frameMat);
+            addTrim(o,c,sill+h-trim/2,w,trim,thickness*1.12,frameMat);
+            if(kind==='window'){
+              addTrim(o,c,sill+trim/2,w,trim,thickness*1.12,frameMat);
+              addTrim(o,c,sill+h/2,trim,h,thickness*.72,frameMat); // Ventanal único de dos paños
+              addTrim(o,c,sill+h/2,w-trim*2,h-trim*2,Math.max(.014,thickness*.18),glassMat);
+            }
+          });
+          world.add(group);
         };
         const addFurniture=r=>{
           const spec=vspaceSpec(r);
@@ -16341,53 +16709,35 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         };
         const rebuild=()=>{
           clearWorld();
+          refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
           const streets = Array.isArray(appState.layout?.streets) ? appState.layout.streets : [];
+          const footprintSource = [];
+          siteBoundary.forEach(pt => footprintSource.push(pt));
+          streets.forEach(street => [ ...(street.outerSidewalkPts||[]), ...(street.roadPts||[]), ...(street.sidewalkPts||[]) ].forEach(pt => footprintSource.push(pt)));
+          if(!footprintSource.length) zones.forEach(zone => (zone.pts||[]).forEach(pt => footprintSource.push(pt)));
+          const dioramaBase = addDioramaBase(footprintSource);
           if(siteBoundary.length >= 3){
-            const siteShape = shapeFromLayoutPts(siteBoundary);
-            const siteFloor = new THREE.Mesh(new THREE.ExtrudeGeometry(siteShape,{depth:.12,bevelEnabled:false}),[
-              meshMat(0xeee6d6,{metalness:0,roughness:.96}),meshMat(0xd7c8ae,{metalness:0,roughness:.98})]);
-            siteFloor.rotation.x=-Math.PI/2; siteFloor.position.y=-.12; siteFloor.receiveShadow=true; world.add(siteFloor);
-            addOutlineFromPts(siteBoundary, 0xa9855f, .042, .98);
-            addOutlineFromPts(siteBoundary, 0xe8d4b7, .058, .82);
+            addTopSurfaceFromPts(siteBoundary, 0xefe6d7, .01, 0xc9b28f, .98, 1);
+            addOutlineFromPts(siteBoundary, 0xae9069, .032, .96);
+            addOutlineFromPts(siteBoundary, 0xf1e5cf, .046, .78);
           }
-          streets.forEach(street => {
-            addStreetBand(street.outerSidewalkPts, 0xe7dece, .014, 0xd9c8aa);
-            addStreetBand(street.roadPts, 0x8c9398, .008, 0xf7efe0);
-            addStreetBand(street.sidewalkPts, 0xe7dece, .014, 0xd9c8aa);
+          streets.forEach((street, index) => {
+            addStreetBand(street.outerSidewalkPts, 0xefe7da, .016, 0xd2bc98, .98, 2 + index * .1);
+            addStreetBand(street.roadPts, 0x8c9398, .011, 0xf8efde, .98, 2.1 + index * .1);
+            addStreetBand(street.sidewalkPts, 0xf3ede1, .018, 0xd2bc98, .98, 2.2 + index * .1);
             addStreetLabel(street, street.roadPts || street.sidewalkPts || street.outerSidewalkPts);
           });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
-            const shape=new THREE.Shape();
-            pts.forEach((pt,i)=>{const p=coord(pt);if(i===0)shape.moveTo(p.x,-p.z);else shape.lineTo(p.x,-p.z);});shape.closePath();
-            const floor=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.15,bevelEnabled:false}),[
-              meshMat(0xe9d7bb,{metalness:0,roughness:.9}),meshMat(0xbba48a,{metalness:0,roughness:.95})]);
-            floor.rotation.x=-Math.PI/2;floor.position.y=-.15;floor.receiveShadow=true;world.add(floor);
-            addOutlineFromPts(pts, 0x2f7b6e, .03, .96);
-            addOutlineFromPts(pts, 0xe6d5b5, .04, .78);
-            if(state.wallVisible){
-              const center={x:pts.reduce((v,p)=>v+Number(p.x),0)/pts.length,y:pts.reduce((v,p)=>v+Number(p.y),0)/pts.length};
-              const midpoint=coord(center);
-              const eye=new THREE.Vector2(Math.sin(orbit.theta),Math.cos(orbit.theta));
-              for(let i=0;i<pts.length;i++){
-                const a=coord(pts[i]),b=coord(pts[(i+1)%pts.length]);const dx=b.x-a.x,dz=b.z-a.z;
-                const len=Math.hypot(dx,dz);if(len<.04)continue;
-                const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
-                // Diorama cutaway: only walls behind the furniture, never the near walls blocking the view.
-                const outward=new THREE.Vector2(midX-midpoint.x,midZ-midpoint.z);
-                if(outward.dot(eye)>=0)continue;
-                const wall=new THREE.Mesh(new THREE.BoxGeometry(len,2.75,.085),meshMat(0xf3e9dc,{metalness:0,roughness:.95}));
-                wall.position.set(midX,1.375,midZ);wall.rotation.y=-Math.atan2(dz,dx);
-                wall.receiveShadow=true;wall.castShadow=true;world.add(wall);
-                const addTrim=(y,bh,color)=>{
-                  const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,bh,.115),meshMat(color,{metalness:0,roughness:.8}));
-                  mesh.position.set(midX,y,midZ);mesh.rotation.y=wall.rotation.y;world.add(mesh);
-                };
-                addTrim(.09,.16,0xc8b397);addTrim(2.74,.055,0xe7d4b7);
-              }
-            }
+            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .97, 4);
+            addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
+            addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
+          }
+          state.architectureMeshes=[];
+          if(state.wallVisible){
+            (appState.layout.walls||[]).forEach(w=>buildArchitecturalWall(w));
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.
           const boundsW=(zoneBounds.length?Math.max(...zoneBounds.map(p=>p.x))-Math.min(...zoneBounds.map(p=>p.x)):700)*getScaleCmPerUnit()/100;
@@ -16422,6 +16772,13 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           orbit.radius=vspaceClamp(Math.max(vspaceSpec(r).width,vspaceSpec(r).depth)/55+3,3,12);orbit.phi=.94;state.requestRender();
           root.querySelector('.vspace-compass').textContent='SEL';
         };
+        const intersectArchitecture=e=>{
+          applyPointer(e);
+          const hits=raycaster.intersectObjects(state.architectureMeshes||[],false);
+          const opening=hits.find(hit=>hit.object?.userData?.openingId);
+          const hit=opening||hits[0];
+          return hit?{wallId:hit.object.userData.wallId||'',openingId:hit.object.userData.openingId||''}:null;
+        };
         const intersectFurniture=e=>{
           applyPointer(e);
           const intersections=raycaster.intersectObjects([...state.objects.values()],true);
@@ -16439,8 +16796,23 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         canvas.addEventListener('contextmenu',e=>e.preventDefault());
         canvas.addEventListener('pointerdown',e=>{
           if(e.button!==0&&e.button!==1&&e.button!==2)return;
-          const hit=intersectFurniture(e),point=state.move&&canWrite()?groundPoint(e):null;
-          if(hit){state.select(hit.rackId,hit.level||state.selectedLevel,hit.slot||state.selectedSlot);}
+          if(state.archDrawMode&&e.button===0&&!e.shiftKey){
+            const p=groundPoint(e);
+            if(!p || !pointInLayoutBoundary(p))return vspaceToast('Selecciona un punto dentro del área general.',true);
+            if(!state.drawWallStart){state.drawWallStart=p;state.refreshInspector();vspaceToast('Primer extremo definido. Selecciona el segundo punto.');}
+            else{
+              const a=state.drawWallStart;state.drawWallStart=null;state.archDrawMode=false;
+              if(Math.hypot(p.x-a.x,p.y-a.y)<30/Math.max(.0001,getScaleCmPerUnit()))return vspaceToast('El muro debe tener al menos 30 cm de longitud.',true);
+              recordHistorySnapshot('structure');const w=createWallSegment(a,p);
+              if(w){selectArch(w.id);vspaceCommit(`muro ${w.id} creado`);}else{state.refreshInspector();vspaceToast('No se pudo crear el tramo.',true);}
+            }
+            e.preventDefault();return;
+          }
+          const archHit=state.inspectorMode==='architecture'?intersectArchitecture(e):null;
+          const hit=!archHit?intersectFurniture(e):null;
+          if(archHit){selectArch(archHit.wallId,archHit.openingId);}
+          else if(hit){state.select(hit.rackId,hit.level||state.selectedLevel,hit.slot||state.selectedSlot);}
+          const point=state.move&&canWrite()?groundPoint(e):null;
           const rack=hit && appState.layout.racks.find(r=>r.id===hit.rackId);
           const wantsPan = e.button===1 || e.button===2 || e.shiftKey;
           gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&rack&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',
@@ -16473,12 +16845,13 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         });
         canvas.addEventListener('pointercancel',()=>{gesture=null;});
         canvas.addEventListener('wheel',e=>{e.preventDefault();orbit.radius*=e.deltaY>0?1.1:.9;orbit.radius=vspaceClamp(orbit.radius,2.5,80);state.requestRender();},{passive:false});
-        canvas.addEventListener('dblclick',e=>{const hit=intersectFurniture(e); if(hit){state.select(hit.rackId,hit.level||state.selectedLevel,hit.slot||state.selectedSlot); state.focusSelected();} else state.setCamera(state.mode||'iso');});
+        canvas.addEventListener('dblclick',e=>{const archHit=state.inspectorMode==='architecture'?intersectArchitecture(e):null;const hit=archHit?null:intersectFurniture(e); if(archHit)selectArch(archHit.wallId,archHit.openingId);else if(hit){state.select(hit.rackId,hit.level||state.selectedLevel,hit.slot||state.selectedSlot); state.focusSelected();} else state.setCamera(state.mode||'iso');});
         state.keyHandler=e=>{
           if(state.destroyed) return;
           const tag=(document.activeElement?.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea'||tag==='select') return;
           const step=Math.max(.18,orbit.radius*.05);
-          if(e.key==='1'){state.setCamera('iso');e.preventDefault();}
+          if(e.key==='Escape'&&state.archDrawMode){state.archDrawMode=false;state.drawWallStart=null;state.refreshInspector();e.preventDefault();}
+          else if(e.key==='1'){state.setCamera('iso');e.preventDefault();}
           else if(e.key==='2'){state.setCamera('top');e.preventDefault();}
           else if(e.key==='3'){state.setCamera('front');e.preventDefault();}
           else if(e.key.toLowerCase()==='f'){state.focusSelected();e.preventDefault();}
@@ -16500,7 +16873,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         rebuild();state.setCamera('iso');
         if(state.selectedId && (appState.layout.racks||[]).some(r=>r.id===state.selectedId)) state.focusSelected();
         resize();root.querySelector('#vspaceLoading')?.remove();
-        vspaceToast('Vista isométrica activa. Selecciona un estante, crea cajas y asigna SKU por nivel.');
+        vspaceToast('Modelo 3D listo. Mobiliario y Arquitectura comparten las propiedades guardadas con Editar layout.');
       }catch(err){console.error('Vista virtual 3D:',err);const el=root.querySelector('#vspaceLoading');if(el)el.textContent=`No se pudo inicializar la vista 3D: ${err.message||err}. Verifica WebGL y la dependencia Three.js.`;}
     })();
   }
@@ -17418,7 +17791,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
   btnStopScanner.addEventListener('click', stopScanner);
   scannerModal.addEventListener('click', (e) => { if (e.target === scannerModal) stopScanner(); });
 
-console.info('WMS Industrial V176 · frontend reconstruido');
+console.info('WMS Industrial V180 · arquitectura 2D/3D');
   async function bootstrapApp(){
     ensureAppRuntimeState();
     loadUiTheme();

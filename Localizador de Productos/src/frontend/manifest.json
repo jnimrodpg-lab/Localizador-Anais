@@ -1,5 +1,5 @@
 {
-  "version": "176",
+  "version": "180",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V176: reconstrucción CAD/Sheets, jerarquía de cotas y secciones, CSS fuente consolidado, sin artefactos obsoletos"
+  "notes": "V180: arquitectura sincronizada entre CAD y 3D, jerarquía de cotas y secciones, CSS fuente consolidado, sin artefactos obsoletos"
 }

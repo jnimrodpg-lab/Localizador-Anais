@@ -28,8 +28,8 @@ if (duplicateDeclarations.length || duplicateOverrides.length) {
   process.exit(1);
 }
 
-if (!source.startsWith('/* WMS_V176_CAD_SHEETS_REBUILD */')) {
-  console.error('Falta la marca de bundle V176.');
+if (!source.startsWith('/* WMS_V180_ARCHITECTURE_SYNC */')) {
+  console.error('Falta la marca de bundle V180.');
   process.exit(1);
 }
 console.log(`Auditoría frontend OK: ${declarations.size} funciones declaradas, sin overrides protegidos duplicados.`);

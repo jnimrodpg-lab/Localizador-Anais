@@ -6819,3 +6819,23 @@ body.theme-dark #appRoot.app .layout-cad-v80 :is(.v80-right-panel,.layout-contex
 body.theme-light #appRoot.app .layout-cad-v80 :is(.v80-right-panel,.layout-contextual-bar) :is(h2,h3,h4,b,strong),
 body.theme-dark #appRoot.app .layout-cad-v80 :is(.v80-right-panel,.layout-contextual-bar) :is(h2,h3,h4,b,strong){color:var(--ink)!important;}
 
+
+/* V180 · Arquitectura sincronizada: los controles 3D comparten geometría con CAD */
+.vspace-inspector .vspace-panel-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding:4px;margin:0 0 12px;background:var(--surface-2,#f3ede4);border:1px solid var(--line,#e3d7c8);border-radius:13px}
+.vspace-inspector .vspace-panel-tabs button{border:1px solid transparent!important;min-height:36px;border-radius:9px;padding:7px 8px;font-size:12px;font-weight:750;white-space:nowrap}
+body.theme-light .vspace-inspector .vspace-panel-tabs button.active,
+body.theme-dark .vspace-inspector .vspace-panel-tabs button.active{background:var(--primary)!important;border-color:var(--primary)!important;color:var(--primary-ink)!important}
+.vspace-inspector .vspace-arch-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin:3px 0 6px}
+.vspace-inspector .vspace-arch-toolbar button{min-height:34px;padding:7px 10px;font-size:11px;flex:1 1 auto;border-radius:9px}
+.vspace-inspector .vspace-arch-list{display:grid;gap:6px;max-height:198px;overflow:auto;padding:4px 2px 5px;overscroll-behavior:contain}
+.vspace-inspector .vspace-arch-entry{display:flex;flex-direction:column;align-items:flex-start;text-align:left;width:100%;min-height:46px;border-radius:10px;padding:8px 9px;gap:3px;background:var(--surface-1)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
+.vspace-inspector .vspace-arch-entry b{font-size:12px;font-weight:800;line-height:1.25}
+.vspace-inspector .vspace-arch-entry small{font-size:10px;color:var(--ink-soft);line-height:1.3}
+body.theme-light .vspace-inspector .vspace-arch-entry.selected,
+body.theme-dark .vspace-inspector .vspace-arch-entry.selected{background:var(--surface-2)!important;border-color:var(--primary)!important;box-shadow:inset 3px 0 var(--primary)}
+.vspace-inspector .vspace-arch-subtitle{font-size:11px;font-weight:850;letter-spacing:.055em;text-transform:uppercase;margin-top:8px;color:var(--ink)}
+.vspace-inspector .vspace-arch-list::-webkit-scrollbar{width:6px}
+.vspace-inspector .vspace-arch-list::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:9px}
+.vspace-inspector .vspace-arch-toolbar button:disabled{opacity:.45;cursor:not-allowed}
+.vspace-inspector #vsApplyWall,.vspace-inspector #vsApplyOpening{width:100%;min-height:38px}
+@media(max-width:880px){.vspace-inspector .vspace-arch-list{max-height:160px}.vspace-inspector .vspace-panel-tabs{position:relative}}

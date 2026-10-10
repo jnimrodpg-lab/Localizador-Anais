@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.9.6-colocar-encima-3d",
+  "version": "2.0.0-modos-layout-unificados",
   "private": true,
-  "description": "WMS Industrial V196: interacción Colocar encima, soporte vinculado, NPT automático y validación 3D",
+  "description": "WMS Industrial V200: Arquitectura, Urbanismo, Distribución, niveles NPT, nomenclatura y validación de cambios",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",

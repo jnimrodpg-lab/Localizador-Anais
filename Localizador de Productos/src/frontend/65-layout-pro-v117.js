@@ -210,25 +210,37 @@
       const rack={id:nextRackId(zone.id),zoneId:zone.id,x:snapGrid(startX+col*(fp.w+gapX)),y:snapGrid(startY+row*(fp.h+gapY)),w:fp.w,h:fp.h,rot:0,modelId:model.id,front:'auto',baseHeight:0,rackHeight:Number(model.height||238)};
       if(rackFullyInsideZone(rack,zone)){ appState.layout.racks.push(rack); created.push(rack.id); }
     }
+    if(created.length) recordHistorySnapshot('distribution', (appState.layout.racks||[]).filter(r=>!created.includes(r.id)));
     setSelectedRackIds(created); normalizeZoneAndRackIds(); persistActiveLayout(); v117RunValidation({quiet:true}); renderLayoutEditor();
     showToast(`${created.length} rack(s) creados en matriz.`, created.length?'success':'warning', 2200); return created;
   }
+  // Un cambio masivo es una única operación reversible; si hay colisiones, no se aplica.
+  function v200CommitRackBatch(racks, original, action){
+    const updates=racks.map(r=>({...r}));
+    const validation=typeof vspaceValidateRackProposals==='function' ? vspaceValidateRackProposals(updates) : {ok:true};
+    racks.forEach((r,i)=>Object.assign(r,original[i]));
+    if(!validation.ok){showToast(validation.msg||`No se puede ${action}: colisión de racks.`,'warning',2800);renderLayoutEditor();return false;}
+    if(updates.every((v,i)=>Math.abs(v.x-original[i].x)<.0001&&Math.abs(v.y-original[i].y)<.0001&&Number(v.rot||0)===Number(original[i].rot||0)))return false;
+    recordHistorySnapshot('distribution');
+    racks.forEach((r,i)=>Object.assign(r,updates[i]));
+    persistActiveLayout();v117RunValidation({quiet:true});renderLayoutEditor();return true;
+  }
   function v117SelectedRacks(){ return getSelectedRackIds().map(findRackById).filter(Boolean); }
   function v117AlignRacks(mode){
-    const racks=v117SelectedRacks(); if(racks.length<2) return false; const xs=racks.map(r=>r.x), ys=racks.map(r=>r.y), rights=racks.map(r=>r.x+r.w), bottoms=racks.map(r=>r.y+r.h), cx=racks.map(r=>r.x+r.w/2), cy=racks.map(r=>r.y+r.h/2);
+    const racks=v117SelectedRacks(); if(racks.length<2) return false; const before=racks.map(r=>({...r})); const xs=racks.map(r=>r.x), ys=racks.map(r=>r.y), rights=racks.map(r=>r.x+r.w), bottoms=racks.map(r=>r.y+r.h), cx=racks.map(r=>r.x+r.w/2), cy=racks.map(r=>r.y+r.h/2);
     const target={left:Math.min(...xs),right:Math.max(...rights),top:Math.min(...ys),bottom:Math.max(...bottoms),hcenter:cx.reduce((a,b)=>a+b,0)/cx.length,vcenter:cy.reduce((a,b)=>a+b,0)/cy.length}[mode];
     racks.forEach(r=>{ if(mode==='left')r.x=target; if(mode==='right')r.x=target-r.w; if(mode==='top')r.y=target; if(mode==='bottom')r.y=target-r.h; if(mode==='hcenter')r.x=target-r.w/2; if(mode==='vcenter')r.y=target-r.h/2; const z=findZoneById(r.zoneId); if(z)keepRackInsideZone(r,z); });
-    persistActiveLayout(); v117RunValidation({quiet:true}); renderLayoutEditor(); return true;
+    return v200CommitRackBatch(racks,before,'alinear');
   }
   function v117DistributeRacks(axis='x'){
-    const racks=v117SelectedRacks(); if(racks.length<3) return false;
+    const racks=v117SelectedRacks(); if(racks.length<3) return false; const beforeById=new Map(racks.map(r=>[r.id,{...r}]));
     racks.sort((a,b)=>axis==='x'?(a.x-b.x):(a.y-b.y)); const first=racks[0], last=racks[racks.length-1];
     if(axis==='x'){ const span=(last.x+last.w)-first.x; const total=racks.reduce((s,r)=>s+r.w,0); const gap=(span-total)/(racks.length-1); let x=first.x; racks.forEach(r=>{r.x=snapGrid(x);x+=r.w+gap;}); }
     else { const span=(last.y+last.h)-first.y; const total=racks.reduce((s,r)=>s+r.h,0); const gap=(span-total)/(racks.length-1); let y=first.y; racks.forEach(r=>{r.y=snapGrid(y);y+=r.h+gap;}); }
-    racks.forEach(r=>{const z=findZoneById(r.zoneId);if(z)keepRackInsideZone(r,z);}); persistActiveLayout(); v117RunValidation({quiet:true}); renderLayoutEditor(); return true;
+    racks.forEach(r=>{const z=findZoneById(r.zoneId);if(z)keepRackInsideZone(r,z);}); return v200CommitRackBatch(racks,racks.map(r=>beforeById.get(r.id)),'distribuir');
   }
   function v117RotateSelected(delta){
-    const racks=v117SelectedRacks(); if(!racks.length)return false; racks.forEach(r=>applyRackRotation(r,Number(r.rot||0)+Number(delta||0))); persistActiveLayout(); v117RunValidation({quiet:true}); renderLayoutEditor(); return true;
+    const racks=v117SelectedRacks(); if(!racks.length)return false;const before=racks.map(r=>({...r}));racks.forEach(r=>applyRackRotation(r,Number(r.rot||0)+Number(delta||0)));return v200CommitRackBatch(racks,before,'rotar');
   }
 
   function v117PolyAxes(poly){ const axes=[]; for(let i=0;i<poly.length;i++){ const a=poly[i],b=poly[(i+1)%poly.length],dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1; axes.push({x:-dy/l,y:dx/l}); } return axes; }

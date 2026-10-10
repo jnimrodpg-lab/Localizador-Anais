@@ -1,5 +1,5 @@
 {
-  "version": "194",
+  "version": "200",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V194: racks editables en todo el layout, preview 3D del catálogo con mallas del constructor y NPT por instancia."
+  "notes": "V200: Arquitectura/Urbanismo/Distribución en el mismo plano, filtros de niveles, nomenclatura, Undo/Redo por modo, colisiones 3D y compatibilidad con Cloudflare D1."
 }

@@ -175,7 +175,7 @@
   }
   function vspaceStackCommit(plan){
     if(!plan?.ok)return false;
-    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot('structure');
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot('distribution');
     plan.changes.forEach(next=>{const rack=(appState.layout?.racks||[]).find(r=>r.id===next.id);if(!rack)return;Object.assign(rack,{x:next.x,y:next.y,zoneId:next.zoneId,baseHeight:next.baseHeight});if(next.stackedOnId)rack.stackedOnId=next.stackedOnId;});
     persistActiveLayout();
     return true;
@@ -312,7 +312,7 @@
     const typelist=Object.entries(VSPACE_TYPES).map(([id,p])=>`<button type="button" class="vspace-catalog-btn" data-vspace-add="${id}" ${canEdit?'':'disabled'}><b>${p.icon}</b><span>${vspaceEsc(p.name)}</span><small>${p.levels} niveles</small></button>`).join('');
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
-      <div class="vspace-toolbar-right"><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active">Muros</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
+      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active">Muros</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
       <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
@@ -334,6 +334,21 @@
     const root=document.getElementById('vspaceRoot'),canvas=root.querySelector('#vspaceCanvas');
     const state={root,canvas,selectedId:appState.selectedRackLayoutId||(appState.layout?.racks||[])[0]?.id||'',stackSourceId:'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
     vspaceActive=state;
+    const rackAtLevel = r => {
+      const level=appState.editor?.visibleRackLevel;
+      if(level==='all' || level===undefined)return true;
+      const index=r.stackGroupId ? Math.max(0,Number(r.stackLevel||0)) : Math.max(0,Math.round(Number(r.baseHeight||0)/Math.max(1,Number(r.rackHeight||vspaceSpec(r).height||200))));
+      return index===Number(level);
+    };
+    const update3DLevelButtons=()=>root.querySelectorAll('[data-vspace-rack-height]').forEach(b=>{const active=String(appState.editor?.visibleRackLevel??'all')===b.dataset.vspaceRackHeight;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
+    root.querySelectorAll('[data-vspace-rack-height]').forEach(b=>b.addEventListener('click',()=>{
+      if(!appState.editor)appState.editor={};
+      appState.editor.visibleRackLevel=b.dataset.vspaceRackHeight;
+      update3DLevelButtons();
+      if(state.selectedId && !rackAtLevel((appState.layout?.racks||[]).find(r=>r.id===state.selectedId)||{}))state.selectedId='';
+      state.refreshInspector?.();state.refreshObjects?.();state.render?.(true);
+    }));
+    update3DLevelButtons();
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
     const stackButton=root.querySelector('[data-vspace-action="stack"]');
@@ -1204,7 +1219,7 @@
             const grid=new THREE.GridHelper(Math.max(7,Math.ceil(Math.max(boundsW,boundsH))),count,0xb9a78f,0xb9a78f);
             grid.material.transparent=true;grid.material.opacity=.12;grid.position.y=.002;world.add(grid);
           }
-          (appState.layout.racks||[]).forEach(addFurniture);
+          (appState.layout.racks||[]).filter(rackAtLevel).forEach(addFurniture);
           if(state.wallVisible && (appState.layout.zones||[]).length===0){vspaceToast('Dibuja primero el perímetro desde Plano / Estructura.');}
           state.requestRender();
         };

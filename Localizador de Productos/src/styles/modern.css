@@ -435,3 +435,37 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
 .vspace-stack-module-buttons {display:flex;gap:6px;flex-wrap:wrap}
 .vspace-stack-module-buttons button {min-width:46px;padding:7px;border-radius:7px;border:1px solid rgba(120,120,112,.3);background:var(--surface-2,#eee9dc);color:var(--text-main,#3d493f);cursor:pointer}
 .vspace-stack-module-buttons button.active {background:#377f66;color:white}
+
+/* V200: tres estaciones CAD en un plano compartido. Una sola distribución, sin paneles encimados. */
+#appRoot.app .layout-cad-v80 .layout-v200-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:3px 2px 9px;min-width:0}
+#appRoot.app .layout-v200-tab{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;min-height:53px;padding:10px 14px;border:1px solid var(--line);border-radius:11px;background:var(--surface-1);color:var(--ink);cursor:pointer;text-align:left;transition:background .12s,border-color .12s}
+#appRoot.app .layout-v200-tab b{font-size:12px;font-weight:750;white-space:normal}
+#appRoot.app .layout-v200-tab small{font-size:10px;color:var(--ink-soft);white-space:normal;line-height:1.25}
+#appRoot.app .layout-v200-tab.active{background:color-mix(in srgb,var(--accent, #4d8061) 12%,var(--surface-1));border:1.5px solid var(--accent,#4d8061)}
+#appRoot.app .layout-v200-tab:focus-visible{outline:2px solid var(--accent,#4d8061);outline-offset:2px}
+#appRoot.app .layout-v200-levels{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0}
+#appRoot.app .layout-v200-levels>span{font-weight:700;font-size:10px;color:var(--ink-soft);margin-right:4px;white-space:nowrap}
+#appRoot.app .layout-v200-levels .seg-btn{padding:5px 9px!important;min-width:34px!important;font-size:11px!important;min-height:29px!important;height:auto!important}
+#appRoot.app .layout-v200-levels .seg-btn.active{background:var(--accent,#4e8167)!important;color:#fff!important;border-color:var(--accent,#4e8167)!important}
+#appRoot.app .layout-v200-street-select,#appRoot.app .layout-v200-rack-select{display:grid;gap:5px;margin:9px 0;font-size:11px;font-weight:650}
+#appRoot.app .layout-v200-street-select select,#appRoot.app .layout-v200-rack-select select{display:block;width:100%;min-width:0;max-width:100%;height:37px;padding:5px 8px;background:var(--surface-1);border:1px solid var(--line);border-radius:9px;color:var(--ink)}
+#appRoot.app .layout-v200-distribution .layout-v200-levels{padding:6px 0 8px}
+#appRoot.app .layout-v200-distribution .seg-btn{max-width:100%}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80{max-width:100%;min-width:0;overflow-x:auto;scrollbar-width:thin}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .layout-v200-levels{flex:0 1 auto}
+#appRoot.app .layout-cad-v80 .layout-cad-workspace-v80{min-height:0;min-width:0}
+#appRoot.app .layout-cad-v80 .layout-right-panel{min-height:0;overflow:hidden}
+#appRoot.app .layout-cad-v80 .layout-right-scroll{min-height:0;overflow-y:auto;overflow-x:hidden}
+#appRoot.app .layout-cad-v80 .layout-v200-urban .layout-template-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+@media(max-width:1100px){#appRoot.app .layout-v200-tab{padding:8px 9px;min-height:49px}#appRoot.app .layout-v200-tab small{font-size:9px}#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .layout-v200-levels>span{display:none}}
+@media(max-width:700px){#appRoot.app .layout-cad-v80 .layout-v200-tabs{gap:4px}#appRoot.app .layout-v200-tab{padding:7px 6px;min-height:40px}#appRoot.app .layout-v200-tab b{font-size:10px}#appRoot.app .layout-v200-tab small{display:none}}
+/* V200: niveles compartidos entre layout y visor 3D, sin alterar geometrías. */
+#appRoot.app .vspace-v200-filter{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;max-width:100%;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--surface-1)}
+#appRoot.app .vspace-v200-filter span{font-size:10px;font-weight:700;padding:0 5px;color:var(--ink-soft);white-space:nowrap}
+#appRoot.app .vspace-v200-filter button{font-size:10px!important;min-width:30px;min-height:27px;padding:4px 6px!important;border-radius:7px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink)}
+#appRoot.app .vspace-v200-filter button.active{background:var(--accent,#4c8267)!important;color:#fff!important;border-color:var(--accent,#4c8267)!important}
+@media(max-width:1200px){#appRoot.app .vspace-v200-filter{order:2}#appRoot.app .vspace-v200-filter span{display:none}}
+/* La nueva barra de tres modos añade una fila real al grid del editor.
+   Evita el bug heredado de elementos superpuestos al dejar implícita la última fila. */
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80{grid-template-rows:auto auto auto minmax(0,1fr)!important}
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80:has(.layout-placement-prompt){grid-template-rows:auto auto auto auto minmax(0,1fr)!important}

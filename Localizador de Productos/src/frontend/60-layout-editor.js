@@ -23,6 +23,8 @@
     if(appState.selectedRoomId === undefined) appState.selectedRoomId = '';
     if(appState.selectedStreetId === undefined) appState.selectedStreetId = '';
     if(!appState.editor.stackViewMode) appState.editor.stackViewMode='compact';
+    if(!['architecture','urbanism'].includes(appState.editor.layoutSubsystem)) appState.editor.layoutSubsystem='architecture';
+    if(appState.editor.visibleRackLevel===undefined) appState.editor.visibleRackLevel='all';
     if(appState.editor.selectedStackLevel===undefined) appState.editor.selectedStackLevel=0;
     if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
     if(appState.editor.editSiteBoundary === undefined) appState.editor.editSiteBoundary=false;
@@ -1442,6 +1444,53 @@
     if(appState.selectedWallId && !findWallById(appState.selectedWallId)) appState.selectedWallId = '';
   }
 
+  // V200: Las pestañas comparten layout y zoom, pero aíslan selección y herramientas.
+  function activeLayoutWorkspace(){
+    return isRackDistributionScreen() ? 'distribution' : (appState.editor?.layoutSubsystem==='urbanism'?'urbanism':'architecture');
+  }
+  function rackVisibleAtLevel(rack){
+    const filter=appState.editor?.visibleRackLevel;
+    if(filter===undefined || filter==='all' || !isRackDistributionScreen()) return true;
+    const level=rack.stackGroupId ? Math.max(0,Number(rack.stackLevel||0)) : Math.max(0,Math.round(Number(rack.baseHeight||0) / Math.max(1,Number(rack.rackHeight||rackModel(rack.modelId)?.height||200))));
+    return level===Number(filter);
+  }
+  function switchLayoutWorkspace(next){
+    if(!['architecture','urbanism','distribution'].includes(next)) return;
+    if(appState.editor.pendingFurnitureModelId){appState.editor.pendingFurnitureModelId='';appState.editor.pendingFurniturePoint=null;}
+    if(next==='distribution'){
+      appState.editor.mode='select'; appState.editor.layoutSubsystem='architecture';
+      if(!isRackDistributionScreen())setScreen('distribution');else renderLayoutEditor();
+      return;
+    }
+    appState.editor.layoutSubsystem=next;
+    appState.editor.mode='select'; appState.editor.editSiteBoundary=false;
+    appState.editor.streetVerticesVisible=false;
+    appState.editor.pendingWallPoint=null;
+    if(next==='urbanism'){
+      appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId='';
+    }else{
+      appState.selectedStreetId=''; appState.selectedStreetFurnitureId='';
+    }
+    if(!isStructureLayoutScreen())setScreen('layout');else renderLayoutEditor();
+  }
+  function layoutWorkspaceTabs(){
+    const active=activeLayoutWorkspace();
+    const choices=[['architecture','Arquitectura','Áreas · zonas · muros'],['urbanism','Urbanismo','Calles · veredas'],['distribution','Distribución','Racks · niveles']];
+    return `<nav class="layout-v200-tabs" aria-label="Herramientas del layout">${choices.map(([key,label,desc])=>`<button type="button" data-layout-workspace="${key}" class="layout-v200-tab ${active===key?'active':''}" aria-pressed="${active===key}"><b>${label}</b><small>${desc}</small></button>`).join('')}</nav>`;
+  }
+  function layoutLevelSelector(){
+    const visible=String(appState.editor.visibleRackLevel??'all');
+    const highest=Math.max(2,...(appState.layout?.racks||[]).map(r=>r.stackGroupId?Number(r.stackLevel||0):0));
+    return `<div class="layout-v200-levels" role="group" aria-label="Nivel visible"><span>Nivel visible</span>${[['all','Todos'],...Array.from({length:Math.min(8,highest+1)},(_,i)=>[String(i),`N${i+1}`])].map(([v,label])=>`<button type="button" data-visible-level="${v}" class="seg-btn ${visible===v?'active':''}" aria-pressed="${visible===v}">${label}</button>`).join('')}</div>`;
+  }
+  function layoutUrbanismInspector(){
+    const streets=appState.layout?.streets||[];
+    return `<section class="layout-prop-card layout-v200-urban"><div class="layout-prop-title">Calles y veredas</div><p class="tiny muted">Selecciona una calle del plano para editar su geometría y materiales. La arquitectura se mantiene visible como referencia.</p><label class="layout-v200-street-select">Calle activa<select id="v200StreetSelect"><option value="">Seleccionar calle</option>${streets.map(st=>`<option value="${escapeHtml(st.id)}" ${st.id===appState.selectedStreetId?'selected':''}>${escapeHtml(st.name||st.id)}</option>`).join('')}</select></label><div class="layout-template-grid"><button type="button" class="seg-btn" id="v200DrawStreet">+ Crear calle</button><button type="button" class="seg-btn" id="v200ShowStreetHandles">Editar vértices</button></div></section>`;
+  }
+  function layoutDistributionInspector(){
+    return `<section class="layout-prop-card layout-v200-distribution"><div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(r.displayCode||r.id)} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
+  }
+
   function layoutSelectedSummary(){
     const measurement = (appState.layout?.measurements || []).find(m => m.id === appState.editor?.selectedMeasurementId);
     const opening = findOpeningById(appState.selectedOpeningId);
@@ -1450,10 +1499,11 @@
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
     if(isRackDistributionScreen()){
-      if(rack) return { type:'rack', title:rack.id, subtitle:`${rack.zoneId} · ${escapeHtml((rackModel(rack.modelId)||{}).name || rack.modelId || 'Rack')}` };
-      if(zone) return { type:'zone', title:zone.name || zone.id, subtitle:`Estructura bloqueada · ${(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length} racks` };
+      if(rack) return { type:'rack', title:rack.displayCode||rack.id, subtitle:`${rack.zoneId} · ${escapeHtml((rackModel(rack.modelId)||{}).name || rack.modelId || 'Rack')}` };
+      if(zone) return { type:'none', title:'Selecciona un rack', subtitle:`Zona ${zone.name||zone.id} · ${(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length} racks disponibles` };
       return { type:'none', title:'Sin rack seleccionado', subtitle:'Selecciona o agrega un rack; la estructura está bloqueada' };
     }
+    if(activeLayoutWorkspace()==='urbanism'){const st=(appState.layout?.streets||[]).find(x=>x.id===appState.selectedStreetId);return st?{type:'street',title:st.name||st.id,subtitle:'Calzada y vereda editables'}:{type:'none',title:'Selecciona una calle',subtitle:'Haz clic en una calle para editarla'};}
     if(measurement) return { type:'measure', title:'Medición', subtitle:`${measurement.id} · ${formatDistanceCm(Math.hypot(measurement.b.x-measurement.a.x, measurement.b.y-measurement.a.y))}` };
     if(opening){
       const host = findWallById(opening.wallId), kind=normalizeOpeningType(opening.type); const title=kind==='window'?'Ventana':kind==='free'?'Abertura libre':kind==='gate'?'Portón':'Puerta';
@@ -1645,12 +1695,14 @@
     const model = rack ? rackModel(rack.modelId) : null;
     const fp = rack ? getRackFootprint(rack.modelId, rack.rot || 0) : null;
     const modelOptions = appState.models.map(m=>`<option value="${escapeHtml(m.id)}" ${rack?.modelId===m.id?'selected':''}>${escapeHtml(m.name)}</option>`).join('');
-    const rackMode = isLayoutWorkspaceScreen();
+    const rackMode = isRackDistributionScreen();
+    const urbanismMode = !rackMode && activeLayoutWorkspace()==='urbanism';
+    const architectureMode = !rackMode && !urbanismMode;
     const structureMode = !rackMode;
     return `
       <div class="layout-right-head">
         <div><b>Inspector del layout</b></div>
-        <span class="layout-type-pill">${summary.type === 'rack' ? 'Rack' : summary.type === 'zone' ? 'Zona' : summary.type === 'wall' ? 'Muro' : summary.type === 'opening' ? 'Opening' : summary.type === 'measure' ? 'Medida' : summary.type === 'room' ? 'Recinto' : 'Plano'}</span>
+        <span class="layout-type-pill">${summary.type === 'rack' ? 'Rack' : summary.type === 'zone' ? 'Zona' : summary.type === 'wall' ? 'Muro' : summary.type === 'opening' ? 'Opening' : summary.type === 'measure' ? 'Medida' : summary.type === 'room' ? 'Recinto' : summary.type === 'street' ? 'Calle' : 'Plano'}</span>
       </div>
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
         <section class="layout-prop-card selected-summary layout-editor-focus-card">
@@ -1658,7 +1710,7 @@
           <div class="layout-selected-title">${escapeHtml(summary.title)}</div>
 
         </section>
-        ${rack ? modularStackCard(rack) : ''}
+        ${rackMode && rack ? modularStackCard(rack) : ''}
         <section class="layout-prop-card">
           <div class="layout-prop-title">Capas visibles</div>
           <div class="layout-layer-grid">
@@ -1682,7 +1734,7 @@
           </div>
 
         </section>
-        ${rackMode ? v117RackToolsMarkup() + v117ValidationMarkup() : v117StructureToolsMarkup()}
+        ${rackMode ? layoutDistributionInspector() + v117RackToolsMarkup() + v117ValidationMarkup() : architectureMode ? v117StructureToolsMarkup() : layoutUrbanismInspector()}
         ${rackMode ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Acciones rápidas</div>
           <div class="layout-template-grid">
@@ -1690,7 +1742,7 @@
             <button class="seg-btn" id="tplDistribute">Distribuir racks</button>
           </div>
 
-        </section>` : `<section class="layout-prop-card">
+        </section>` : architectureMode ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Acciones rápidas</div>
           <div class="layout-template-grid"><button class="seg-btn" id="tplWarehouse">Agregar almacén / zona</button></div>
         </section>
@@ -1702,8 +1754,8 @@
             <button class="seg-btn" id="btnLayoutBgClear" ${appState.layout?.meta?.backgroundImage ? '' : 'disabled'}>Quitar fondo</button>
           </div>
 
-        </section>`}
-        ${structureMode ? `<section class="layout-prop-card layout-site-properties">
+        </section>` : ''}
+        ${architectureMode ? `<section class="layout-prop-card layout-site-properties">
           <div class="layout-prop-title">Área general · perímetro editable</div>
           <div class="layout-template-grid">
             <button type="button" class="seg-btn ${appState.editor.editSiteBoundary?'active':''}" id="rpSiteEdit">${appState.editor.editSiteBoundary?'Ocultar puntos':'Editar vértices'}</button>
@@ -1712,7 +1764,7 @@
           </div>
           <div class="tiny muted layout-panel-hint">Arrastra los puntos del perímetro con snap. Las zonas permanecerán dentro del área; las calles seguirán el nuevo contorno.</div>
         </section>` : ''}
-        ${structureMode && findRoomById(appState.selectedRoomId) ? (()=>{ const rr=findRoomById(appState.selectedRoomId); const rp=roomPointsRaw(rr); const rz=getRoomLinkedZone(rr); const area=polygonAreaAbs(rp)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000; const perimeter=rp.reduce((sum,p,i)=>{ const q=rp[(i+1)%rp.length]; return sum+Math.hypot(q.x-p.x,q.y-p.y); },0); return `<section class="layout-prop-card room-zone-card">
+        ${architectureMode && findRoomById(appState.selectedRoomId) ? (()=>{ const rr=findRoomById(appState.selectedRoomId); const rp=roomPointsRaw(rr); const rz=getRoomLinkedZone(rr); const area=polygonAreaAbs(rp)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000; const perimeter=rp.reduce((sum,p,i)=>{ const q=rp[(i+1)%rp.length]; return sum+Math.hypot(q.x-p.x,q.y-p.y); },0); return `<section class="layout-prop-card room-zone-card">
           <div class="layout-prop-title">Recinto</div>
           <div class="layout-prop-grid two">
             <label>ID<input value="${escapeHtml(rr.id)}" disabled></label>
@@ -1728,9 +1780,10 @@
           </div>
           <div class="tiny muted layout-panel-hint" style="margin-top:8px">Puedes convertir este recinto en zona, o añadir un vértice al área. Si hay un muro del recinto seleccionado, el nuevo vértice se inserta en esa arista.</div>
         </section>`; })() : ''}
-        ${structureMode && (appState.layout?.streets||[]).some(s=>s.id===appState.selectedStreetId) ? (()=>{const street=ensureStreetVisualDefaults(appState.layout.streets.find(s=>s.id===appState.selectedStreetId));return `<section class="layout-prop-card layout-street-properties">
+        ${urbanismMode && (appState.layout?.streets||[]).some(s=>s.id===appState.selectedStreetId) ? (()=>{const street=ensureStreetVisualDefaults(appState.layout.streets.find(s=>s.id===appState.selectedStreetId));return `<section class="layout-prop-card layout-street-properties">
           <div class="layout-prop-title">Calle seleccionada · ${escapeHtml(street.name||street.id)}</div>
           <div class="layout-prop-grid two">
+            <label style="grid-column:1/-1">Nombre de la calle<input id="rpStreetName" value="${escapeHtml(street.name||street.id)}"></label>
             <label>Calzada (cm)<input id="rpStreetRoad" type="number" min="26" max="600" step="1" value="${Math.round(street.roadWidth||92)}"></label>
             <label>Veredas (cm)<input id="rpStreetWalk" type="number" min="20" max="300" step="1" value="${Math.round(street.sidewalkWidth||42)}"></label>
             <label>Tipo de calle<select id="rpStreetType">${Object.entries(STREET_SURFACE_PRESETS).map(([v,p])=>`<option value="${v}" ${street.roadType===v?'selected':''}>${p.label}</option>`).join('')}</select></label>
@@ -1756,7 +1809,7 @@
           </div><button type="button" class="seg-btn" id="rpUrbanTransform">Aplicar posición y giro</button>`;})():''}
           <div class="tiny muted" style="margin-top:8px">El mobiliario urbano se trata como un solo objeto agrupado. Puedes seleccionarlo y moverlo con snap en el layout, manteniendo la misma lectura en 2D y en Diseñar espacio 3D.</div>
         </section>`;})() : ''}
-        ${structureMode && zone ? `<section class="layout-prop-card">
+        ${architectureMode && zone ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Zona</div>
           <div class="layout-prop-grid two">
             <label>Nombre<input id="rpZoneName" value="${escapeHtml(zone.name||'')}"></label>
@@ -1781,6 +1834,7 @@
           <div class="layout-prop-grid two">
             <label>ID<input value="${escapeHtml(rack.id)}" disabled></label>
             <label>Zona<input value="${escapeHtml(rack.zoneId)}" disabled></label>
+            <label style="grid-column:1/-1">Nombre / nomenclatura<input id="rpRackDisplayCode" value="${escapeHtml(rack.displayCode||rack.id)}" placeholder="Ej. A-01-R03"></label>
             <label>Modelo<select id="rpRackModel">${modelOptions}</select></label>
             <label>Rotación<input id="rpRackRot" type="number" step="1" value="${Math.round(Number(rack.rot||0))}"></label>
             <label>X<input id="rpRackX" type="number" value="${formatUnitNumber(rack.x)}"></label>
@@ -1791,7 +1845,7 @@
           </div>
           <div class="layout-template-grid" style="margin-top:10px"><button class="seg-btn" id="rpDuplicateRack">Duplicar rack</button><button class="seg-btn" id="rpRack45">Girar 45°</button><button class="seg-btn" id="rpRack90">Girar 90°</button><button class="seg-btn" id="rpAddAbove">Agregar encima</button></div>
         </section>` : ''}
-        ${structureMode && findWallById(appState.selectedWallId) ? (()=>{ const sw=findWallById(appState.selectedWallId); const na=!sw.autoZoneEdge?getWallNode(sw.startNodeId):null; const nb=!sw.autoZoneEdge?getWallNode(sw.endNodeId):null; const linkedA=na?wallsForNode(na.id).length:0; const linkedB=nb?wallsForNode(nb.id).length:0; return `<section class="layout-prop-card wall-pro-card">
+        ${architectureMode && findWallById(appState.selectedWallId) ? (()=>{ const sw=findWallById(appState.selectedWallId); const na=!sw.autoZoneEdge?getWallNode(sw.startNodeId):null; const nb=!sw.autoZoneEdge?getWallNode(sw.endNodeId):null; const linkedA=na?wallsForNode(na.id).length:0; const linkedB=nb?wallsForNode(nb.id).length:0; return `<section class="layout-prop-card wall-pro-card">
           <div class="layout-prop-title">Muro</div>
           <div class="layout-prop-grid two">
             <label>ID<input value="${escapeHtml(sw.id)}" disabled></label>
@@ -1814,7 +1868,7 @@
           </div>
           <div class="tiny muted layout-panel-hint" style="margin-top:8px">Los extremos comparten nodos para mantener uniones limpias.</div>
         </section>`; })() : ''}
-        ${structureMode && findOpeningById(appState.selectedOpeningId) ? `<section class="layout-prop-card opening-editor-card">
+        ${architectureMode && findOpeningById(appState.selectedOpeningId) ? `<section class="layout-prop-card opening-editor-card">
           <div class="layout-prop-title">Vano / apertura</div>
           ${(() => { const op=findOpeningById(appState.selectedOpeningId); const wall=findWallById(op?.wallId); const info=getOpeningPositionInfo(op, wall); const type=normalizeOpeningType(op.type); return `<div class="tiny muted" style="margin-bottom:10px">Arrastra el vano sobre el muro o ajusta su posición exacta. ${wall ? `Muro ${escapeHtml(wall.id)}` : ''}</div>
           <div class="layout-prop-grid two">
@@ -1836,7 +1890,7 @@
           <div class="layout-template-grid" style="margin-top:10px"><button class="seg-btn" id="rpOpening25">25%</button><button class="seg-btn" id="rpOpeningCenter">50%</button><button class="seg-btn" id="rpOpening75">75%</button><button class="seg-btn" id="rpOpeningNudgeLeft">◀ 0.25 m</button><button class="seg-btn" id="rpOpeningNudgeRight">0.25 m ▶</button><button class="seg-btn" id="rpOpeningDuplicate">Duplicar</button><button class="seg-btn" id="rpOpeningFlip">Invertir apertura</button><button class="seg-btn" id="rpOpeningDelete">Eliminar</button></div>
           <div class="tiny muted layout-panel-hint" style="margin-top:8px">${type==='free'?'Usa la cota inferior para controlar si la abertura nace del piso o queda elevada.':'Puedes arrastrar el vano sobre el muro y se actualizará también en 3D.'}</div>` })()}
         </section>` : ''}
-        ${structureMode && appState.editor?.selectedMeasurementId ? (()=>{ const mm=(appState.layout.measurements||[]).find(m=>m.id===appState.editor.selectedMeasurementId); if(!mm) return ''; const dx=mm.b.x-mm.a.x,dy=mm.b.y-mm.a.y; return `<section class="layout-prop-card"><div class="layout-prop-title">Medición</div><div class="layout-prop-grid two"><label>Distancia<input value="${formatDistanceCm(Math.hypot(dx,dy))}" disabled></label><label>ΔX<input value="${formatDistanceCm(Math.abs(dx))}" disabled></label><label>ΔY<input value="${formatDistanceCm(Math.abs(dy))}" disabled></label><label>ID<input value="${escapeHtml(mm.id)}" disabled></label></div><button class="seg-btn danger" id="rpMeasureDelete" style="margin-top:10px">Eliminar medición</button></section>`; })() : ''}
+        ${architectureMode && appState.editor?.selectedMeasurementId ? (()=>{ const mm=(appState.layout.measurements||[]).find(m=>m.id===appState.editor.selectedMeasurementId); if(!mm) return ''; const dx=mm.b.x-mm.a.x,dy=mm.b.y-mm.a.y; return `<section class="layout-prop-card"><div class="layout-prop-title">Medición</div><div class="layout-prop-grid two"><label>Distancia<input value="${formatDistanceCm(Math.hypot(dx,dy))}" disabled></label><label>ΔX<input value="${formatDistanceCm(Math.abs(dx))}" disabled></label><label>ΔY<input value="${formatDistanceCm(Math.abs(dy))}" disabled></label><label>ID<input value="${escapeHtml(mm.id)}" disabled></label></div><button class="seg-btn danger" id="rpMeasureDelete" style="margin-top:10px">Eliminar medición</button></section>`; })() : ''}
       </div>`;
   }
 
@@ -1918,6 +1972,7 @@
     if($('#layoutSnapSize')) $('#layoutSnapSize').onchange = e => updateSnapSize(e.target.value);
     if($('#layoutDimFontSize')) $('#layoutDimFontSize').onchange = e => updateDimFont(e.target.value);
     const selectedStreet=(appState.layout?.streets||[]).find(s=>s.id===appState.selectedStreetId)||null;
+    if($('#rpStreetName')) $('#rpStreetName').onchange=e=>{if(!selectedStreet)return;const name=String(e.target.value||'').trim();if(!name||name===selectedStreet.name)return;recordHistorySnapshot('structure');selectedStreet.name=name;persistActiveLayout();renderLayoutEditor();};
     if($('#rpStreetPart')) $('#rpStreetPart').onchange=e=>{appState.editor.streetVertexPart=e.target.value;renderLayoutEditor();};
     if($('#rpStreetVertices')) $('#rpStreetVertices').onclick=()=>{appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
     if($('#rpStreetApply')) $('#rpStreetApply').onclick=()=>{
@@ -2052,6 +2107,7 @@
       Object.assign(rack,{x:candidate.x,y:candidate.y,zoneId:candidate.zoneId});
       persistActiveLayout();renderLayoutEditor();
     };
+    if($('#rpRackDisplayCode')) $('#rpRackDisplayCode').onchange=e=>{if(!rack)return;const label=String(e.target.value||'').trim().slice(0,80);if(!label||label===(rack.displayCode||rack.id))return;recordHistorySnapshot('distribution');rack.displayCode=label;persistActiveLayout();renderLayoutEditor();};
     if($('#rpRackModel')) $('#rpRackModel').onchange = e => { if(!rack) return; rack.modelId=e.target.value; syncRackFootprint(rack,true); const host=findZoneById(rack.zoneId); if(host) keepRackSnapped(rack, host); persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpRackRot')) $('#rpRackRot').onchange = e => v194RotateRack(rack,e.target.value);
     if($('#rpRackX')) $('#rpRackX').onchange = applyRackPosition;
@@ -2171,7 +2227,7 @@
     if(!(getHistoryBucket(workspaceHistory)?.undoStack?.length)) recordHistorySnapshot(workspaceHistory);
     ensureRackProps();
     const structureMode = !rackMode;
-    contentTitle.textContent = rackMode ? 'Editor de layout · racks' : 'Editor de layout · estructura';
+    contentTitle.textContent = rackMode ? 'Editar layout · Distribución' : urbanismMode ? 'Editar layout · Urbanismo' : 'Editar layout · Arquitectura';
     appState.editor.view = 'ortho';
     const isIsoView = false;
     const selectedRack = findRackById(appState.selectedRackLayoutId);
@@ -2180,12 +2236,12 @@
     const selectedZone = findZoneById(appState.selectedZoneId);
     const selectedWall = findWallById(appState.selectedWallId);
     const selectedOpening = findOpeningById(appState.selectedOpeningId);
-    const selectionType = rackMode ? (selectedRack ? 'rack' : '') : (selectedOpening ? 'opening' : (selectedWall ? 'wall' : (selectedZone ? 'zone' : '')));
+    const selectionType = rackMode ? (selectedRack ? 'rack' : '') : urbanismMode ? (appState.selectedStreetId?'street':'') : (selectedOpening ? 'opening' : (selectedWall ? 'wall' : (selectedZone ? 'zone' : '')));
     let contextTitle = rackMode ? 'Selecciona un rack para editarlo.' : 'Selecciona un elemento del layout.';
     let contextHint = rackMode ? 'Desde aquí podrás duplicar, eliminar o abrir el elemento en 3D.' : 'Usa el panel derecho solo cuando necesites detalle.';
     let contextActions = [];
     if(selectionType==='rack' && selectedRack){
-      contextTitle = `Rack activo: ${selectedRack.id}`;
+      contextTitle = `Rack activo: ${selectedRack.displayCode||selectedRack.id}`;
       contextHint = 'Acciones rápidas para distribución y revisión visual.';
       contextActions = [['ctx-duplicate-rack','Duplicar'],['ctx-delete','Eliminar']];
     }else if(selectionType==='zone' && selectedZone){
@@ -2203,9 +2259,9 @@
     }
     const contextMarkup = `<div class="layout-contextual-bar"><div class="layout-contextual-copy"><b>${escapeHtml(contextTitle)}</b></div><div class="layout-contextual-actions">${contextActions.map(([action,label])=>`<button class="seg-btn" data-layout-context-action="${action}">${label}</button>`).join('')}</div></div>`;
     const pendingFurnitureBanner = pendingFurnitureModel ? `<div class="layout-placement-prompt" role="status"><div><b>Ubicar: ${escapeHtml(pendingFurnitureModel.name||'Mueble')}</b><span>${Math.round(Number(pendingFurnitureModel.width||0))} × ${Math.round(Number(pendingFurnitureModel.depth||0))} cm · Clic en zona libre para colocarlo</span></div><button class="seg-btn" type="button" id="btnCancelFurniturePlacement">Cancelar · Esc</button></div>` : '';
-    contentSubtitle.textContent = rackMode ? 'Distribución de racks y ubicaciones.' : 'Editor CAD · estructura, muros y zonas.';
-    detailTitle.textContent = rackMode ? 'Layout de racks' : 'Layout estructural';
-    detailSubtitle.textContent = rackMode ? 'Los racks son editables; la estructura permanece protegida.' : 'Muros, vanos y zonas en un solo espacio de edición.';
+    contentSubtitle.textContent = rackMode ? 'Mover, rotar, apilar y nombrar racks.' : urbanismMode ? 'Crear y editar calles, veredas y mobiliario urbano.' : 'Áreas, zonas, muros y nomenclatura.';
+    detailTitle.textContent = rackMode ? 'Distribución' : urbanismMode ? 'Urbanismo' : 'Arquitectura';
+    detailSubtitle.textContent = rackMode ? 'Racks editables, niveles aislables.' : urbanismMode ? 'Calles y veredas con materiales.' : 'Perímetro y geometría de zonas.';
     setTags([
       { label:'↶ Deshacer', active: true, action:`history-undo-${workspaceHistory}`, extraClass:'history-chip' },
       { label:'↷ Rehacer', active: true, action:`history-redo-${workspaceHistory}`, extraClass:'history-chip' },
@@ -2219,10 +2275,13 @@
 
     contentWrap.innerHTML = `
       <div class="stage layout-premium-render layout-cad-v80" style="position:relative;height:100%">
-        <div class="layout-cad-shell-v80 ${appState.editor.rightPanelOpen === false ? 'right-collapsed' : ''} ${appState.editor.beginnerMode ? 'beginner-ui' : 'advanced-ui'} ${appState.editor.presentationMode ? 'presentation-mode' : ''}">
+        <div data-subsystem="${activeLayoutWorkspace()}" class="layout-cad-shell-v80 ${appState.editor.rightPanelOpen === false ? 'right-collapsed' : ''} ${appState.editor.beginnerMode ? 'beginner-ui' : 'advanced-ui'} ${appState.editor.presentationMode ? 'presentation-mode' : ''}">
+          ${layoutWorkspaceTabs()}
           <div class="layout-cad-localbar-v80">
-            ${structureMode ? '<button class="btn primary v80-zone-btn" id="btnAreaPlus">+ Área</button><button class="btn primary v80-zone-btn" id="btnZonePlus">+ Zona</button>' : '<button class="btn primary v80-zone-btn" data-emode="rack">+ Rack</button>'}
+            ${architectureMode ? '<button class="btn primary v80-zone-btn" id="btnAreaPlus">+ Área</button><button class="btn primary v80-zone-btn" id="btnZonePlus">+ Zona</button>' : urbanismMode ? '<button class="btn primary v80-zone-btn" id="btnStreetPlus">+ Calle</button>' : '<button class="btn primary v80-zone-btn" data-emode="rack">+ Rack</button>'}
             <select id="layoutBranchSelect" class="seg-btn v80-branch-select">${(appState.admin.branches||[]).map((b,i)=>`<option value="${i}" ${i===getActiveLayoutBranchIndex()?'selected':''}>${escapeHtml(b.name||('Sucursal '+(i+1)))}</option>`).join('')}</select>
+            ${rackMode?layoutLevelSelector():''}
+            ${urbanismMode?`<button type="button" class="seg-btn" id="streetCornerToggle">${getStreetCornerStyle()==='diagonal'?'Esquina diagonal':'Esquina 90°'}</button>`:''}
             <span class="v175-unit-label" title="Escala del plano">cm / m</span>
             <button class="seg-btn v80-icon-btn ${isSnapEnabled()?'is-active':''}" data-layout-tag-action="toggle-snap" type="button" aria-pressed="${isSnapEnabled()}" title="Activar o desactivar snap" aria-label="Activar o desactivar snap">⌁</button>
             <button class="seg-btn v80-icon-btn ${appState.editor.showDims?'is-active':''}" data-layout-tag-action="toggle-dims" type="button" aria-pressed="${!!appState.editor.showDims}" title="Mostrar u ocultar cotas" aria-label="Mostrar u ocultar cotas">▦</button>
@@ -2241,17 +2300,21 @@
               <div class="layout-canvas-wrap v80-canvas-wrap">
                 <div class="layout-canvas-card detail-stage v80-canvas-card">
                   <svg id="layoutSvg"></svg>${appState.editor.presentationMode ? `<button class="seg-btn layout-presentation-exit" id="btnExitPresentation">Salir de solo espacio</button><div class="layout-presentation-badge">Modo presentación</div>` : ``}
-                  <div class="v80-tool-rail" aria-label="${rackMode ? 'Herramientas de distribución' : 'Herramientas de estructura'}">
-                    ${structureMode ? `
+                  <div class="v80-tool-rail" aria-label="${rackMode ? 'Herramientas de distribución' : urbanismMode ? 'Herramientas de calles' : 'Herramientas de arquitectura'}">
+                    ${architectureMode ? `
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='select'?'active':''}" data-emode="select"><span class="v80-tool-ico">↖</span><b>Seleccionar</b></button>
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='area'?'active':''}" id="btnAreaPlusRail" data-tool-proxy="btnAreaPlus"><span class="v80-tool-ico">▧</span><b>Área</b></button>
-                    <button class="v80-tool-btn seg-btn ${appState.editor.mode==='street'?'active':''}" id="btnStreetPlusRail" data-tool-proxy="btnStreetPlus"><span class="v80-tool-ico">═</span><b>Calle</b></button>
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='wall'?'active':''}" data-emode="wall"><span class="v80-tool-ico">╱</span><b>Muro</b></button>
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='door'?'active':''}" data-emode="door"><span class="v80-tool-ico">◧</span><b>Puerta</b></button>
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='opening'?'active':''}" data-emode="opening"><span class="v80-tool-ico">▭</span><b>Abertura</b></button>
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='zone'?'active':''}" id="btnZonePlusRail" data-tool-proxy="btnZonePlus"><span class="v80-tool-ico">□</span><b>Zona</b></button>
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='measure'?'active':''}" data-emode="measure"><span class="v80-tool-ico">↔</span><b>Medir</b></button>
+                    ` : urbanismMode ? `
+                    <button class="v80-tool-btn seg-btn ${appState.editor.mode==='select'?'active':''}" data-emode="select"><span class="v80-tool-ico">↖</span><b>Seleccionar</b></button>
+                    <button class="v80-tool-btn seg-btn ${appState.editor.mode==='street'?'active':''}" id="btnStreetPlusRail" data-tool-proxy="btnStreetPlus"><span class="v80-tool-ico">═</span><b>Calle</b></button>
+                    <button class="v80-tool-btn seg-btn" id="v200StreetHandlesRail"><span class="v80-tool-ico">⌖</span><b>Vértices</b></button>
                     ` : `
+                    <button class="v80-tool-btn seg-btn ${appState.editor.mode==='select'?'active':''}" data-emode="select"><span class="v80-tool-ico">↖</span><b>Seleccionar</b></button>
                     <button class="v80-tool-btn seg-btn ${appState.editor.mode==='rack'?'active':''}" data-emode="rack"><span class="v80-tool-ico">▤</span><b>Rack</b></button>
                     <button class="v80-tool-btn seg-btn" id="btnDuplicateRackRail"><span class="v80-tool-ico">⧉</span><b>Duplicar</b></button>
                     `}
@@ -2261,8 +2324,8 @@
                     <button class="seg-btn" id="btnZoomOut" title="Alejar" aria-label="Alejar plano">−</button><span class="zoom-chip" id="zoomLabel">100%</span><button class="seg-btn" id="btnZoomIn" title="Acercar" aria-label="Acercar plano">+</button>
                   </div>
 
-                  ${structureMode && appState.editor.mode==='wall' && appState.editor.pendingWallPoint ? `<div class="wall-length-hud"><span>Longitud</span><input id="wallLengthInput" type="number" min="1" step="1" placeholder="cm" value="${escapeHtml(String(appState.editor.wallLengthDraft||''))}"><b>cm</b><small>Enter fija · ESC termina</small></div>` : ''}
-                  ${structureMode && appState.editor.mode==='wall' ? `<div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · ESC finaliza</div>` : ''}
+                  ${architectureMode && appState.editor.mode==='wall' && appState.editor.pendingWallPoint ? `<div class="wall-length-hud"><span>Longitud</span><input id="wallLengthInput" type="number" min="1" step="1" placeholder="cm" value="${escapeHtml(String(appState.editor.wallLengthDraft||''))}"><b>cm</b><small>Enter fija · ESC termina</small></div>` : ''}
+                  ${architectureMode && appState.editor.mode==='wall' ? `<div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · ESC finaliza</div>` : ''}
                   <div id="layoutStackMenu" class="layout-stack-overlay"></div>
                 </div>
               </div>
@@ -2599,6 +2662,14 @@
     if(appState.editor.wallsVisible === false) wallLayer.setAttribute('style','display:none');
     if(appState.editor.openingsVisible === false) openingLayer.setAttribute('style','display:none');
     svg.append(streetsLayer, areaLayer, roomLayer, edgeLayer, zoneLayer, wallLayer, openingLayer, rackLayer, guideLayer, measureLayer, vertexLayer, overlayLayer, streetHandleLayer);
+    // Capas visibles, pero solo el modo activo captura los clics.
+    const editArea = activeLayoutWorkspace()==='architecture';
+    const editStreet = activeLayoutWorkspace()==='urbanism';
+    if(!editStreet) streetsLayer.style.pointerEvents='none';
+    if(!editArea){[areaLayer,roomLayer,edgeLayer,zoneLayer,wallLayer,openingLayer,vertexLayer,measureLayer].forEach(layer=>layer.style.pointerEvents='none');}
+    if(activeLayoutWorkspace()!=='distribution') rackLayer.style.pointerEvents='none';
+    if(!editStreet && activeLayoutWorkspace()!=='distribution') streetHandleLayer.style.pointerEvents='none';
+
 
     const streetRoadFill = street => `url(#street-road-${(ensureStreetVisualDefaults(street).roadType||'drain-covered')})`;
     const streetSidewalkFill = street => `url(#street-sidewalk-${(ensureStreetVisualDefaults(street).sidewalkType||'paver')})`;
@@ -2749,7 +2820,7 @@
         streetsLayer.appendChild(txt);
       }
     });
-    if(isStructureLayoutScreen() && appState.editor.editSiteBoundary && appState.editor.mode==='select'){
+    if(activeLayoutWorkspace()==='architecture' && appState.editor.editSiteBoundary && appState.editor.mode==='select'){
       const sites=layoutBoundaryPts();
       sites.forEach((pt,index)=>{
         const point=svgEl('circle',{cx:pt.x,cy:pt.y,r:'8',fill:'#fff8e9',stroke:'#ba7a46','stroke-width':'2.7',style:'cursor:move;touch-action:none','data-site-vertex':index});
@@ -2774,7 +2845,7 @@
       });
     }
     const editedStreet=(appState.layout?.streets||[]).find(street=>street.id===appState.selectedStreetId);
-    if(editedStreet && isStructureLayoutScreen() && appState.editor.streetVerticesVisible){
+    if(editedStreet && activeLayoutWorkspace()==='urbanism' && appState.editor.streetVerticesVisible){
       const part=['roadPts','sidewalkPts','outerSidewalkPts'].includes(appState.editor.streetVertexPart) ? appState.editor.streetVertexPart : 'roadPts';
       (editedStreet[part]||[]).forEach((pt,i)=>{
         const handle=svgEl('circle',{cx:pt.x,cy:pt.y,r:'8',fill:'#fff8e9',stroke:'#267760','stroke-width':'3',class:'street-vertex-handle',style:'cursor:move;touch-action:none','data-street-vertex':i});
@@ -2950,7 +3021,7 @@
       zoneLayer.appendChild(badge);
       if(appState.editor.showDims) drawZoneEdgeDimensions(edgeLayer, zone);
 
-      if(appState.selectedZoneId===zone.id){
+      if(appState.selectedZoneId===zone.id && activeLayoutWorkspace()==='architecture'){
         if(appState.editor.sectionVisible){
           drawSectionGuide(zone, 'x');
           drawSectionGuide(zone, 'y');
@@ -3344,7 +3415,8 @@
 
     const v117ConflictRacks = v117ConflictRackIds();
     if(appState.editor.racksVisible !== false) appState.layout.racks.forEach(r => {
-      if(r.stackGroupId && appState.editor.stackViewMode!=='expanded'){
+      if(!rackVisibleAtLevel(r)) return;
+      if(r.stackGroupId && appState.editor.stackViewMode!=='expanded' && appState.editor.visibleRackLevel==='all'){
         const lastLevel=Math.max(...modularStackMembers(r).map(x=>Number(x.stackLevel||0)));
         if(Number(r.stackLevel||0)!==lastLevel && r.id!==appState.selectedRackLayoutId)return;
       }
@@ -3399,7 +3471,7 @@
         x:0,y:4,class:'ortho-label','text-anchor':'middle','dominant-baseline':'middle',
         style:'pointer-events:none', transform:`rotate(${-normalizeAngle(r.rot||0)})`
       });
-      t.textContent = r.stackGroupId?`N${Number(r.stackLevel||0)+1}-${String.fromCharCode(65+Number(r.stackModuleIndex||0))}`:r.id;
+      t.textContent = r.stackGroupId?`N${Number(r.stackLevel||0)+1}-${String.fromCharCode(65+Number(r.stackModuleIndex||0))}`:(r.displayCode||r.id);
       const baseHVal = Math.round(Number(r.baseHeight || 0));
       const levelBadge = svgEl('g',{transform:`translate(${-visualW/2 + 18} ${-visualH/2 + 10})`,style:'pointer-events:none'});
       levelBadge.appendChild(svgEl('rect',{x:-18,y:-12,width:36,height:18,rx:'9',fill:'rgba(8,18,30,.95)',stroke:'#56d2ff','stroke-width':'1'}));
@@ -3727,6 +3799,21 @@
   }
 
   function bindLayoutToolbar(){
+    document.querySelectorAll('[data-layout-workspace]').forEach(btn=>btn.onclick=()=>{markLayoutManualInteraction();switchLayoutWorkspace(btn.dataset.layoutWorkspace);});
+    document.querySelectorAll('[data-visible-level]').forEach(btn=>btn.onclick=()=>{
+      const level=btn.dataset.visibleLevel;appState.editor.visibleRackLevel=level;
+      const selected=findRackById(appState.selectedRackLayoutId);
+      if(selected && !rackVisibleAtLevel(selected))appState.selectedRackLayoutId='';
+      renderLayoutEditor();
+    });
+    const changeStreet=id=>{appState.selectedStreetId=id;appState.editor.mode='select';renderLayoutEditor();};
+    if($('#v200StreetSelect'))$('#v200StreetSelect').onchange=e=>changeStreet(e.target.value);
+    if($('#v200DrawStreet'))$('#v200DrawStreet').onclick=()=>{appState.editor.mode='street';renderLayoutEditor();};
+    const streetHandles=()=>{appState.editor.mode='select';appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
+    if($('#v200ShowStreetHandles'))$('#v200ShowStreetHandles').onclick=streetHandles;
+    if($('#v200StreetHandlesRail'))$('#v200StreetHandlesRail').onclick=streetHandles;
+    if($('#v200RackSelect'))$('#v200RackSelect').onchange=e=>{const rack=findRackById(e.target.value);if(!rack)return;appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;renderLayoutEditor();};
+    if($('#v200ShowSections'))$('#v200ShowSections').onclick=()=>{appState.editor.sectionVisible=!appState.editor.sectionVisible;renderLayoutEditor();};
     const cancelPlacement=document.getElementById('btnCancelFurniturePlacement');
     if(cancelPlacement)cancelPlacement.onclick=()=>{appState.editor.pendingFurnitureModelId='';appState.editor.pendingFurniturePoint=null;renderLayoutEditor();};
     if(!window.__pendingFurnitureEscapeBound){
@@ -3737,7 +3824,7 @@
         if(isRackDistributionScreen())renderLayoutEditor();
       });
     }
-    $$('.seg-btn[data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode; if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } renderLayoutEditor(); } });
+    $$('.seg-btn[data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode; if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; if(activeLayoutWorkspace()==='urbanism' && !['select','street','navigate'].includes(nextMode))return; if(activeLayoutWorkspace()==='architecture' && nextMode==='street')return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } renderLayoutEditor(); } });
     $$('[data-layout-tag-action]').forEach(btn => btn.onclick = () => {
       markLayoutManualInteraction();
       const action = btn.getAttribute('data-layout-tag-action');
@@ -3762,9 +3849,9 @@
     if($('#layoutBranchSelect')) $('#layoutBranchSelect').onchange = e => { markLayoutManualInteraction(); setLayoutBranch(+e.target.value || 0); renderLayoutEditor(); };
     if($('#btnAreaPlus')) $('#btnAreaPlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'area'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
     if($('#btnZonePlus')) $('#btnZonePlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'zone'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
-    if(!document.getElementById('btnStreetPlus')){
+    if(!document.getElementById('btnStreetPlus') && activeLayoutWorkspace()==='urbanism'){
       const localbar = document.querySelector('.layout-cad-localbar-v80');
-      if(localbar && isStructureLayoutScreen()){
+      if(localbar && activeLayoutWorkspace()==='urbanism'){
         const streetBtn = document.createElement('button');
         streetBtn.className = 'btn primary v80-zone-btn';
         streetBtn.id = 'btnStreetPlus';

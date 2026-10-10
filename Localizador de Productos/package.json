@@ -1,0 +1,17 @@
+{
+  "name": "wms-industrial-cloudflare",
+  "version": "1.9.3-cad-layout-catalog-preview-fixes",
+  "private": true,
+  "description": "WMS Industrial V193: constructor sin solapamientos, preview de catálogo independiente y colocación manual asistida en layout",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:frontend && npm run build:css",
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "build:css": "node scripts/build-css.mjs",
+    "verify:frontend": "node scripts/verify-frontend.mjs",
+    "check": "npm run build && npm run verify:frontend && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js"
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  }
+}

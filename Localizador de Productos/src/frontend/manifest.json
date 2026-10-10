@@ -1,5 +1,5 @@
 {
-  "version": "181",
+  "version": "187",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V181: CAD estable, capas SVG, porcelanatos 2D/3D, calles y vértices persistentes, Cloudflare Wrangler/D1 preservados"
+  "notes": "V187: CAD vértices de área, división de zonas, urbanismo y movimientos de muros 3D, Cloudflare Wrangler/D1 preservados"
 }

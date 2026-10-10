@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "1.8.1-floor-streets",
+  "version": "1.8.7-cad-urbanism",
   "private": true,
-  "description": "WMS Industrial V181: CAD estable, porcelanatos por zona y edición de vértices de calle",
+  "description": "WMS Industrial V187: editor CAD y construcción 3D sincronizados, urbanismo, vértices y divisiones",
   "type": "module",
   "scripts": {
     "build:frontend": "node scripts/build-frontend.mjs",
@@ -21,7 +21,8 @@
     "build:css": "node scripts/build-css.mjs",
     "test:ui-v176": "node tests/ui-v176.test.mjs",
     "test:architecture": "node tests/architecture-v180.test.mjs",
-    "test:regression-v181": "node tests/regression-v181.test.mjs"
+    "test:regression-v181": "node tests/regression-v181.test.mjs",
+    "test:v187": "node tests/integration-v187.test.mjs"
   },
   "dependencies": {
     "three": "0.160.0"

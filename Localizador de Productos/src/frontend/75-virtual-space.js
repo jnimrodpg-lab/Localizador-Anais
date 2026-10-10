@@ -231,7 +231,7 @@
       <details class="vspace-help"><summary title="Controles de navegación 3D" aria-label="Mostrar ayuda de navegación">? Ayuda</summary><div>Arrastrar: orbitar · Shift + arrastrar: desplazar · Rueda: zoom · Doble clic: enfocar · F: enfocar · 1/2/3: vistas</div></details>
       <div class="vspace-compass">ISO</div><div class="vspace-loading" id="vspaceLoading">Preparando el espacio tridimensional…</div></section>
       <aside class="vspace-inspector"><h4 id="vspaceInspectorHeading">Inspector de ubicaciones</h4>
-      <div class="vspace-panel-tabs" role="group" aria-label="Editor activo"><button type="button" data-vspace-panel="furniture" class="active">Mobiliario</button><button type="button" data-vspace-panel="architecture">Arquitectura</button></div>
+      <div class="vspace-panel-tabs" role="group" aria-label="Editor activo"><button type="button" data-vspace-panel="furniture" class="active">Mobiliario</button><button type="button" data-vspace-panel="architecture">Arquitectura</button><button type="button" data-vspace-panel="urban">Urbanismo</button></div>
       <div id="vspaceInspector" class="vspace-inspector-body">Selecciona un mueble o abre Arquitectura para modificar muros y vanos.</div></aside></div>
       <div class="vspace-bottom"><span id="vspaceNotice" aria-live="polite">Los cambios se guardan localmente; «Guardar en nube» sincroniza la sucursal.</span></div>
     </div>`;
@@ -243,7 +243,7 @@
       `;document.head.appendChild(style);
     }
     const root=document.getElementById('vspaceRoot'),canvas=root.querySelector('#vspaceCanvas');
-    const state={root,canvas,selectedId:appState.selectedRackLayoutId||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
+    const state={root,canvas,selectedId:appState.selectedRackLayoutId||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
     vspaceActive=state;
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
@@ -311,6 +311,70 @@
         Math.abs(safeArchNum(other.t,0,1,.5)*L-position)<(Number(other.width||90)+width)/2+8/u);
       return collision?`Se superpone con la abertura ${collision.id}.`:'';
     };
+    // V187: urbanismo comparte los mismos datos que la calle del editor CAD.
+    state.refreshUrbanInspector=()=>{
+      const host=root.querySelector('#vspaceInspector');
+      if(!host) return;
+      const streets=Array.isArray(appState.layout?.streets)?appState.layout.streets:[];
+      const selected=streets.find(street=>street.id===state.selectedStreetId)||streets[0]||null;
+      if(selected && !state.selectedStreetId) state.selectedStreetId=selected.id;
+      if(selected) ensureStreetVisualDefaults(selected);
+      const urban=selected?.streetFurniture?.find(item=>item.id===state.selectedStreetFurnitureId)||selected?.streetFurniture?.[0]||null;
+      const u=archUnit();
+      host.innerHTML=`<div class="vspace-arch-toolbar"><button type="button" id="vsUrbanUndo">Deshacer</button><button type="button" id="vsUrbanRedo">Rehacer</button></div>
+        <div class="vspace-arch-subtitle">Calles del proyecto</div>
+        <div class="vspace-arch-list">${streets.map(s=>`<button type="button" class="vspace-arch-entry ${s.id===selected?.id?'selected':''}" data-vs-street="${vspaceEsc(s.id)}"><b>${vspaceEsc(s.name||s.id)}</b><small>Calzada y dos veredas</small></button>`).join('')||'<div class="vspace-empty">Crea una calle en Editar layout para configurarla aquí.</div>'}</div>
+        ${selected?`<div class="vspace-arch-subtitle">Calzada y veredas</div>
+          <label class="vspace-field">Modelo de calle<select id="vsUrbanRoadType" ${lock}>${Object.entries(STREET_SURFACE_PRESETS).map(([key,p])=>`<option value="${key}" ${selected.roadType===key?'selected':''}>${vspaceEsc(p.label)}</option>`).join('')}</select></label>
+          <label class="vspace-field">Acabado de veredas<select id="vsUrbanWalkType" ${lock}>${Object.entries(SIDEWALK_SURFACE_PRESETS).map(([key,p])=>`<option value="${key}" ${selected.sidewalkType===key?'selected':''}>${vspaceEsc(p.label)}</option>`).join('')}</select></label>
+          <div class="vspace-grid-2"><label class="vspace-field">Calzada (cm)<input id="vsUrbanRoadWidth" type="number" min="26" max="600" value="${Math.round(Number(selected.roadWidth||92)*u)}" ${lock}></label>
+          <label class="vspace-field">Veredas (cm)<input id="vsUrbanSidewalkWidth" type="number" min="20" max="300" value="${Math.round(Number(selected.sidewalkWidth||42)*u)}" ${lock}></label></div>
+          <label class="vspace-field">Tipo de esquina<select id="vsUrbanCorner" ${lock}><option value="right" ${selected.cornerStyle!=='diagonal'?'selected':''}>90°</option><option value="diagonal" ${selected.cornerStyle==='diagonal'?'selected':''}>Diagonal / ochava</option></select></label>
+          <button type="button" class="vspace-primary" id="vsUrbanApply" ${lock}>Aplicar a la calle</button>
+          <div class="vspace-arch-subtitle">Mobiliario urbano (grupo único)</div>
+          <button type="button" id="vsUrbanAdd" ${lock}>${urban?'Reemplazar conjunto':'Añadir conjunto'}</button>
+          ${urban?`<div class="vspace-grid-2"><label class="vspace-field">X plano (cm)<input type="number" id="vsUrbanX" value="${Math.round(Number(urban.x||0)*u)}" ${lock}></label>
+            <label class="vspace-field">Y plano (cm)<input type="number" id="vsUrbanY" value="${Math.round(Number(urban.y||0)*u)}" ${lock}></label></div>
+            <label class="vspace-field">Giro (°)<input type="number" id="vsUrbanRotation" min="-360" max="360" step="5" value="${Math.round(Number(urban.rotation||0))}" ${lock}></label>
+            <div class="vspace-grid-2"><button class="vspace-primary" type="button" id="vsUrbanApplyGroup" ${lock}>Mover / girar grupo</button><button type="button" id="vsUrbanRemove" ${lock}>Quitar conjunto</button></div>
+            <small class="vspace-muted">Activa Mover en la barra superior para arrastrar el conjunto directamente sobre la vereda. Snap según la rejilla CAD.</small>`:''}`:''}`;
+      host.querySelector('#vsUrbanUndo')?.addEventListener('click',()=>{if(!canWrite())return;undoHistory('structure');state.refreshInspector();state.render?.(true);});
+      host.querySelector('#vsUrbanRedo')?.addEventListener('click',()=>{if(!canWrite())return;redoHistory('structure');state.refreshInspector();state.render?.(true);});
+      host.querySelectorAll('[data-vs-street]').forEach(btn=>btn.onclick=()=>{state.selectedStreetId=btn.dataset.vsStreet;appState.selectedStreetId=btn.dataset.vsStreet;state.selectedStreetFurnitureId='';state.refreshInspector();state.render?.(true);});
+      host.querySelector('#vsUrbanApply')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected)return;
+        const nextRoad=safeArchNum(host.querySelector('#vsUrbanRoadWidth')?.value,26,600,92)/u;
+        const nextWalk=safeArchNum(host.querySelector('#vsUrbanSidewalkWidth')?.value,20,300,42)/u;
+        recordHistorySnapshot('structure');
+        selected.roadType=host.querySelector('#vsUrbanRoadType')?.value in STREET_SURFACE_PRESETS ? host.querySelector('#vsUrbanRoadType').value : 'drain-covered';
+        selected.sidewalkType=host.querySelector('#vsUrbanWalkType')?.value in SIDEWALK_SURFACE_PRESETS ? host.querySelector('#vsUrbanWalkType').value : 'paver';
+        selected.roadWidth=nextRoad;selected.sidewalkWidth=nextWalk;
+        selected.cornerStyle=host.querySelector('#vsUrbanCorner')?.value==='diagonal'?'diagonal':'right';
+        rebuildStreetNetwork();vspaceCommit(`calle ${selected.id}`);state.refreshInspector();
+      });
+      host.querySelector('#vsUrbanAdd')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected)return;
+        recordHistorySnapshot('structure');const item=setStreetFurnitureUrbanSet(selected);
+        state.selectedStreetFurnitureId=item?.id||'';appState.selectedStreetFurnitureId=state.selectedStreetFurnitureId;
+        vspaceCommit('conjunto urbano');state.refreshInspector();
+      });
+      host.querySelector('#vsUrbanApplyGroup')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected||!urban)return;
+        const next={x:safeArchNum(host.querySelector('#vsUrbanX')?.value,-200000,200000,urban.x*u)/u,
+          y:safeArchNum(host.querySelector('#vsUrbanY')?.value,-200000,200000,urban.y*u)/u};
+        const fits=[selected.sidewalkPts,selected.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(next,poly));
+        if(!fits) return vspaceToast('Coloca el conjunto sobre una de las veredas.',true);
+        recordHistorySnapshot('structure');urban.x=appState.editor?.snapEnabled===false?next.x:snapGrid(next.x);
+        urban.y=appState.editor?.snapEnabled===false?next.y:snapGrid(next.y);
+        urban.rotation=safeArchNum(host.querySelector('#vsUrbanRotation')?.value,-360,360,urban.rotation||0);
+        state.selectedStreetFurnitureId=urban.id;vspaceCommit('posición del mobiliario urbano');state.refreshInspector();
+      });
+      host.querySelector('#vsUrbanRemove')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected)return;
+        recordHistorySnapshot('structure');clearStreetFurniture(selected);
+        state.selectedStreetFurnitureId='';appState.selectedStreetFurnitureId='';vspaceCommit('mobiliario retirado');state.refreshInspector();
+      });
+    };
     state.refreshArchitecturalInspector=()=>{
       ensureLayoutDecorations();
       const host=root.querySelector('#vspaceInspector');
@@ -331,6 +395,9 @@
           <div class="vspace-grid-2"><label class="vspace-field">Altura (cm)<input id="vsWallHeight" type="number" min="120" max="600" step="5" value="${Math.round(Number(wall.height||290)*u)}" ${lock}></label>
           <label class="vspace-field">Acabado<select id="vsWallFinish" ${lock}><option value="ivory" ${!wall.material||wall.material==='ivory'?'selected':''}>Marfil mate</option><option value="concrete" ${wall.material==='concrete'?'selected':''}>Concreto suave</option><option value="white" ${wall.material==='white'?'selected':''}>Blanco cálido</option></select></label></div>
           <button type="button" class="vspace-primary" id="vsApplyWall" ${lock}>Aplicar propiedades del muro</button>
+          <div class="vspace-arch-subtitle">Mover muro con snap (ambos extremos)</div>
+          <div class="vspace-grid-2"><label class="vspace-field">Desplazar X (cm)<input type="number" id="vsWallDeltaX" value="0" ${lock}></label><label class="vspace-field">Desplazar Y (cm)<input type="number" id="vsWallDeltaY" value="0" ${lock}></label></div>
+          <button type="button" id="vsWallTranslate" ${lock}>Desplazar muro</button>
           <div class="vspace-arch-subtitle">Agregar al muro</div>
           <div class="vspace-arch-toolbar"><button type="button" data-vs-create-opening="door" ${lock}>Puerta</button><button type="button" data-vs-create-opening="free" ${lock}>Abertura libre</button><button type="button" data-vs-create-opening="window" ${lock}>Ventanal</button></div>
           <div class="vspace-arch-list">${wallOpenings.map(o=>`<button class="vspace-arch-entry ${state.selectedOpeningId===o.id?'selected':''}" data-vs-opening="${vspaceEsc(o.id)}"><b>${o.type==='window'?'Ventanal':o.type==='free'?'Abertura':o.type==='door'?'Puerta':'Portón'} · ${vspaceEsc(o.id)}</b><small>${Math.round(Number(o.width||90)*u)} × ${Math.round(Number(o.height||210)*u)} cm</small></button>`).join('')||'<small class="vspace-muted">Sin aberturas.</small>'}</div>
@@ -376,6 +443,21 @@
         wall.thickness=nextThick;wall.height=nextH;wall.material=host.querySelector('#vsWallFinish').value;
         syncManualWallsFromNodes();ensureOpeningAttachmentOffsets();vspaceCommit(`muro ${wall.id}`);state.refreshInspector();
       });
+      host.querySelector('#vsWallTranslate')?.addEventListener('click',()=>{
+        if(!canWrite()||!wall)return;
+        if(!wall.startNodeId||!wall.endNodeId)return vspaceToast('Selecciona un muro con extremos editables.',true);
+        const a=getWallNode(wall.startNodeId), b=getWallNode(wall.endNodeId);
+        if(!a||!b)return vspaceToast('El muro no tiene nodos editables.',true);
+        const dx=safeArchNum(host.querySelector('#vsWallDeltaX')?.value,-10000,10000,0)/archUnit();
+        const dy=safeArchNum(host.querySelector('#vsWallDeltaY')?.value,-10000,10000,0)/archUnit();
+        if(!dx&&!dy)return;
+        const pts=[a,b].map(pt=>({id:pt.id,x:appState.editor?.snapEnabled===false?Number(pt.x)+dx:snapGrid(Number(pt.x)+dx),y:appState.editor?.snapEnabled===false?Number(pt.y)+dy:snapGrid(Number(pt.y)+dy)}));
+        // No alterar nodos ni geometrías compartidas si la transformación no es válida.
+        recordHistorySnapshot('structure');
+        if(!trySetWallNodesPositionsBulk(pts,appState.layout,{silent:true}))return vspaceToast('El desplazamiento produciría una colisión o geometría inválida.',true);
+        syncManualWallsFromNodes();syncRoomLinkedZones();ensureOpeningAttachmentOffsets();
+        vspaceCommit(`posición del muro ${wall.id}`);state.refreshInspector();
+      });
       host.querySelectorAll('[data-vs-create-opening]').forEach(btn=>btn.onclick=()=>{
         if(!canWrite()||!wall)return;
         const type=btn.dataset.vsCreateOpening,def=openingDefaultForType(type);
@@ -410,11 +492,12 @@
     root.querySelectorAll('[data-vspace-panel]').forEach(btn=>btn.addEventListener('click',()=>{
       state.inspectorMode=btn.dataset.vspacePanel;state.archDrawMode=false;state.drawWallStart=null;
       root.querySelectorAll('[data-vspace-panel]').forEach(b=>b.classList.toggle('active',b===btn));
-      root.querySelector('#vspaceInspectorHeading').textContent=state.inspectorMode==='architecture'?'Inspector arquitectónico':'Inspector de ubicaciones';
+      root.querySelector('#vspaceInspectorHeading').textContent=state.inspectorMode==='architecture'?'Inspector arquitectónico':state.inspectorMode==='urban'?'Inspector de urbanismo':'Inspector de ubicaciones';
       state.refreshInspector();state.render?.(true);
     }));
     state.refreshInspector=()=>{
       if(state.inspectorMode==='architecture') return state.refreshArchitecturalInspector();
+      if(state.inspectorMode==='urban') return state.refreshUrbanInspector();
       const rack=getRack(),host=root.querySelector('#vspaceInspector');
       state.refreshObjects();
       if(!rack){host.innerHTML='<div class="vspace-empty">Selecciona un mueble en 3D o desde la lista de la izquierda.</div>';return;}
@@ -782,6 +865,8 @@
           (street.streetFurniture||[]).forEach(item=>{
             const p=coord({x:Number(item.x||0),y:Number(item.y||0)});
             const group=new THREE.Group();
+            group.userData={streetId:street.id,streetFurnitureId:item.id};
+            state.urbanObjects.set(`${street.id}:${item.id}`,group);
             group.position.set(p.x,.042,p.z);
             group.rotation.y=-(Number(item.rotation||0)||0)*Math.PI/180;
             const w=Math.max(.18, Number(item.width||60)/100), d=Math.max(.18, Number(item.depth||40)/100);
@@ -811,6 +896,7 @@
               const top=new THREE.Mesh(new THREE.BoxGeometry(.26,.04,.26),darkMat);top.position.set(0,.39,0);top.castShadow=top.receiveShadow=true;group.add(top);
             }
             world.add(group);
+            state.urbanMeshes.push(group);
           });
         };
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
@@ -932,7 +1018,7 @@
             addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
             addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
           }
-          state.architectureMeshes=[];
+          state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
             (appState.layout.walls||[]).forEach(w=>buildArchitecturalWall(w));
           }
@@ -986,6 +1072,15 @@
           }
           return null;
         };
+        const intersectUrban=e=>{
+          applyPointer(e);
+          const hits=raycaster.intersectObjects(state.urbanMeshes||[],true);
+          for(const hit of hits){
+            let obj=hit.object;while(obj&&!obj.userData?.streetFurnitureId)obj=obj.parent;
+            if(obj?.userData?.streetFurnitureId)return {streetId:obj.userData.streetId,furnitureId:obj.userData.streetFurnitureId};
+          }
+          return null;
+        };
         const groundPoint=e=>{
           applyPointer(e);const target=new THREE.Vector3();return raycaster.ray.intersectPlane(ground,target)?invCoord(target):null;
         };
@@ -1006,14 +1101,17 @@
             e.preventDefault();return;
           }
           const archHit=state.inspectorMode==='architecture'?intersectArchitecture(e):null;
-          const hit=!archHit?intersectFurniture(e):null;
+          const urbanHit=state.inspectorMode==='urban'?intersectUrban(e):null;
+          const hit=state.inspectorMode==='furniture'&&!archHit&&!urbanHit?intersectFurniture(e):null;
           if(archHit){selectArch(archHit.wallId,archHit.openingId);}
+          else if(urbanHit){state.selectedStreetId=urbanHit.streetId;state.selectedStreetFurnitureId=urbanHit.furnitureId;appState.selectedStreetId=urbanHit.streetId;appState.selectedStreetFurnitureId=urbanHit.furnitureId;state.refreshInspector();}
           else if(hit){state.select(hit.rackId,hit.level||state.selectedLevel,hit.slot||state.selectedSlot);}
           const point=state.move&&canWrite()?groundPoint(e):null;
           const rack=hit && appState.layout.racks.find(r=>r.id===hit.rackId);
+          const urbanItem=urbanHit?(appState.layout.streets||[]).find(s=>s.id===urbanHit.streetId)?.streetFurniture?.find(item=>item.id===urbanHit.furnitureId):null;
           const wantsPan = e.button===1 || e.button===2 || e.shiftKey;
-          gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&rack&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',
-            initialX:Number(rack?.x||0),initialY:Number(rack?.y||0),groundStart:point,moved:false};
+          gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&urbanItem&&!e.shiftKey)?'move-urban':(e.button===0&&state.move&&canWrite()&&rack&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',urbanId:urbanHit?.furnitureId||'',streetId:urbanHit?.streetId||'',
+            initialX:Number(rack?.x||0),initialY:Number(rack?.y||0),urbanStartX:Number(urbanItem?.x||0),urbanStartY:Number(urbanItem?.y||0),groundStart:point,moved:false};
           try{canvas.setPointerCapture(e.pointerId);}catch(_){}
         });
         canvas.addEventListener('pointermove',e=>{
@@ -1026,6 +1124,19 @@
             const forward=new THREE.Vector3();camera.getWorldDirection(forward);forward.y=0;forward.normalize();
             const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
             const sensitivity=orbit.radius*.0018;orbit.target.addScaledVector(right,dx*sensitivity).addScaledVector(forward,dy*sensitivity);
+          }else if(gesture.mode==='move-urban'){
+            const street=(appState.layout.streets||[]).find(s=>s.id===gesture.streetId);
+            const item=street?.streetFurniture?.find(it=>it.id===gesture.urbanId);
+            const current=groundPoint(e);
+            if(item&&current&&gesture.groundStart){
+              const raw={x:gesture.urbanStartX+current.x-gesture.groundStart.x,y:gesture.urbanStartY+current.y-gesture.groundStart.y};
+              const point=appState.editor?.snapEnabled===false?raw:{x:snapGrid(raw.x),y:snapGrid(raw.y)};
+              if([street.sidewalkPts,street.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(point,poly))){
+                item.x=point.x;item.y=point.y;
+                const group=state.urbanObjects?.get(`${street.id}:${item.id}`);
+                if(group){const cp=coord(point);group.position.x=cp.x;group.position.z=cp.z;}
+              }
+            }
           }else if(gesture.mode==='move'){
             const rack=appState.layout.racks.find(r=>r.id===gesture.rackId),current=groundPoint(e);
             if(rack&&current&&gesture.groundStart){
@@ -1036,6 +1147,7 @@
           gesture.x=e.clientX;gesture.y=e.clientY;state.requestRender();
         });
         canvas.addEventListener('pointerup',()=>{
+          if(gesture?.mode==='move-urban'&&gesture.moved){vspaceCommit('mobiliario urbano desplazado');state.refreshInspector();}
           if(gesture?.mode==='move'&&gesture.moved){vspaceCommit('mueble desplazado');state.refreshInspector();}
           if(gesture?.mode==='orbit'&&gesture.moved&&state.wallVisible)state.render(true);
           gesture=null;

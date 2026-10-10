@@ -1,58 +1,49 @@
-# WMS Industrial V181 · CAD estable, pisos y edición de calles
+# WMS Industrial V187 — CAD + construcción 3D
 
-Aplicación WMS para **Cloudflare Pages + Pages Functions + D1**. Esta versión mejora la V180 sin sustituir los módulos de inventario, Google Sheets, mobiliario, racks y calles.
+Aplicación para Cloudflare Pages, Cloudflare D1 y Google Sheets. Basada en la V186. Mantiene el editor de racks, el inventario, las ubicaciones y Wrangler.
 
-## Desplegar
+## Desplegar en Cloudflare Pages
 
-1. Utiliza la carpeta `WMS_Industrial_V181` como raíz de tu repositorio GitHub.
-2. En Cloudflare Pages selecciona **Framework preset: None**, comando `npm run build` y directorio de salida `public`.
-3. **No cambies las credenciales ni los identificadores de D1** ya configurados en tu proyecto; revisa `wrangler.toml` y conserva el binding `DB`.
-4. Cloudflare debe ejecutar `npm ci` antes de compilar: instala **Three.js 0.160.0** y lo copia a `public/vendor/three.module.js` durante el build.
-5. Publica primero en **Preview**, prueba editar muros y vanos, guardar, cambiar a CAD y volver al espacio 3D. Luego actualiza producción.
-6. La esquina inferior muestra **WMS V181 · CAD y Pisos**. Usa Ctrl + Shift + R si la interfaz sigue mostrando otra versión.
+1. Extrae el ZIP y usa `WMS_Industrial_V187` como carpeta raíz del repositorio.
+2. Conserva la configuración de `wrangler.toml` y el binding `DB` para D1.
+3. Configura Framework preset **None**, comando de construcción `npm run build` y directorio de salida `public`.
+4. Cloudflare instalará las dependencias desde `package-lock.json` mediante `npm ci`; el build copia Three.js a `public/vendor/three.module.js` si está disponible localmente. Existe un respaldo por CDN.
+5. Comprueba primero el despliegue **Preview** y solo después actualiza producción. Verifica que el sidebar diga **WMS V187 · CAD y 3D**.
 
-## Novedades V181
+## Funciones incorporadas
 
-- Soluciona `overlayLayer is not defined` en CAD y elimina la acumulación de escuchas de eventos del SVG al editar varios muros.
-- Acabados de piso por zona: porcelanato blanco, marfil y gris, mármol claro, concreto pulido, madera clara y base original. La misma selección aparece en 2D y 3D.
-- Edición de calles desde el inspector: ancho de calzada, ancho de vereda, esquinas de 90°/diagonal y vértices independientes de calzada, vereda interior y exterior.
-- El ajuste de vértices queda guardado en `street.vertexOffsets` y se vuelve a aplicar al reconstruir intersecciones.
+### Editar layout
+- Inspector para editar el perímetro general, incorporar vértices y restablecer el ajuste automático a las zonas.
+- Arrastrar puntos de la superficie general con snap y validación de zonas contenidas; cambios persistidos con las calles actualizadas.
+- Agregar un vértice de zona en un clic, eligiendo la arista más larga cuando aún no hay arista activa.
+- Dividir zonas independientes por línea central horizontal o vertical. La operación no procede si corta un rack o produce una geometría inválida.
+- Posicionar y girar numéricamente el mobiliario urbano agrupado, conservando la selección y representación 3D.
+- Conserva la edición de muros, vanos, racks, calles y panel de capas existente.
 
-## Características arquitectónicas existentes
+### Diseñar espacio 3D
+- Pestaña **Urbanismo** junto a Mobiliario y Arquitectura.
+- Editar tipos de calzada y vereda, anchos, tipo de esquina, y añadir o quitar el conjunto urbano.
+- Selección del conjunto urbano en la escena 3D mediante raycasting y desplazamiento con snap cuando Mover está activo.
+- Edición numérica de posición/giro del conjunto urbano con comprobación de ubicación en vereda.
+- Desplazar los dos extremos de un muro mediante deltas X/Y numéricos con el motor geométrico compartido.
+- Conserva la edición arquitectónica existente de muros, aberturas libres, puertas, ventanal y pisos por zona.
 
-- Inspector arquitectónico dentro de **Diseñar espacio 3D**, con pestañas Mobiliario / Arquitectura.
-- Muros reales del CAD con longitud, espesor, altura y acabado editables.
-- Colocación de puertas, aberturas libres y un modelo de ventanal con vidrio dividido en dos paños.
-- Los huecos se construyen mediante segmentos 3D de pared, no mediante pegatinas sobre una pared completa.
-- Controles para impedir aberturas demasiado grandes, fuera del muro o superpuestas; crear muros con dos clics sobre el piso.
-- Carga inicial de muros editables a partir del perímetro de zonas cuando la sucursal aún no tiene muros; migración marcada una sola vez para no regenerar muros borrados.
-- Los mismos datos `layout.walls` y `layout.openings` alimentan el CAD y el diorama; se mantiene el guardado por sucursal.
-- Deshacer / rehacer mediante historial de estructura existente.
-
-## Desarrollo
+## Auditoría y pruebas
 
 ```bash
 npm ci
 npm run check
+npm run test:v187
 ```
 
-Pruebas destacadas: `npm run test:regression-v181`, `npm run test:architecture`, `npm run test:virtual`, `npm run test:auth` y `npm run test:ui-v176` (prueba de regresión de CAD y Sheets, renombrada próximamente).
+Las pruebas de integración V187 y regresión previas pasan. Se probó en Chromium el flujo **agregar vértice de área → crear calle → agregar mobiliario agrupado → modificar materiales en Urbanismo**, sin errores JS.
 
-## Observaciones y límites
+## Límites pendientes
 
-- En el entorno de validación sin acceso al registro npm no fue posible descargar Three.js para completar la prueba WebGL local; la compilación en Cloudflare debe ejecutar `npm ci` y conservar el respaldo CDN.
-- El render completo WebGL con Three.js y los guardados reales en **D1 remoto** deben verificarse en Cloudflare Pages Preview; las pruebas locales no confirman el comportamiento de un despliegue remoto.
-- El perímetro se convierte en muros CAD editables solo si no existe ya un sistema de paredes en esa sucursal. No se altera deliberadamente un plano existente.
-- Las modificaciones de extremos vinculados afectan los muros compartidos mediante sus nodos, pero mover un muro no redefine automáticamente todas las zonas interiores.
-- Los muros exteriores cercanos a la cámara continúan usando corte arquitectónico en la vista isométrica para mantener visibles los racks. Puedes seleccionar cualquier muro desde la lista del inspector.
-- No se incluyen `node_modules`, capturas temporales ni archivos de auditoría de navegador.
+- No se han implementado aún agrupaciones arbitrarias entre todos los tipos de objetos, uniones/recortes booleanos complejos de polígonos ni distribución automática avanzada con optimización de pasillos.
+- El movimiento de un muro vinculado actualiza sus nodos y elementos dependientes; no reconstruye automáticamente todas las subdivisiones de zona existentes.
+- Las texturas urbanas son procedurales: no equivalen exactamente a una fotografía/PBR escaneada ni cuentan con mapas de relieve profesionales.
+- La prueba WebGL 3D completa con Three.js no se pudo realizar localmente porque este entorno no tiene instalada esa biblioteca ni acceso al registro npm. Cloudflare debe instalarla durante el build.
+- No se validó una escritura efectiva sobre la base de datos D1 remota. Comprueba guardados, cambio de sucursal y recarga en Preview.
 
-## Estructura
-
-- `src/frontend/`: módulos funcionales y renderizadores.
-- `src/styles/`: CSS consolidado.
-- `public/assets/`: frontend compilado.
-- `functions/`, `migrations/`, `wrangler.toml`: API y base de datos Cloudflare.
-- `tests/architecture-v180.test.mjs`: validación geométrica de paredes y aberturas.
-
-Las mejoras específicas se documentan en `CAMBIOS_V181.md`.
+Documentación de cambios técnicos: `CAMBIOS_V187.md`.

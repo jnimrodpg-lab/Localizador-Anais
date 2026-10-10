@@ -9798,6 +9798,7 @@ function getSheetBranchOpenMap(){
     if(appState.selectedRoomId === undefined) appState.selectedRoomId = '';
     if(appState.selectedStreetId === undefined) appState.selectedStreetId = '';
     if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
+    if(appState.editor.editSiteBoundary === undefined) appState.editor.editSiteBoundary=false;
     if(appState.editor.structureClipboard === undefined) appState.editor.structureClipboard = null;
     if(appState.editor.keyboardBoundV111 === undefined) appState.editor.keyboardBoundV111 = false;
     if(appState.editor.wallMergePreview === undefined) appState.editor.wallMergePreview = null;
@@ -9867,6 +9868,9 @@ function getSheetBranchOpenMap(){
   }
   function manualWalls(layout=appState.layout){ return (layout?.walls || []).filter(w => !w?.autoZoneEdge); }
   function wallsForNode(nodeId, layout=appState.layout){ return manualWalls(layout).filter(w => w.startNodeId === nodeId || w.endNodeId === nodeId); }
+  function findManualWallByNodes(aId, bId, layout=appState.layout){
+    return manualWalls(layout).find(w => (w.startNodeId===aId && w.endNodeId===bId) || (w.startNodeId===bId && w.endNodeId===aId)) || null;
+  }
   function syncManualWallsFromNodes(layout=appState.layout){
     if(!layout || !Array.isArray(layout.walls) || !Array.isArray(layout.wallNodes)) return layout;
     const map = new Map(layout.wallNodes.map(n => [n.id, n]));
@@ -11120,6 +11124,60 @@ function getSheetBranchOpenMap(){
     appState.selectedRackLayoutId = '';
     return wall;
   }
+  function splitRoomBoundaryAtEdge(room, edgeIndex){
+    if(!room || !Array.isArray(room.nodeIds) || room.nodeIds.length < 3) return null;
+    const ids = room.nodeIds;
+    const aId = ids[edgeIndex], bId = ids[(edgeIndex+1)%ids.length];
+    const a = getWallNode(aId), b = getWallNode(bId);
+    if(!a || !b) return null;
+    const mid = findOrCreateWallNode({ x:(Number(a.x||0)+Number(b.x||0))/2, y:(Number(a.y||0)+Number(b.y||0))/2 });
+    if(!mid) return null;
+    room.nodeIds.splice(edgeIndex+1, 0, mid.id);
+    const wall = findManualWallByNodes(aId,bId);
+    if(wall){
+      const idx = (appState.layout.walls||[]).findIndex(w => w.id===wall.id);
+      if(idx >= 0){
+        const w1 = { ...wall, id:nextWallId(), startNodeId:aId, endNodeId:mid.id, x1:Number(a.x||0), y1:Number(a.y||0), x2:Number(mid.x||0), y2:Number(mid.y||0) };
+        const w2 = { ...wall, id:nextWallId(), startNodeId:mid.id, endNodeId:bId, x1:Number(mid.x||0), y1:Number(mid.y||0), x2:Number(b.x||0), y2:Number(b.y||0) };
+        appState.layout.walls.splice(idx, 1, w1, w2);
+      }
+    }
+    syncManualWallsFromNodes();
+    syncRoomLinkedZones();
+    ensureOpeningAttachmentOffsets();
+    return { roomId:room.id, nodeId:mid.id };
+  }
+  function insertVertexOnSelectedRoom(){
+    const room = findRoomById(appState.selectedRoomId); if(!room) return;
+    let edgeIndex = -1;
+    if(appState.selectedWallId){
+      const wall = findWallById(appState.selectedWallId);
+      const ids = room.nodeIds || [];
+      for(let i=0;i<ids.length;i++){
+        const a=ids[i], b=ids[(i+1)%ids.length];
+        if((wall?.startNodeId===a && wall?.endNodeId===b) || (wall?.startNodeId===b && wall?.endNodeId===a)){ edgeIndex=i; break; }
+      }
+    }
+    if(edgeIndex < 0){
+      const ids = room.nodeIds || [];
+      let best = { len:-1, idx:-1 };
+      for(let i=0;i<ids.length;i++){
+        const a=getWallNode(ids[i]), b=getWallNode(ids[(i+1)%ids.length]);
+        if(!a || !b) continue;
+        const len=Math.hypot(Number(b.x||0)-Number(a.x||0), Number(b.y||0)-Number(a.y||0));
+        if(len > best.len) best = { len, idx:i };
+      }
+      edgeIndex = best.idx;
+    }
+    if(edgeIndex < 0) return;
+    const res = splitRoomBoundaryAtEdge(room, edgeIndex);
+    if(!res) return;
+    appState.selectedRoomId = room.id;
+    appState.selectedWallNodeId = res.nodeId;
+    persistActiveLayout();
+    renderLayoutEditor();
+  }
+
   function createOpeningAtPoint(point, type='door'){
     ensureLayoutDecorations();
     const nearest = findNearestWallProjection(point, 28);
@@ -11372,6 +11430,15 @@ function getSheetBranchOpenMap(){
           </div>
 
         </section>`}
+        ${structureMode ? `<section class="layout-prop-card layout-site-properties">
+          <div class="layout-prop-title">Área general · perímetro editable</div>
+          <div class="layout-template-grid">
+            <button type="button" class="seg-btn ${appState.editor.editSiteBoundary?'active':''}" id="rpSiteEdit">${appState.editor.editSiteBoundary?'Ocultar puntos':'Editar vértices'}</button>
+            <button type="button" class="seg-btn" id="rpSiteAddVertex">+ Vértice área</button>
+            <button type="button" class="seg-btn" id="rpSiteReset">Ajustar a zonas</button>
+          </div>
+          <div class="tiny muted layout-panel-hint">Arrastra los puntos del perímetro con snap. Las zonas permanecerán dentro del área; las calles seguirán el nuevo contorno.</div>
+        </section>` : ''}
         ${structureMode && findRoomById(appState.selectedRoomId) ? (()=>{ const rr=findRoomById(appState.selectedRoomId); const rp=roomPointsRaw(rr); const rz=getRoomLinkedZone(rr); const area=polygonAreaAbs(rp)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000; const perimeter=rp.reduce((sum,p,i)=>{ const q=rp[(i+1)%rp.length]; return sum+Math.hypot(q.x-p.x,q.y-p.y); },0); return `<section class="layout-prop-card room-zone-card">
           <div class="layout-prop-title">Recinto</div>
           <div class="layout-prop-grid two">
@@ -11384,8 +11451,9 @@ function getSheetBranchOpenMap(){
           </div>
           <div class="layout-template-grid" style="margin-top:10px">
             ${rz ? `<button class="seg-btn active" id="rpSelectLinkedZone">Seleccionar zona ${escapeHtml(rz.id)}</button>` : `<button class="btn primary" id="rpRoomToZone">Convertir recinto en zona</button>`}
+            <button class="seg-btn" id="rpRoomAddVertex">+ Vértice área</button>
           </div>
-          <div class="tiny muted layout-panel-hint" style="margin-top:8px">Puedes convertir este recinto en zona y mantenerlo sincronizado con su geometría.</div>
+          <div class="tiny muted layout-panel-hint" style="margin-top:8px">Puedes convertir este recinto en zona, o añadir un vértice al área. Si hay un muro del recinto seleccionado, el nuevo vértice se inserta en esa arista.</div>
         </section>`; })() : ''}
         ${structureMode && (appState.layout?.streets||[]).some(s=>s.id===appState.selectedStreetId) ? (()=>{const street=ensureStreetVisualDefaults(appState.layout.streets.find(s=>s.id===appState.selectedStreetId));return `<section class="layout-prop-card layout-street-properties">
           <div class="layout-prop-title">Calle seleccionada · ${escapeHtml(street.name||street.id)}</div>
@@ -11408,6 +11476,11 @@ function getSheetBranchOpenMap(){
             <button type="button" class="seg-btn" id="rpStreetAddUrban">${(street.streetFurniture||[]).length ? 'Reemplazar mobiliario urbano' : '+ Mobiliario urbano'}</button>
             <button type="button" class="seg-btn" id="rpStreetClearFurniture" ${(street.streetFurniture||[]).length?'':'disabled'}>Quitar mobiliario</button>
           </div>
+          ${(street.streetFurniture||[]).length?(() => {const u=getScaleCmPerUnit(),o=street.streetFurniture[0];return `<div class="layout-prop-grid two" style="margin-top:10px">
+            <label>X mobiliario (cm)<input id="rpUrbanX" type="number" value="${Math.round(Number(o.x||0)*u)}"></label>
+            <label>Y mobiliario (cm)<input id="rpUrbanY" type="number" value="${Math.round(Number(o.y||0)*u)}"></label>
+            <label>Giro (°)<input id="rpUrbanRotation" type="number" min="-360" max="360" value="${Math.round(Number(o.rotation||0))}"></label>
+          </div><button type="button" class="seg-btn" id="rpUrbanTransform">Aplicar posición y giro</button>`;})():''}
           <div class="tiny muted" style="margin-top:8px">El mobiliario urbano se trata como un solo objeto agrupado. Puedes seleccionarlo y moverlo con snap en el layout, manteniendo la misma lectura en 2D y en Diseñar espacio 3D.</div>
         </section>`;})() : ''}
         ${structureMode && zone ? `<section class="layout-prop-card">
@@ -11428,7 +11501,7 @@ function getSheetBranchOpenMap(){
             <label>Contenido<input value="${(appState.layout.racks||[]).filter(r => r.zoneId === zone.id).length} racks vinculados" disabled></label>
             ${isRoomLinkedZone(zone)?`<label>Geometría<input value="Vinculada · arrastrable" disabled></label>`:''}
           </div>
-          <div class="layout-template-grid zone-rotate-grid" style="margin-top:10px">${isRoomLinkedZone(zone)?`<button class="seg-btn active" id="rpSelectZoneRoom">Editar muros del recinto</button><button class="seg-btn" id="rpDetachRoomZone">Desvincular geometría</button><div class="tiny muted layout-panel-hint" style="grid-column:1/-1">Arrastra para mover toda la geometría vinculada.</div>`:`<button class="seg-btn" id="rpZoneMinus15">Girar -15°</button><button class="seg-btn" id="rpZone15">Girar 15°</button><button class="seg-btn" id="rpZone45">Girar 45°</button><button class="seg-btn" id="rpZone90">Girar 90°</button><button class="seg-btn" id="rpDuplicateZone">Duplicar zona</button><button class="seg-btn" id="rpLockZones">${appState.editor.zonesLocked?'Desbloquear zonas':'Bloquear zonas'}</button><button class="seg-btn" id="rpAllEdgesWalls">Todas aristas → muro</button><button class="seg-btn" id="rpClearEdgesWalls">Quitar muros zona</button>`}</div>
+          <div class="layout-template-grid zone-rotate-grid" style="margin-top:10px">${isRoomLinkedZone(zone)?`<button class="seg-btn active" id="rpSelectZoneRoom">Editar muros del recinto</button><button class="seg-btn" id="rpDetachRoomZone">Desvincular geometría</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><div class="tiny muted layout-panel-hint" style="grid-column:1/-1">Arrastra para mover toda la geometría vinculada.</div>`:`<button class="seg-btn" id="rpZoneMinus15">Girar -15°</button><button class="seg-btn" id="rpZone15">Girar 15°</button><button class="seg-btn" id="rpZone45">Girar 45°</button><button class="seg-btn" id="rpZone90">Girar 90°</button><button class="seg-btn" id="rpDuplicateZone">Duplicar zona</button><button class="seg-btn" id="rpLockZones">${appState.editor.zonesLocked?'Desbloquear zonas':'Bloquear zonas'}</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><button class="seg-btn" id="rpZoneRemoveVertex">− Vértice</button><button class="seg-btn" id="rpZoneSplitVertical">Dividir vertical</button><button class="seg-btn" id="rpZoneSplitHorizontal">Dividir horizontal</button><button class="seg-btn" id="rpAllEdgesWalls">Todas aristas → muro</button><button class="seg-btn" id="rpClearEdgesWalls">Quitar muros zona</button>`}</div>
         </section>` : ''}
         ${rackMode && rack ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Rack</div>
@@ -11540,15 +11613,62 @@ function getSheetBranchOpenMap(){
     if($('#rpStreetType')) $('#rpStreetType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,e.target.value)?e.target.value:'drain-covered'; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpSidewalkType')) $('#rpSidewalkType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,e.target.value)?e.target.value:'paver'; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpStreetAddUrban')) $('#rpStreetAddUrban').onclick=()=>{ if(!selectedStreet)return; const item=setStreetFurnitureUrbanSet(selectedStreet); appState.selectedStreetFurnitureId=item?.id||''; persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpUrbanTransform')) $('#rpUrbanTransform').onclick=()=>{
+      if(!selectedStreet?.streetFurniture?.length)return;
+      const item=selectedStreet.streetFurniture[0],u=Math.max(.0001,getScaleCmPerUnit());
+      const p={x:Number($('#rpUrbanX')?.value)/u,y:Number($('#rpUrbanY')?.value)/u};
+      if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return;
+      if(![selectedStreet.sidewalkPts,selectedStreet.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(p,poly))){showToast('El mobiliario debe ubicarse sobre una vereda.','warning',2200);return;}
+      recordHistorySnapshot('structure');
+      item.x=isSnapEnabled()?snapGrid(p.x):p.x;item.y=isSnapEnabled()?snapGrid(p.y):p.y;
+      item.rotation=Math.max(-360,Math.min(360,Number($('#rpUrbanRotation')?.value)||0));
+      appState.selectedStreetFurnitureId=item.id;persistActiveLayout();renderLayoutEditor();
+    };
     if($('#rpStreetClearFurniture')) $('#rpStreetClearFurniture').onclick=()=>{ if(!selectedStreet)return; clearStreetFurniture(selectedStreet); appState.selectedStreetFurnitureId=''; persistActiveLayout(); renderLayoutEditor(); };
     const zone = findZoneById(appState.selectedZoneId);
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
+    if($('#rpSiteEdit')) $('#rpSiteEdit').onclick=()=>{ appState.editor.editSiteBoundary=!appState.editor.editSiteBoundary;renderLayoutEditor(); };
+    if($('#rpSiteAddVertex')) $('#rpSiteAddVertex').onclick=()=>{
+      ensureLayoutMeta(); const boundary=appState.layout.meta.siteBoundary;
+      const pts=boundary?.pts;if(!Array.isArray(pts)||pts.length<3)return;
+      let edge=0,max=-1;
+      for(let i=0;i<pts.length;i++){
+        const a=pts[i],b=pts[(i+1)%pts.length],distance=Math.hypot(a.x-b.x,a.y-b.y);
+        if(distance>max){max=distance;edge=i;}
+      }
+      const a=pts[edge],b=pts[(edge+1)%pts.length];
+      recordHistorySnapshot('structure');
+      pts.splice(edge+1,0,{x:snapGrid((a.x+b.x)/2),y:snapGrid((a.y+b.y)/2)});
+      appState.layout.meta.autoFitBoundaryToZones=false;appState.editor.editSiteBoundary=true;
+      rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
+    };
+    if($('#rpSiteReset')) $('#rpSiteReset').onclick=()=>{
+      ensureLayoutMeta(); recordHistorySnapshot('structure');
+      appState.layout.meta.autoFitBoundaryToZones=true;fitSiteBoundaryToZones(true);rebuildStreetNetwork();
+      persistActiveLayout();renderLayoutEditor();
+    };
     if($('#rpRoomName')) $('#rpRoomName').onchange = e => { if(!room) return; room.name=String(e.target.value||room.name||room.id); persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpRoomToZone')) $('#rpRoomToZone').onclick = () => { if(!room) return; convertRoomToZone(room); renderLayoutEditor(); };
+    if($('#rpRoomAddVertex')) $('#rpRoomAddVertex').onclick = () => { if(!room) return; insertVertexOnSelectedRoom(); };
     if($('#rpSelectLinkedZone')) $('#rpSelectLinkedZone').onclick = () => { const linked=room?getRoomLinkedZone(room):null; if(!linked) return; appState.selectedZoneId=linked.id; appState.selectedRoomId=room.id; renderLayoutEditor(); };
     if($('#rpSelectZoneRoom')) $('#rpSelectZoneRoom').onclick = () => { const rr=zone?getRoomForZone(zone):null; if(!rr) return; appState.selectedRoomId=rr.id; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); };
     if($('#rpDetachRoomZone')) $('#rpDetachRoomZone').onclick = () => { if(zone && detachRoomZone(zone)){ renderLayoutEditor(); } };
+    if($('#rpZoneAddVertex')) $('#rpZoneAddVertex').onclick = () => {
+      if(!zone || isRoomLinkedZone(zone)){
+        if(isRoomLinkedZone(zone)){appState.selectedRoomId=getRoomForZone(zone)?.id||'';insertVertexOnSelectedRoom();}
+        return;
+      }
+      if(appState.selectedEdge?.zoneId!==zone.id){
+        let best={len:-1,a:0,b:1};
+        (zone.pts||[]).forEach((a,i,pts)=>{const b=pts[(i+1)%pts.length];const len=Math.hypot(a.x-b.x,a.y-b.y);if(len>best.len)best={len,a:i,b:(i+1)%pts.length};});
+        appState.selectedEdge={zoneId:zone.id,a:best.a,b:best.b};
+      }
+      recordHistorySnapshot('structure');insertVertexOnSelectedEdge();
+    };
+    if($('#rpZoneSplitVertical')) $('#rpZoneSplitVertical').onclick=()=>splitSelectedZoneByAxis('x');
+    if($('#rpZoneSplitHorizontal')) $('#rpZoneSplitHorizontal').onclick=()=>splitSelectedZoneByAxis('y');
+    if($('#rpZoneRemoveVertex')) $('#rpZoneRemoveVertex').onclick = () => { if(!zone) return; if(appState.selectedVertex?.zoneId!==zone.id) showToast('Primero selecciona un vértice de la zona.','warning',2300); else removeSelectedVertex(); };
     const applyZoneGeometry = () => {
       if(!zone) return;
       const linkedRoom=getRoomForZone(zone);
@@ -12203,20 +12323,27 @@ function getSheetBranchOpenMap(){
       pat.appendChild(svgEl('path',{d:`M 0 ${tile} V 0 H ${tile}`,fill:'none',stroke:finish.grout,'stroke-width':'1.6',opacity:'.88'}));
       floorDefs.appendChild(pat);
     });
-    const roadPat1=svgEl('pattern',{id:'street-road-drain-covered',patternUnits:'userSpaceOnUse',width:'120',height:'120'});
-    roadPat1.appendChild(svgEl('rect',{width:'120',height:'120',fill:'#7f868a'}));
-    roadPat1.appendChild(svgEl('rect',{x:'0',y:'0',width:'120',height:'120',fill:'rgba(255,255,255,.025)'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 0 28 H 120 M 0 92 H 120',stroke:'#f2cb53','stroke-width':'5.5',opacity:'.96'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 13 0 V 120 M 107 0 V 120',stroke:'rgba(87,91,95,.78)','stroke-width':'16'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 22 0 V 120 M 98 0 V 120',stroke:'rgba(198,205,208,.48)','stroke-width':'1.4','stroke-dasharray':'3 10'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 42 96 C 58 86, 74 100, 88 90',stroke:'rgba(59,63,66,.32)','stroke-width':'2',fill:'none'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 38 32 C 48 28, 56 40, 70 34',stroke:'rgba(255,255,255,.12)','stroke-width':'2',fill:'none'}));
+    const roadPat1=svgEl('pattern',{id:'street-road-drain-covered',patternUnits:'userSpaceOnUse',width:'160',height:'120'});
+    roadPat1.appendChild(svgEl('rect',{width:'160',height:'120',fill:'#bbb3a8'}));
+    roadPat1.appendChild(svgEl('rect',{x:'26',y:'0',width:'108',height:'120',fill:'#b6b0a6'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 0 18 H 160 M 0 102 H 160',stroke:'rgba(255,255,255,.08)','stroke-width':'2'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 30 0 V 120 M 130 0 V 120',stroke:'#f0c447','stroke-width':'4.5',opacity:'.95'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 0 0 H 26 V 120 H 0 Z',fill:'#c9c2b7',stroke:'#8a847b','stroke-width':'1'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 134 0 H 160 V 120 H 134 Z',fill:'#c9c2b7',stroke:'#8a847b','stroke-width':'1'}));
+    for(let yy=8; yy<120; yy+=12){
+      roadPat1.appendChild(svgEl('rect',{x:'6',y:String(yy),width:'14',height:'3.6',rx:'1.2',fill:'#585b5f',opacity:'.92'}));
+      roadPat1.appendChild(svgEl('rect',{x:'140',y:String(yy),width:'14',height:'3.6',rx:'1.2',fill:'#585b5f',opacity:'.92'}));
+    }
+    roadPat1.appendChild(svgEl('path',{d:'M 44 88 C 58 72, 82 98, 100 86',stroke:'rgba(76,72,68,.32)','stroke-width':'2',fill:'none'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 52 38 C 68 34, 74 48, 92 44',stroke:'rgba(255,255,255,.12)','stroke-width':'2',fill:'none'}));
+    roadPat1.appendChild(svgEl('path',{d:'M 38 76 L 58 76 M 38 82 L 58 82 M 38 88 L 58 88',stroke:'rgba(255,255,255,.6)','stroke-width':'2.4'}));
     floorDefs.appendChild(roadPat1);
-    const roadPat2=svgEl('pattern',{id:'street-road-plain',patternUnits:'userSpaceOnUse',width:'120',height:'120'});
-    roadPat2.appendChild(svgEl('rect',{width:'120',height:'120',fill:'#8e9396'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 0 60 H 120',stroke:'rgba(244,238,224,.56)','stroke-width':'3'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 14 14 C 34 22, 44 12, 58 20 S 90 32 106 24',stroke:'rgba(255,255,255,.09)','stroke-width':'2',fill:'none'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 8 96 Q 28 82 48 92 T 98 88',stroke:'rgba(70,72,74,.24)','stroke-width':'2',fill:'none'}));
+    const roadPat2=svgEl('pattern',{id:'street-road-plain',patternUnits:'userSpaceOnUse',width:'150',height:'120'});
+    roadPat2.appendChild(svgEl('rect',{width:'150',height:'120',fill:'#b7b1a7'}));
+    roadPat2.appendChild(svgEl('path',{d:'M 24 0 V 120 M 126 0 V 120',stroke:'#f0c447','stroke-width':'4'}));
+    roadPat2.appendChild(svgEl('path',{d:'M 0 0 H 150 V 120',fill:'none',stroke:'rgba(120,110,100,.16)','stroke-width':'1'}));
+    roadPat2.appendChild(svgEl('path',{d:'M 14 22 C 32 12, 48 26, 70 20 S 108 26 130 18',stroke:'rgba(255,255,255,.08)','stroke-width':'2',fill:'none'}));
+    roadPat2.appendChild(svgEl('path',{d:'M 24 94 C 52 76, 86 104, 122 92',stroke:'rgba(76,72,68,.24)','stroke-width':'2',fill:'none'}));
     floorDefs.appendChild(roadPat2);
     const walkPat1=svgEl('pattern',{id:'street-sidewalk-paver',patternUnits:'userSpaceOnUse',width:'56',height:'28'});
     walkPat1.appendChild(svgEl('rect',{width:'56',height:'28',fill:'#bb7860'}));
@@ -12286,6 +12413,30 @@ function getSheetBranchOpenMap(){
         streetsLayer.appendChild(txt);
       }
     });
+    if(isStructureLayoutScreen() && appState.editor.editSiteBoundary && appState.editor.mode==='select'){
+      const sites=layoutBoundaryPts();
+      sites.forEach((pt,index)=>{
+        const point=svgEl('circle',{cx:pt.x,cy:pt.y,r:'8',fill:'#fff8e9',stroke:'#ba7a46','stroke-width':'2.7',style:'cursor:move;touch-action:none','data-site-vertex':index});
+        point.addEventListener('pointerdown',e=>{
+          if(e.button!==0)return;
+          e.preventDefault();e.stopPropagation();
+          const original=clone(sites[index]);let moved=false;
+          const move=evt=>{
+            const raw=svgPoint(evt,svg);const next={x:isSnapEnabled()?snapGrid(raw.x):raw.x,y:isSnapEnabled()?snapGrid(raw.y):raw.y};
+            const polygon=sites.map((v,i)=>i===index?next:v);
+            if((appState.layout?.zones||[]).some(z=>(z.pts||[]).some(v=>!(pointInPoly(v,polygon)||pointNearPolygonEdge(v,polygon,1)))))return;
+            if(!isValidStreetPolygon(polygon))return;
+            sites[index]=next;point.setAttribute('cx',String(next.x));point.setAttribute('cy',String(next.y));
+            moved=true;
+          };
+          const cleanup=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);};
+          const finish=()=>{cleanup();if(moved){appState.layout.meta.autoFitBoundaryToZones=false;rebuildStreetNetwork();persistActiveLayout();}renderLayoutEditor();};
+          const cancel=()=>{sites[index]=original;cleanup();renderLayoutEditor();};
+          window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish,{once:true});window.addEventListener('pointercancel',cancel,{once:true});
+        });
+        overlayLayer.appendChild(point);
+      });
+    }
     const editedStreet=(appState.layout?.streets||[]).find(street=>street.id===appState.selectedStreetId);
     if(editedStreet && isStructureLayoutScreen() && appState.editor.streetVerticesVisible){
       const part=['roadPts','sidewalkPts','outerSidewalkPts'].includes(appState.editor.streetVertexPart) ? appState.editor.streetVertexPart : 'roadPts';
@@ -12336,7 +12487,7 @@ function getSheetBranchOpenMap(){
     }
 
     ensureWallTopology();
-    (appState.layout.rooms||[]).forEach(room=>{ const pts=roomPointsRaw(room); if(pts.length<3) return; const linked=getRoomLinkedZone(room); const selected=appState.selectedRoomId===room.id; const d=pts.map((pt,i)=>`${i?'L':'M'} ${pt.x} ${pt.y}`).join(' ')+' Z'; const path=svgEl('path',{d,class:`layout-room-fill ${selected?'selected':''} ${linked?'is-zone':''}`,fill:linked?hexToRgba(linked.color||'#6ff0a8',selected?.14:.075):(selected?'rgba(77,222,166,.12)':'rgba(77,222,166,.055)'),stroke:linked?(linked.color||'#6ff0a8'):(selected?'rgba(111,240,168,.88)':'rgba(77,222,166,.22)'),'stroke-width':selected?'2.3':'1','stroke-dasharray':linked?'5 4':'8 7','data-room-id':room.id,style:'cursor:pointer'}); path.addEventListener('pointerdown',evt=>{ if(!isStructureLayoutScreen()||appState.editor.mode!=='select') return; evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); }); roomLayer.appendChild(path); const c={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}; const t=svgEl('text',{x:c.x,y:c.y,class:`layout-room-label ${selected?'selected':''}`,'text-anchor':'middle','data-room-id':room.id,style:'cursor:pointer;pointer-events:auto'}); const area=Math.round(polygonAreaAbs(pts)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000*100)/100; t.textContent=`${linked?`${linked.name||linked.id} · `:''}${room.name} · ${area} m²`; t.addEventListener('pointerdown',evt=>{ evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); }); roomLayer.appendChild(t); });
+    (appState.layout.rooms||[]).forEach(room=>{ const pts=roomPointsRaw(room); if(pts.length<3) return; const linked=getRoomLinkedZone(room); const selected=appState.selectedRoomId===room.id; const d=pts.map((pt,i)=>`${i?'L':'M'} ${pt.x} ${pt.y}`).join(' ')+' Z'; const path=svgEl('path',{d,class:`layout-room-fill ${selected?'selected':''} ${linked?'is-zone':''}`,fill:linked?hexToRgba(linked.color||'#6ff0a8',selected?.14:.075):(selected?'rgba(77,222,166,.12)':'rgba(77,222,166,.055)'),stroke:linked?(linked.color||'#6ff0a8'):(selected?'rgba(111,240,168,.88)':'rgba(77,222,166,.22)'),'stroke-width':selected?'2.3':'1','stroke-dasharray':linked?'5 4':'8 7','data-room-id':room.id,style:'cursor:pointer'}); path.addEventListener('pointerdown',evt=>{ if(!isStructureLayoutScreen()||appState.editor.mode!=='select') return; evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; appState.selectedEdge={zoneId:'',a:-1,b:-1}; appState.selectedVertex={zoneId:'',idx:-1}; renderLayoutEditor(); }); roomLayer.appendChild(path); const c={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}; const t=svgEl('text',{x:c.x,y:c.y,class:`layout-room-label ${selected?'selected':''}`,'text-anchor':'middle','data-room-id':room.id,style:'cursor:pointer;pointer-events:auto'}); const area=Math.round(polygonAreaAbs(pts)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000*100)/100; t.textContent=`${linked?`${linked.name||linked.id} · `:''}${room.name} · ${area} m²`; t.addEventListener('pointerdown',evt=>{ evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); }); roomLayer.appendChild(t); });
 
 
     const flipSectionDirection = (axis) => {
@@ -13381,6 +13532,7 @@ function getSheetBranchOpenMap(){
       const w = 760, h = 540;
       const cx = Number(p.x || 0), cy = Number(p.y || 0);
       appState.layout.meta.siteBoundary = { id:'AREA-GENERAL', name:'Área general', pts:[{x:cx-w/2,y:cy-h/2},{x:cx+w/2,y:cy-h/2},{x:cx+w/2,y:cy+h/2},{x:cx-w/2,y:cy+h/2}] };
+      appState.layout.meta.autoFitBoundaryToZones=false;
       appState.editor.mode = 'select';
       persistActiveLayout();
       renderLayoutEditor();
@@ -13430,6 +13582,51 @@ function getSheetBranchOpenMap(){
     }
     if(best.d < 180) appState.selectedEdge = { zoneId:zone.id, a:best.a, b:best.b };
     else appState.selectedEdge = { zoneId:'', a:-1, b:-1 };
+  }
+
+  // V187: partición del área en dos zonas a partir de una línea X/Y.
+  // Se valida la geometría y se impide cortar racks por la mitad.
+  function splitSelectedZoneByAxis(axis='x'){
+    const zone=findZoneById(appState.selectedZoneId);
+    if(!zone || isRoomLinkedZone(zone)){showToast('Desvincula primero la geometría de este recinto para dividirlo.','warning',2500);return false;}
+    const pts=Array.isArray(zone.pts)?zone.pts:[];
+    if(pts.length<3)return false;
+    const b=zoneBoundsOf(zone);
+    const mid=axis==='x'?(b.minX+b.maxX)/2:(b.minY+b.maxY)/2;
+    const clip=keepLow=>{
+      const inside=p=>keepLow?p[axis]<=mid+1e-7:p[axis]>=mid-1e-7;
+      const output=[];
+      for(let i=0;i<pts.length;i++){
+        const a=pts[i],next=pts[(i+1)%pts.length],ina=inside(a),inb=inside(next);
+        if(ina)output.push({x:a.x,y:a.y});
+        if(ina!==inb){
+          const delta=next[axis]-a[axis];
+          if(Math.abs(delta)>1e-8){const t=(mid-a[axis])/delta;output.push({x:a.x+(next.x-a.x)*t,y:a.y+(next.y-a.y)*t});}
+        }
+      }
+      return output.filter((p,i)=>i===0||Math.hypot(p.x-output[i-1].x,p.y-output[i-1].y)>.001);
+    };
+    const left=clip(true),right=clip(false);
+    const area1=polygonAreaAbs(left),area2=polygonAreaAbs(right),total=polygonAreaAbs(pts);
+    if(left.length<3||right.length<3||area1<100||area2<100||Math.abs(area1+area2-total)>Math.max(.5,total*.002)||!isValidStreetPolygon(left)||!isValidStreetPolygon(right)){
+      showToast('No se puede dividir esta zona sin crear polígonos inválidos.','warning',2600);return false;
+    }
+    const nextId=nextZoneId();
+    const first={...clone(zone),pts:left},second={...clone(zone),id:nextId,name:`${zone.name||zone.id} - B`,pts:right};
+    // Los racks deben caber íntegramente en una de las dos zonas nuevas.
+    const existing=(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id);
+    const migration=[];
+    for(const rack of existing){
+      if(rackFullyInsideZone(rack,first))migration.push([rack,first.id]);
+      else if(rackFullyInsideZone(rack,second))migration.push([rack,second.id]);
+      else {showToast(`Mueve primero el rack ${rack.id}: la división lo atraviesa.`,'warning',3000);return false;}
+    }
+    recordHistorySnapshot('structure');
+    zone.pts=left;appState.layout.zones.push(second);
+    migration.forEach(([rack,id])=>rack.zoneId=id);
+    normalizeZoneAndRackIds();
+    appState.selectedZoneId=zone.id;appState.selectedEdge={zoneId:'',a:-1,b:-1};
+    persistActiveLayout();renderLayoutEditor();return true;
   }
 
   function insertVertexOnSelectedEdge(){
@@ -16525,7 +16722,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       <details class="vspace-help"><summary title="Controles de navegación 3D" aria-label="Mostrar ayuda de navegación">? Ayuda</summary><div>Arrastrar: orbitar · Shift + arrastrar: desplazar · Rueda: zoom · Doble clic: enfocar · F: enfocar · 1/2/3: vistas</div></details>
       <div class="vspace-compass">ISO</div><div class="vspace-loading" id="vspaceLoading">Preparando el espacio tridimensional…</div></section>
       <aside class="vspace-inspector"><h4 id="vspaceInspectorHeading">Inspector de ubicaciones</h4>
-      <div class="vspace-panel-tabs" role="group" aria-label="Editor activo"><button type="button" data-vspace-panel="furniture" class="active">Mobiliario</button><button type="button" data-vspace-panel="architecture">Arquitectura</button></div>
+      <div class="vspace-panel-tabs" role="group" aria-label="Editor activo"><button type="button" data-vspace-panel="furniture" class="active">Mobiliario</button><button type="button" data-vspace-panel="architecture">Arquitectura</button><button type="button" data-vspace-panel="urban">Urbanismo</button></div>
       <div id="vspaceInspector" class="vspace-inspector-body">Selecciona un mueble o abre Arquitectura para modificar muros y vanos.</div></aside></div>
       <div class="vspace-bottom"><span id="vspaceNotice" aria-live="polite">Los cambios se guardan localmente; «Guardar en nube» sincroniza la sucursal.</span></div>
     </div>`;
@@ -16537,7 +16734,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       `;document.head.appendChild(style);
     }
     const root=document.getElementById('vspaceRoot'),canvas=root.querySelector('#vspaceCanvas');
-    const state={root,canvas,selectedId:appState.selectedRackLayoutId||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
+    const state={root,canvas,selectedId:appState.selectedRackLayoutId||'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
     vspaceActive=state;
     const getRack=()=>appState.layout.racks?.find(r=>r.id===state.selectedId)||null;
     const canWrite=()=>vspaceIsEditable();
@@ -16605,6 +16802,70 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         Math.abs(safeArchNum(other.t,0,1,.5)*L-position)<(Number(other.width||90)+width)/2+8/u);
       return collision?`Se superpone con la abertura ${collision.id}.`:'';
     };
+    // V187: urbanismo comparte los mismos datos que la calle del editor CAD.
+    state.refreshUrbanInspector=()=>{
+      const host=root.querySelector('#vspaceInspector');
+      if(!host) return;
+      const streets=Array.isArray(appState.layout?.streets)?appState.layout.streets:[];
+      const selected=streets.find(street=>street.id===state.selectedStreetId)||streets[0]||null;
+      if(selected && !state.selectedStreetId) state.selectedStreetId=selected.id;
+      if(selected) ensureStreetVisualDefaults(selected);
+      const urban=selected?.streetFurniture?.find(item=>item.id===state.selectedStreetFurnitureId)||selected?.streetFurniture?.[0]||null;
+      const u=archUnit();
+      host.innerHTML=`<div class="vspace-arch-toolbar"><button type="button" id="vsUrbanUndo">Deshacer</button><button type="button" id="vsUrbanRedo">Rehacer</button></div>
+        <div class="vspace-arch-subtitle">Calles del proyecto</div>
+        <div class="vspace-arch-list">${streets.map(s=>`<button type="button" class="vspace-arch-entry ${s.id===selected?.id?'selected':''}" data-vs-street="${vspaceEsc(s.id)}"><b>${vspaceEsc(s.name||s.id)}</b><small>Calzada y dos veredas</small></button>`).join('')||'<div class="vspace-empty">Crea una calle en Editar layout para configurarla aquí.</div>'}</div>
+        ${selected?`<div class="vspace-arch-subtitle">Calzada y veredas</div>
+          <label class="vspace-field">Modelo de calle<select id="vsUrbanRoadType" ${lock}>${Object.entries(STREET_SURFACE_PRESETS).map(([key,p])=>`<option value="${key}" ${selected.roadType===key?'selected':''}>${vspaceEsc(p.label)}</option>`).join('')}</select></label>
+          <label class="vspace-field">Acabado de veredas<select id="vsUrbanWalkType" ${lock}>${Object.entries(SIDEWALK_SURFACE_PRESETS).map(([key,p])=>`<option value="${key}" ${selected.sidewalkType===key?'selected':''}>${vspaceEsc(p.label)}</option>`).join('')}</select></label>
+          <div class="vspace-grid-2"><label class="vspace-field">Calzada (cm)<input id="vsUrbanRoadWidth" type="number" min="26" max="600" value="${Math.round(Number(selected.roadWidth||92)*u)}" ${lock}></label>
+          <label class="vspace-field">Veredas (cm)<input id="vsUrbanSidewalkWidth" type="number" min="20" max="300" value="${Math.round(Number(selected.sidewalkWidth||42)*u)}" ${lock}></label></div>
+          <label class="vspace-field">Tipo de esquina<select id="vsUrbanCorner" ${lock}><option value="right" ${selected.cornerStyle!=='diagonal'?'selected':''}>90°</option><option value="diagonal" ${selected.cornerStyle==='diagonal'?'selected':''}>Diagonal / ochava</option></select></label>
+          <button type="button" class="vspace-primary" id="vsUrbanApply" ${lock}>Aplicar a la calle</button>
+          <div class="vspace-arch-subtitle">Mobiliario urbano (grupo único)</div>
+          <button type="button" id="vsUrbanAdd" ${lock}>${urban?'Reemplazar conjunto':'Añadir conjunto'}</button>
+          ${urban?`<div class="vspace-grid-2"><label class="vspace-field">X plano (cm)<input type="number" id="vsUrbanX" value="${Math.round(Number(urban.x||0)*u)}" ${lock}></label>
+            <label class="vspace-field">Y plano (cm)<input type="number" id="vsUrbanY" value="${Math.round(Number(urban.y||0)*u)}" ${lock}></label></div>
+            <label class="vspace-field">Giro (°)<input type="number" id="vsUrbanRotation" min="-360" max="360" step="5" value="${Math.round(Number(urban.rotation||0))}" ${lock}></label>
+            <div class="vspace-grid-2"><button class="vspace-primary" type="button" id="vsUrbanApplyGroup" ${lock}>Mover / girar grupo</button><button type="button" id="vsUrbanRemove" ${lock}>Quitar conjunto</button></div>
+            <small class="vspace-muted">Activa Mover en la barra superior para arrastrar el conjunto directamente sobre la vereda. Snap según la rejilla CAD.</small>`:''}`:''}`;
+      host.querySelector('#vsUrbanUndo')?.addEventListener('click',()=>{if(!canWrite())return;undoHistory('structure');state.refreshInspector();state.render?.(true);});
+      host.querySelector('#vsUrbanRedo')?.addEventListener('click',()=>{if(!canWrite())return;redoHistory('structure');state.refreshInspector();state.render?.(true);});
+      host.querySelectorAll('[data-vs-street]').forEach(btn=>btn.onclick=()=>{state.selectedStreetId=btn.dataset.vsStreet;appState.selectedStreetId=btn.dataset.vsStreet;state.selectedStreetFurnitureId='';state.refreshInspector();state.render?.(true);});
+      host.querySelector('#vsUrbanApply')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected)return;
+        const nextRoad=safeArchNum(host.querySelector('#vsUrbanRoadWidth')?.value,26,600,92)/u;
+        const nextWalk=safeArchNum(host.querySelector('#vsUrbanSidewalkWidth')?.value,20,300,42)/u;
+        recordHistorySnapshot('structure');
+        selected.roadType=host.querySelector('#vsUrbanRoadType')?.value in STREET_SURFACE_PRESETS ? host.querySelector('#vsUrbanRoadType').value : 'drain-covered';
+        selected.sidewalkType=host.querySelector('#vsUrbanWalkType')?.value in SIDEWALK_SURFACE_PRESETS ? host.querySelector('#vsUrbanWalkType').value : 'paver';
+        selected.roadWidth=nextRoad;selected.sidewalkWidth=nextWalk;
+        selected.cornerStyle=host.querySelector('#vsUrbanCorner')?.value==='diagonal'?'diagonal':'right';
+        rebuildStreetNetwork();vspaceCommit(`calle ${selected.id}`);state.refreshInspector();
+      });
+      host.querySelector('#vsUrbanAdd')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected)return;
+        recordHistorySnapshot('structure');const item=setStreetFurnitureUrbanSet(selected);
+        state.selectedStreetFurnitureId=item?.id||'';appState.selectedStreetFurnitureId=state.selectedStreetFurnitureId;
+        vspaceCommit('conjunto urbano');state.refreshInspector();
+      });
+      host.querySelector('#vsUrbanApplyGroup')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected||!urban)return;
+        const next={x:safeArchNum(host.querySelector('#vsUrbanX')?.value,-200000,200000,urban.x*u)/u,
+          y:safeArchNum(host.querySelector('#vsUrbanY')?.value,-200000,200000,urban.y*u)/u};
+        const fits=[selected.sidewalkPts,selected.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(next,poly));
+        if(!fits) return vspaceToast('Coloca el conjunto sobre una de las veredas.',true);
+        recordHistorySnapshot('structure');urban.x=appState.editor?.snapEnabled===false?next.x:snapGrid(next.x);
+        urban.y=appState.editor?.snapEnabled===false?next.y:snapGrid(next.y);
+        urban.rotation=safeArchNum(host.querySelector('#vsUrbanRotation')?.value,-360,360,urban.rotation||0);
+        state.selectedStreetFurnitureId=urban.id;vspaceCommit('posición del mobiliario urbano');state.refreshInspector();
+      });
+      host.querySelector('#vsUrbanRemove')?.addEventListener('click',()=>{
+        if(!canWrite()||!selected)return;
+        recordHistorySnapshot('structure');clearStreetFurniture(selected);
+        state.selectedStreetFurnitureId='';appState.selectedStreetFurnitureId='';vspaceCommit('mobiliario retirado');state.refreshInspector();
+      });
+    };
     state.refreshArchitecturalInspector=()=>{
       ensureLayoutDecorations();
       const host=root.querySelector('#vspaceInspector');
@@ -16625,6 +16886,9 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           <div class="vspace-grid-2"><label class="vspace-field">Altura (cm)<input id="vsWallHeight" type="number" min="120" max="600" step="5" value="${Math.round(Number(wall.height||290)*u)}" ${lock}></label>
           <label class="vspace-field">Acabado<select id="vsWallFinish" ${lock}><option value="ivory" ${!wall.material||wall.material==='ivory'?'selected':''}>Marfil mate</option><option value="concrete" ${wall.material==='concrete'?'selected':''}>Concreto suave</option><option value="white" ${wall.material==='white'?'selected':''}>Blanco cálido</option></select></label></div>
           <button type="button" class="vspace-primary" id="vsApplyWall" ${lock}>Aplicar propiedades del muro</button>
+          <div class="vspace-arch-subtitle">Mover muro con snap (ambos extremos)</div>
+          <div class="vspace-grid-2"><label class="vspace-field">Desplazar X (cm)<input type="number" id="vsWallDeltaX" value="0" ${lock}></label><label class="vspace-field">Desplazar Y (cm)<input type="number" id="vsWallDeltaY" value="0" ${lock}></label></div>
+          <button type="button" id="vsWallTranslate" ${lock}>Desplazar muro</button>
           <div class="vspace-arch-subtitle">Agregar al muro</div>
           <div class="vspace-arch-toolbar"><button type="button" data-vs-create-opening="door" ${lock}>Puerta</button><button type="button" data-vs-create-opening="free" ${lock}>Abertura libre</button><button type="button" data-vs-create-opening="window" ${lock}>Ventanal</button></div>
           <div class="vspace-arch-list">${wallOpenings.map(o=>`<button class="vspace-arch-entry ${state.selectedOpeningId===o.id?'selected':''}" data-vs-opening="${vspaceEsc(o.id)}"><b>${o.type==='window'?'Ventanal':o.type==='free'?'Abertura':o.type==='door'?'Puerta':'Portón'} · ${vspaceEsc(o.id)}</b><small>${Math.round(Number(o.width||90)*u)} × ${Math.round(Number(o.height||210)*u)} cm</small></button>`).join('')||'<small class="vspace-muted">Sin aberturas.</small>'}</div>
@@ -16670,6 +16934,21 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         wall.thickness=nextThick;wall.height=nextH;wall.material=host.querySelector('#vsWallFinish').value;
         syncManualWallsFromNodes();ensureOpeningAttachmentOffsets();vspaceCommit(`muro ${wall.id}`);state.refreshInspector();
       });
+      host.querySelector('#vsWallTranslate')?.addEventListener('click',()=>{
+        if(!canWrite()||!wall)return;
+        if(!wall.startNodeId||!wall.endNodeId)return vspaceToast('Selecciona un muro con extremos editables.',true);
+        const a=getWallNode(wall.startNodeId), b=getWallNode(wall.endNodeId);
+        if(!a||!b)return vspaceToast('El muro no tiene nodos editables.',true);
+        const dx=safeArchNum(host.querySelector('#vsWallDeltaX')?.value,-10000,10000,0)/archUnit();
+        const dy=safeArchNum(host.querySelector('#vsWallDeltaY')?.value,-10000,10000,0)/archUnit();
+        if(!dx&&!dy)return;
+        const pts=[a,b].map(pt=>({id:pt.id,x:appState.editor?.snapEnabled===false?Number(pt.x)+dx:snapGrid(Number(pt.x)+dx),y:appState.editor?.snapEnabled===false?Number(pt.y)+dy:snapGrid(Number(pt.y)+dy)}));
+        // No alterar nodos ni geometrías compartidas si la transformación no es válida.
+        recordHistorySnapshot('structure');
+        if(!trySetWallNodesPositionsBulk(pts,appState.layout,{silent:true}))return vspaceToast('El desplazamiento produciría una colisión o geometría inválida.',true);
+        syncManualWallsFromNodes();syncRoomLinkedZones();ensureOpeningAttachmentOffsets();
+        vspaceCommit(`posición del muro ${wall.id}`);state.refreshInspector();
+      });
       host.querySelectorAll('[data-vs-create-opening]').forEach(btn=>btn.onclick=()=>{
         if(!canWrite()||!wall)return;
         const type=btn.dataset.vsCreateOpening,def=openingDefaultForType(type);
@@ -16704,11 +16983,12 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     root.querySelectorAll('[data-vspace-panel]').forEach(btn=>btn.addEventListener('click',()=>{
       state.inspectorMode=btn.dataset.vspacePanel;state.archDrawMode=false;state.drawWallStart=null;
       root.querySelectorAll('[data-vspace-panel]').forEach(b=>b.classList.toggle('active',b===btn));
-      root.querySelector('#vspaceInspectorHeading').textContent=state.inspectorMode==='architecture'?'Inspector arquitectónico':'Inspector de ubicaciones';
+      root.querySelector('#vspaceInspectorHeading').textContent=state.inspectorMode==='architecture'?'Inspector arquitectónico':state.inspectorMode==='urban'?'Inspector de urbanismo':'Inspector de ubicaciones';
       state.refreshInspector();state.render?.(true);
     }));
     state.refreshInspector=()=>{
       if(state.inspectorMode==='architecture') return state.refreshArchitecturalInspector();
+      if(state.inspectorMode==='urban') return state.refreshUrbanInspector();
       const rack=getRack(),host=root.querySelector('#vspaceInspector');
       state.refreshObjects();
       if(!rack){host.innerHTML='<div class="vspace-empty">Selecciona un mueble en 3D o desde la lista de la izquierda.</div>';return;}
@@ -17076,6 +17356,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           (street.streetFurniture||[]).forEach(item=>{
             const p=coord({x:Number(item.x||0),y:Number(item.y||0)});
             const group=new THREE.Group();
+            group.userData={streetId:street.id,streetFurnitureId:item.id};
+            state.urbanObjects.set(`${street.id}:${item.id}`,group);
             group.position.set(p.x,.042,p.z);
             group.rotation.y=-(Number(item.rotation||0)||0)*Math.PI/180;
             const w=Math.max(.18, Number(item.width||60)/100), d=Math.max(.18, Number(item.depth||40)/100);
@@ -17105,6 +17387,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
               const top=new THREE.Mesh(new THREE.BoxGeometry(.26,.04,.26),darkMat);top.position.set(0,.39,0);top.castShadow=top.receiveShadow=true;group.add(top);
             }
             world.add(group);
+            state.urbanMeshes.push(group);
           });
         };
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
@@ -17226,7 +17509,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
             addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
           }
-          state.architectureMeshes=[];
+          state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
             (appState.layout.walls||[]).forEach(w=>buildArchitecturalWall(w));
           }
@@ -17280,6 +17563,15 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           }
           return null;
         };
+        const intersectUrban=e=>{
+          applyPointer(e);
+          const hits=raycaster.intersectObjects(state.urbanMeshes||[],true);
+          for(const hit of hits){
+            let obj=hit.object;while(obj&&!obj.userData?.streetFurnitureId)obj=obj.parent;
+            if(obj?.userData?.streetFurnitureId)return {streetId:obj.userData.streetId,furnitureId:obj.userData.streetFurnitureId};
+          }
+          return null;
+        };
         const groundPoint=e=>{
           applyPointer(e);const target=new THREE.Vector3();return raycaster.ray.intersectPlane(ground,target)?invCoord(target):null;
         };
@@ -17300,14 +17592,17 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             e.preventDefault();return;
           }
           const archHit=state.inspectorMode==='architecture'?intersectArchitecture(e):null;
-          const hit=!archHit?intersectFurniture(e):null;
+          const urbanHit=state.inspectorMode==='urban'?intersectUrban(e):null;
+          const hit=state.inspectorMode==='furniture'&&!archHit&&!urbanHit?intersectFurniture(e):null;
           if(archHit){selectArch(archHit.wallId,archHit.openingId);}
+          else if(urbanHit){state.selectedStreetId=urbanHit.streetId;state.selectedStreetFurnitureId=urbanHit.furnitureId;appState.selectedStreetId=urbanHit.streetId;appState.selectedStreetFurnitureId=urbanHit.furnitureId;state.refreshInspector();}
           else if(hit){state.select(hit.rackId,hit.level||state.selectedLevel,hit.slot||state.selectedSlot);}
           const point=state.move&&canWrite()?groundPoint(e):null;
           const rack=hit && appState.layout.racks.find(r=>r.id===hit.rackId);
+          const urbanItem=urbanHit?(appState.layout.streets||[]).find(s=>s.id===urbanHit.streetId)?.streetFurniture?.find(item=>item.id===urbanHit.furnitureId):null;
           const wantsPan = e.button===1 || e.button===2 || e.shiftKey;
-          gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&rack&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',
-            initialX:Number(rack?.x||0),initialY:Number(rack?.y||0),groundStart:point,moved:false};
+          gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&urbanItem&&!e.shiftKey)?'move-urban':(e.button===0&&state.move&&canWrite()&&rack&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',urbanId:urbanHit?.furnitureId||'',streetId:urbanHit?.streetId||'',
+            initialX:Number(rack?.x||0),initialY:Number(rack?.y||0),urbanStartX:Number(urbanItem?.x||0),urbanStartY:Number(urbanItem?.y||0),groundStart:point,moved:false};
           try{canvas.setPointerCapture(e.pointerId);}catch(_){}
         });
         canvas.addEventListener('pointermove',e=>{
@@ -17320,6 +17615,19 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             const forward=new THREE.Vector3();camera.getWorldDirection(forward);forward.y=0;forward.normalize();
             const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
             const sensitivity=orbit.radius*.0018;orbit.target.addScaledVector(right,dx*sensitivity).addScaledVector(forward,dy*sensitivity);
+          }else if(gesture.mode==='move-urban'){
+            const street=(appState.layout.streets||[]).find(s=>s.id===gesture.streetId);
+            const item=street?.streetFurniture?.find(it=>it.id===gesture.urbanId);
+            const current=groundPoint(e);
+            if(item&&current&&gesture.groundStart){
+              const raw={x:gesture.urbanStartX+current.x-gesture.groundStart.x,y:gesture.urbanStartY+current.y-gesture.groundStart.y};
+              const point=appState.editor?.snapEnabled===false?raw:{x:snapGrid(raw.x),y:snapGrid(raw.y)};
+              if([street.sidewalkPts,street.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(point,poly))){
+                item.x=point.x;item.y=point.y;
+                const group=state.urbanObjects?.get(`${street.id}:${item.id}`);
+                if(group){const cp=coord(point);group.position.x=cp.x;group.position.z=cp.z;}
+              }
+            }
           }else if(gesture.mode==='move'){
             const rack=appState.layout.racks.find(r=>r.id===gesture.rackId),current=groundPoint(e);
             if(rack&&current&&gesture.groundStart){
@@ -17330,6 +17638,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           gesture.x=e.clientX;gesture.y=e.clientY;state.requestRender();
         });
         canvas.addEventListener('pointerup',()=>{
+          if(gesture?.mode==='move-urban'&&gesture.moved){vspaceCommit('mobiliario urbano desplazado');state.refreshInspector();}
           if(gesture?.mode==='move'&&gesture.moved){vspaceCommit('mueble desplazado');state.refreshInspector();}
           if(gesture?.mode==='orbit'&&gesture.moved&&state.wallVisible)state.render(true);
           gesture=null;

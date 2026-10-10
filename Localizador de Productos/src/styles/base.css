@@ -6839,3 +6839,39 @@ body.theme-dark .vspace-inspector .vspace-arch-entry.selected{background:var(--s
 .vspace-inspector .vspace-arch-toolbar button:disabled{opacity:.45;cursor:not-allowed}
 .vspace-inspector #vsApplyWall,.vspace-inspector #vsApplyOpening{width:100%;min-height:38px}
 @media(max-width:880px){.vspace-inspector .vspace-arch-list{max-height:160px}.vspace-inspector .vspace-panel-tabs{position:relative}}
+
+/* V187: herramientas CAD compactas y pestañas arquitectónicas sin desbordamiento. */
+#appRoot.app .vspace-inspector .vspace-panel-tabs{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:4px;
+}
+#appRoot.app .vspace-inspector .vspace-panel-tabs button{
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:break-word;
+  line-height:1.2;
+  padding:7px 4px;
+  font-size:10px;
+}
+#appRoot.app .vspace-inspector .vspace-inspector-body input,
+#appRoot.app .vspace-inspector .vspace-inspector-body select{max-width:100%;min-width:0;}
+#appRoot.app .layout-site-properties .layout-template-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(112px,1fr));
+  gap:7px;
+}
+#appRoot.app .layout-site-properties .layout-template-grid button{
+  white-space:normal;
+  min-height:34px;
+}
+@media(max-width:980px){
+  #appRoot.app .layout-cad-shell-v80.beginner-ui .layout-cad-workspace-v80{
+    grid-template-columns:minmax(0,1fr)!important;
+    grid-template-rows:minmax(420px,1fr) auto!important;
+  }
+  #appRoot.app .layout-cad-v80 .v80-right-panel{
+    width:100%;min-width:0;max-width:100%;max-height:min(58vh,550px);
+  }
+  #appRoot.app .layout-cad-v80 .v80-canvas-wrap{min-width:0;}
+  #appRoot.app .layout-cad-v80 .v80-canvas-card{width:100%;min-width:0;}
+}

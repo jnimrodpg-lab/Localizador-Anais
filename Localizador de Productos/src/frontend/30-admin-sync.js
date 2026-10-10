@@ -187,7 +187,7 @@
             
           </article>
         </section>
-        <section class="company-card company-branches-panel">
+        <section class="company-branches-panel company-branches-shell">
           <div class="company-panel-head sectionized"><div>${renderCompanySectionHeader(2, 'Sucursales y almacenes')}</div><button class="btn" id="addBranchBtn">＋ Nueva sucursal</button></div>
           <div class="company-branch-list">${cfg.branches.map((branch, idx)=>renderAdminBranchCard(branch, idx)).join('')}</div>
 

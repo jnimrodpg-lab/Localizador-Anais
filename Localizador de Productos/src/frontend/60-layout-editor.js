@@ -3149,9 +3149,12 @@
         <div class="layout-section-head">
           <div>
             <div class="layout-section-title">Vista de sección</div>
-            <div class="layout-section-sub">Revisa cortes X e Y sin tapar el plano principal.</div>
+            <div class="layout-section-sub">Revisa cortes X e Y lado a lado sin tapar el plano principal.</div>
           </div>
-          <div class="section-stack-chip">${zone ? zone.id : 'Sin zona'} • ${racks.length} racks</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="section-stack-chip">${zone ? zone.id : 'Sin zona'} • ${racks.length} racks</div>
+            <button class="seg-btn" id="btnToggleSectionVisibility" type="button">Ocultar secciones</button>
+          </div>
         </div>
         <div class="layout-section-body layout-section-grid">
           <div class="layout-section-card">
@@ -3174,6 +3177,7 @@
     renderSectionAxisSvg($('#layoutSectionSvgY'), zone, racks, 'y');
     $('#btnFlipSectionX').onclick = () => { const cut = getSectionCut('x', zone); cut.dir *= -1; persistActiveLayout(); renderLayoutEditor(); };
     $('#btnFlipSectionY').onclick = () => { const cut = getSectionCut('y', zone); cut.dir *= -1; persistActiveLayout(); renderLayoutEditor(); };
+    $('#btnToggleSectionVisibility').onclick = () => { appState.editor.sectionVisible = false; renderLayoutEditor(); };
   }
 
   function hexToRgba(hex, a){ const h = hex.replace('#',''); const r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16); return `rgba(${r},${g},${b},${a})`; }

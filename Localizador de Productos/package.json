@@ -1,15 +1,15 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "2.0.1-auditoria-integral",
+  "version": "2.0.2-cotas-asociativas",
   "private": true,
-  "description": "WMS Industrial V201: Arquitectura, Urbanismo, Distribución, niveles NPT, nomenclatura y validación de cambios",
+  "description": "WMS Industrial V202: cotas asociativas de tres clics, vertices precisos, ortogonalidad, historial CAD y módulos anteriores",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",
     "build:frontend": "node scripts/build-frontend.mjs",
     "build:css": "node scripts/build-css.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
-    "test:regression": "node scripts/audit-v201.mjs",
+    "test:regression": "node scripts/audit-v202.mjs",
     "check": "npm run build && npm run verify:frontend && npm run test:regression && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js"
   },
   "dependencies": {

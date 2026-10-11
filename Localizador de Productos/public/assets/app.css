@@ -7376,3 +7376,14 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
   #appRoot.app .layout-cad-v80 .layout-v200-tabs{max-width:100%!important;overflow-x:hidden!important}
 }
 
+/* V202 · Acotación asociativa al estilo Revit: guía de tercer clic */
+.layout-canvas-card .cad-v202-measure-hint{
+  position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:10;
+  max-width:min(92%,520px);padding:8px 14px;border-radius:11px;
+  color:var(--wms-text, #253d35);background:var(--wms-card,#fff5e4);
+  border:1px solid rgba(177,132,72,.45);box-shadow:0 6px 24px rgba(34,40,36,.11);
+  font-weight:700;font-size:12px;line-height:1.5;text-align:center;pointer-events:none;
+}
+#layoutSvg .cad-associative-measurement{overflow:visible}
+#layoutSvg .cad-associative-measurement line{vector-effect:non-scaling-stroke}
+

@@ -1,28 +1,41 @@
-# WMS Industrial V201 — Auditoría y corrección integral
+# WMS Industrial V202 — Motor CAD de precisión
 
-Partimos del código V200. Se conserva **Wrangler, el binding Cloudflare D1 (DB), las migraciones, la estructura de datos y los módulos existentes**.
+Versión basada en la V201 auditada. Mantiene **Wrangler, Cloudflare D1 (`DB`), las migraciones SQL, la biblioteca de racks, el constructor de mobiliario y Diseñar espacio 3D**. No se realizan cambios de esquema SQL.
 
-## Errores corregidos
+## Nuevo sistema de cotas (tres clics, estilo Revit)
 
-- `architectureMode is not defined`: declarados `rackMode`, `urbanismMode` y `architectureMode` **antes** de utilizarlos en `renderLayoutEditor`. Se corrigió, además, una clasificación equivocada que trataba Arquitectura como Distribución.
-- Carga local de Three.js: si Cloudflare devuelve HTML por una ruta inexistente, se valida el MIME antes de ejecutar `import()`, con respaldo CDN y error comprensible si ninguna fuente está disponible.
-- Compilaciones incompletas en Cloudflare: si la librería `three` falta durante el build en Pages, **se cancela el deploy** en lugar de publicarlo con el visor roto.
-- Layout responsive en ventanas de hasta 1150 px: inspector debajo del plano, secciones y controles sin ocupar una segunda columna forzada.
-- Actualización de versión, bundle JavaScript y CSS de V201. El editor de racks, nomenclatura, NPT y conjuntos apilados se conservaron.
+1. En **Editar layout → Arquitectura**, elige **Medir**.
+2. Haz clic en el **punto A** (vértice o arista).
+3. Haz clic en el **punto B**. Se muestra la cota alineada, todavía sin fijar.
+4. **Mueve el mouse perpendicularmente** para ajustar la distancia de la cota a la geometría.
+5. **Tercer clic** para fijar la posición. Se mantiene la herramienta para seguir creando cotas. **Esc** cancela.
 
-## Validaciones realizadas
+Las cotas creadas con V202 referencian los vértices, nodos y aristas de las zonas, del área general y de los muros cuando hay geometría de destino. Si se modifica la geometría vinculada, la distancia se actualiza. Las cotas históricas sin referencias conservan sus coordenadas anteriores, sin migraciones destructivas. Si un elemento de referencia desaparece, queda la posición de respaldo para evitar errores de renderizado.
 
-- `npm run check` (incluye auditoría de compatibilidad V201, sintaxis de functions y correspondencia del bundle).
-- Chromium automatizado: navegación entre Arquitectura, Urbanismo y Distribución, selector de N1/N2/Todos, cotas, snap, edición de vértices, nomenclatura de zona, esquinas, secciones, inspector, Biblioteca, Constructor, Sheets e Inicio.
-- Pruebas heredadas de geometría, mobiliario, autenticación, volúmenes y persistencia del modelo en memoria. Los tests antiguos que comprueban el nombre literal de la versión V187/V193 no son aplicables al despliegue V201.
+Selecciona una cota con la herramienta **Seleccionar** y arrástrala para cambiar su separación perpendicular. También puedes indicar el **desplazamiento (cm)** desde su inspector.
 
-## Cloudflare Pages
+## Herramientas de precisión
+
+- Los **círculos de vértices de zonas se centran en la posición exacta de los puntos** (sin desplazamiento hacia afuera).
+- **Orto** activable/desactivable con el botón **⊥** o tecla **F8**. Shift también restringe temporalmente el movimiento.
+- Se conserva el SNAP a rejilla y referencias geométricas.
+- **Ctrl+Z**, **Ctrl+Y** y **Ctrl+Shift+Z** ejecutan Undo/Redo fuera de campos de edición.
+- Los movimientos de vértices de zona, perímetro general, aristas y nodos principales se registran como operaciones deshacibles; las cotas admiten historial para creación, eliminación, separación por arrastre y entrada numérica.
+
+## Pruebas realizadas
+
+- `npm run check`: compilación JavaScript y CSS, sincronización del bundle, auditoría y sintaxis.
+- Chromium: creación en tres clics, cotas horizontales y diagonales, referencias que siguen a vértices movidos, ajuste mediante drag y campo numérico, Undo/Redo, Esc, F8 y cambio de modos.
+- Drag real de un vértice: la cota actualiza el punto origen y Undo restituye la geometría.
+
+## Despliegue Cloudflare Pages
 
 - Framework preset: `None`
 - Build command: `npm ci && npm run build`
 - Output directory: `public`
-- Mantén los bindings configurados en `wrangler.toml`; **no migres ni recrees D1** para actualizar el frontend.
 
-## Límites de la auditoría
+Mantén el binding D1 preexistente de `wrangler.toml`. **No recrees la base de datos.** Si Cloudflare no instala `three`, el build se detiene para evitar publicar el visor 3D incompleto.
 
-El entorno local no pudo instalar Three.js desde npm por falta de conectividad, de modo que no se verificó el render WebGL real ni una sesión autenticada con D1 remoto. Cloudflare Pages debe instalar la dependencia durante `npm ci`. Recomendamos desplegar primero en **Preview** y verificar guardado, WebGL y la información almacenada con datos reales. No es correcto afirmar ausencia absoluta de fallos en rutas no cubiertas.
+## Límites de la validación
+
+No se probó en este entorno el render WebGL completo ni las operaciones remotas con Cloudflare D1. Antes de publicar en producción, prueba ambos en una rama Preview. Las cotas angulares y en cadena y las restricciones geométricas paramétricas avanzadas no forman parte de esta entrega; el tipo implementado es la **cota alineada, asociativa y editable**.

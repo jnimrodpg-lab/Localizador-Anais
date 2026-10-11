@@ -1,5 +1,5 @@
 {
-  "version": "201",
+  "version": "202",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V201: Arquitectura/Urbanismo/Distribución en el mismo plano, filtros de niveles, nomenclatura, Undo/Redo por modo, colisiones 3D y compatibilidad con Cloudflare D1."
+  "notes": "V202: Cotado asociativo en tres clics, referencias a vértices y aristas, separación perpendicular, ortogonalidad opcional y Undo/Redo CAD."
 }

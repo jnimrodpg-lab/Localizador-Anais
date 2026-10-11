@@ -428,6 +428,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     if(force || meta.autoFitBoundaryToZones !== false){
       const padX = Math.max(18, Math.min(42, zb.w * 0.04));
       const padY = Math.max(18, Math.min(42, zb.h * 0.05));
+      const oldPts=Array.isArray(meta.siteBoundary?.pts)?meta.siteBoundary.pts:[];
       meta.siteBoundary = {
         id:'AREA-GENERAL',
         name: meta.siteBoundary?.name || 'Área general',
@@ -436,7 +437,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
           {x:zb.maxX + padX, y:zb.minY - padY},
           {x:zb.maxX + padX, y:zb.maxY + padY},
           {x:zb.minX - padX, y:zb.maxY + padY}
-        ]
+        ].map((p,i)=>({...p,...(oldPts[i]?.cadVertexId?{cadVertexId:oldPts[i].cadVertexId}:{})}))
       };
       return true;
     }
@@ -2613,7 +2614,7 @@ const DEFAULT_GRID_SIZE = 2;
     const delta = Number(deltaDegrees) || 0;
     if(!delta) return false;
     const center = polygonCentroid(zone.pts);
-    const candidate = zone.pts.map(pt => rotatePointAround(pt, center, delta));
+    const candidate = zone.pts.map(pt => ({...pt,...rotatePointAround(pt, center, delta)}));
     const collision = typeof findZoneOverlap === 'function' ? findZoneOverlap(zone.id,candidate) : null;
     if(collision){ if(typeof setZoneCollisionPreview==='function')setZoneCollisionPreview(zone.id,collision,candidate); if(typeof showToast==='function')showToast(`Rotación bloqueada: ${zone.name||zone.id} se superpondría con ${collision.name||collision.id}.`,'warning',2400); if(rerender&&typeof renderLayoutEditor==='function')renderLayoutEditor(); return false; }
     zone.pts = candidate;

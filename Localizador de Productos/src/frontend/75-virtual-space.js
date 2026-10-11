@@ -544,6 +544,11 @@
           <label class="vspace-field">Espesor (cm)<input id="vsWallThick" type="number" min="4" max="80" step="1" value="${Math.round(Number(wall.thickness||12)*u)}" ${lock}></label></div>
           <div class="vspace-grid-2"><label class="vspace-field">Altura (cm)<input id="vsWallHeight" type="number" min="120" max="600" step="5" value="${Math.round(Number(wall.height||290)*u)}" ${lock}></label>
           <label class="vspace-field">Acabado<select id="vsWallFinish" ${lock}><option value="ivory" ${!wall.material||wall.material==='ivory'?'selected':''}>Marfil mate</option><option value="concrete" ${wall.material==='concrete'?'selected':''}>Concreto suave</option><option value="white" ${wall.material==='white'?'selected':''}>Blanco cálido</option></select></label></div>
+          <label class="vspace-field">Colocación respecto al eje<select id="vsWallPlacement" ${lock}>
+            <option value="inside" ${wall.placement==='inside'?'selected':''}>Hacia dentro de zona</option>
+            <option value="outside" ${wall.placement==='outside'?'selected':''}>Hacia fuera de zona</option>
+            <option value="center" ${!wall.placement||wall.placement==='center'?'selected':''}>Centrado al eje</option>
+          </select></label>
           <button type="button" class="vspace-primary" id="vsApplyWall" ${lock}>Aplicar propiedades del muro</button>
           <div class="vspace-arch-subtitle">Mover muro con snap (ambos extremos)</div>
           <div class="vspace-grid-2"><label class="vspace-field">Desplazar X (cm)<input type="number" id="vsWallDeltaX" value="0" ${lock}></label><label class="vspace-field">Desplazar Y (cm)<input type="number" id="vsWallDeltaY" value="0" ${lock}></label></div>
@@ -590,7 +595,7 @@
         recordHistorySnapshot('structure');
         if(Math.abs(nextLength-wallLen(wall))>.01 && !setManualWallLength(wall,nextLength))return vspaceToast('No se puede alargar este muro por restricciones geométricas.',true);
         wall.name=String(host.querySelector('#vsWallName').value||'Muro').trim().slice(0,75)||'Muro';
-        wall.thickness=nextThick;wall.height=nextH;wall.material=host.querySelector('#vsWallFinish').value;
+        wall.thickness=nextThick;wall.height=nextH;wall.placement=normalizeWallPlacement(host.querySelector('#vsWallPlacement')?.value);wall.material=host.querySelector('#vsWallFinish').value;
         syncManualWallsFromNodes();ensureOpeningAttachmentOffsets();vspaceCommit(`muro ${wall.id}`);state.refreshInspector();
       });
       host.querySelector('#vsWallTranslate')?.addEventListener('click',()=>{
@@ -1099,6 +1104,8 @@
           group.userData={wallId:wall.id,entityType:'wall'};
           const wallHeight=Math.max(100,Number(wall.height||290))*scale;
           const thickness=Math.max(4,Number(wall.thickness||12))*scale;
+          const faceOffsets=getWallFaceOffsets(wall);
+          const faceCenter=(faceOffsets.left-faceOffsets.right)*scale*.5;
           const length=L*scale;
           const color=wall.material==='concrete'?0xc6c7c1:wall.material==='white'?0xf9f7f0:0xf1e8d9;
           const mat=meshMat(selected?0xd8eadf:color,{metalness:0,roughness:.89,side:THREE.DoubleSide});
@@ -1116,7 +1123,7 @@
             if(r-l<.008||y1-y0<.008)return;
             const geo=new THREE.BoxGeometry(r-l,y1-y0,thickness);
             const mesh=new THREE.Mesh(geo,mat);
-            mesh.position.set((l+r)/2,(y0+y1)/2,0);
+            mesh.position.set((l+r)/2,(y0+y1)/2,faceCenter);
             mesh.castShadow=true;mesh.receiveShadow=true;
             mesh.userData={wallId:wall.id,entityType:'wall'};
             group.add(mesh);state.architectureMeshes.push(mesh);
@@ -1135,7 +1142,7 @@
           const glassMat=meshMat(0xadc9c5,{metalness:.08,roughness:.18,transparent:true,opacity:.33,depthWrite:false,side:THREE.DoubleSide});
           const addTrim=(o,cx,cy,w,h,d,material)=>{
             const mesh=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.012,w),Math.max(.012,h),Math.max(.015,d)),material);
-            mesh.position.set(cx,cy,0);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
+            mesh.position.set(cx,cy,faceCenter);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
             mesh.userData={openingId:o.id,wallId:wall.id,entityType:'opening'};
             group.add(mesh);state.architectureMeshes.push(mesh);
             return mesh;
@@ -1154,6 +1161,27 @@
             }
           });
           world.add(group);
+        };
+        const addArchitecturalWallJoints=()=>{
+          const joints=getAllWallCornerClosurePolygons();
+          const scale=getScaleCmPerUnit()/100;
+          joints.forEach(joint=>{
+            if(!Array.isArray(joint.poly)||joint.poly.length<3)return;
+            const pts=joint.poly.map(coord);
+            if(!pts.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.z)))return;
+            const shape=new THREE.Shape();
+            pts.forEach((v,i)=>i?shape.lineTo(v.x,-v.z):shape.moveTo(v.x,-v.z));
+            shape.closePath();
+            const height=Math.max(60,Number(joint.height||290))*scale;
+            const geo=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false,curveSegments:1,steps:1});
+            geo.rotateX(-Math.PI/2);
+            const mat=meshMat(joint.selected?0xd8eadf:0xf1e8d9,{metalness:0,roughness:.89,side:THREE.DoubleSide});
+            const mesh=new THREE.Mesh(geo,mat);
+            mesh.castShadow=true;mesh.receiveShadow=true;
+            const hostWall=joint.prevWallId || joint.currWallId || (appState.layout?.walls||[]).find(w=>w.startNodeId===joint.nodeId||w.endNodeId===joint.nodeId)?.id||'';
+            mesh.userData={entityType:'wall',wallId:hostWall};
+            world.add(mesh);state.architectureMeshes.push(mesh);
+          });
         };
         const addFurniture=r=>{
           const spec=vspaceSpec(r);
@@ -1210,6 +1238,7 @@
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
             (appState.layout.walls||[]).forEach(w=>buildArchitecturalWall(w));
+            addArchitecturalWallJoints();
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.
           const boundsW=(zoneBounds.length?Math.max(...zoneBounds.map(p=>p.x))-Math.min(...zoneBounds.map(p=>p.x)):700)*getScaleCmPerUnit()/100;

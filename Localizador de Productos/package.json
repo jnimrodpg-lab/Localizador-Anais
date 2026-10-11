@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "2.0.2-cotas-asociativas",
+  "version": "2.0.3-muros-contextuales",
   "private": true,
-  "description": "WMS Industrial V202: cotas asociativas de tres clics, vertices precisos, ortogonalidad, historial CAD y módulos anteriores",
+  "description": "WMS Industrial V203: edición de muros contextual, espesor hacia interior, exterior o centrado, uniones 2D/3D y cotas asociativas",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",

@@ -1,3 +1,33 @@
+# WMS Industrial V203 — Muros contextuales y uniones arquitectónicas
+
+Basado en V202, conservando **Wrangler, binding D1 `DB`, migraciones SQL, apilamiento, biblioteca, constructor de mobiliario, CAD y cotas**. No cambia el esquema SQL.
+
+## Edición de muros
+
+1. Abre **Editar layout → Arquitectura → Muros · crear y editar**.
+2. Haz clic sobre una **arista de una zona**. Los chips permanentes `+ MURO` se eliminaron; el borde se resalta al pasar el puntero.
+3. En el inspector define la colocación del espesor: **Hacia dentro**, **Hacia fuera** o **Centrado**, además de espesor y altura en centímetros.
+4. Pulsa **Crear muro en arista**. El muro se selecciona; puedes actualizarlo o eliminarlo desde el mismo inspector.
+5. **Cerrar perímetro de zona** crea/configura los muros de todas las aristas de esa zona (un solo paso de historial).
+6. Cambia a **Geometría · áreas y zonas** para mover vértices o crear cotas sin chips obstructivos.
+
+### Empalmes y sincronización 2D/3D
+
+Los muros creados desde aristas comparten nodos y registran qué zona y arista los originó. La línea de referencia no se mueve al cambiar el espesor: se construyen caras según dentro/fuera/centro. Los cierres en nodos usan las caras físicas del muro para evitar el problema de dobles parches. El 3D coloca su espesor sobre el mismo eje geométrico y añade un volumen físico en las juntas; el inspector arquitectónico 3D permite cambiar también la orientación del espesor.
+
+Las uniones de más de dos muros, los muros con alturas distintas y las uniones con vanos adyacentes deben comprobarse en Cloudflare Preview con Three.js para verificar la estética final. Las verificaciones automáticas no certifican estabilidad estructural.
+
+### Verificación
+
+- `npm run check`: compila, valida integridad y ejecuta auditoría heredada.
+- Prueba de navegador Chromium: selección de arista, muro interior de 22 cm, edición exterior, cierre del perímetro y geometría de esquinas compartidas, sin excepciones JS.
+
+## Despliegue en Cloudflare Pages
+
+Framework `None`, comando `npm ci && npm run build`, directorio `public`. Mantén tu binding D1 actual. No recrees la base SQL. Antes de sustituir producción, verifica el render WebGL completo y el guardado remoto en Cloudflare Preview.
+
+---
+
 # WMS Industrial V202 — Motor CAD de precisión
 
 Versión basada en la V201 auditada. Mantiene **Wrangler, Cloudflare D1 (`DB`), las migraciones SQL, la biblioteca de racks, el constructor de mobiliario y Diseñar espacio 3D**. No se realizan cambios de esquema SQL.

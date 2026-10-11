@@ -7206,6 +7206,18 @@ function getSheetBranchOpenMap(){
       const makeWallBandGeometry = (seg, t0, t1, y0, y1, thicknessUnits, offsetUnits=0) => {
         const height = Math.max(.02, Number(y1 || 0) - Number(y0 || 0));
         if(t1 - t0 <= .002 || height <= .02) return null;
+        // V210: use exactly the same joined footprint as the layout editor.
+        // Decorative skirting keeps its own profile, while actual wall bands
+        // (including bands above doors) share the CAD miter at each node.
+        if(seg.raw && Math.abs(Number(offsetUnits||0))<1e-7 &&
+            Math.abs(Number(thicknessUnits)-Number(seg.thickness))<.001 &&
+            typeof getWallSlicePolygon==='function'){
+          const joined=getWallSlicePolygon(seg.raw,t0,t1,1);
+          if(joined?.poly?.length>=4){
+            const prism=makeWallPrismGeometry(joined.poly,height);
+            if(prism){prism.translate(0,Number(y0||0),0);return prism;}
+          }
+        }
         const ax = Number(seg.a?.x || 0), ay = Number(seg.a?.y || 0);
         const bx = Number(seg.b?.x || 0), by = Number(seg.b?.y || 0);
         const n = getSegmentNormal(seg);
@@ -7416,10 +7428,12 @@ function getSheetBranchOpenMap(){
             addArchitecturalBaseboards(group,seg,openings,thicknessUnits,isActive);
             return;
           }
-          const autoPoly = seg.autoZoneEdge && seg.zoneId && Number.isFinite(seg.edgeIndex) ? getAutoWallPolygon(seg.raw || seg) : null;
+          const joinedPoly = !seg.autoZoneEdge && seg.raw && typeof getWallSlicePolygon==='function'
+            ? getWallSlicePolygon(seg.raw,0,1,1)?.poly :
+            (seg.autoZoneEdge && seg.zoneId && Number.isFinite(seg.edgeIndex) ? getAutoWallPolygon(seg.raw || seg) : null);
           let wall = null;
-          if(Array.isArray(autoPoly) && autoPoly.length >= 4){
-            const geo = makeWallPrismGeometry(autoPoly, height);
+          if(Array.isArray(joinedPoly) && joinedPoly.length >= 4){
+            const geo = makeWallPrismGeometry(joinedPoly, height);
             if(geo) wall = new THREE.Mesh(geo, wallMat);
           }
           if(!wall){
@@ -10718,10 +10732,10 @@ function getSheetBranchOpenMap(){
     const joints=[];
     (appState.layout.wallNodes || []).forEach(node => {
       const connected=wallsForNode(node.id).filter(w=>wallLength(w)>2);
-      if(connected.length<2) return;
+      if(connected.length<3) return; // V210: degree-two corners use exact paired-face miters
       const pts=[];
       connected.forEach(w=>{
-        const slice=getWallSlicePolygon(w,0,1,1);
+        const slice=getWallRawSlicePolygon(w,0,1,1);
         if(!slice?.poly)return;
         const atStart=w.startNodeId===node.id;
         const ends=atStart?[slice.poly[0],slice.poly[3]]:[slice.poly[1],slice.poly[2]];
@@ -11319,7 +11333,7 @@ function getSheetBranchOpenMap(){
     return wallNormal(wall);
   }
 
-  function getWallSlicePolygon(wall, t0=0, t1=1, inflate=1){
+  function getWallRawSlicePolygon(wall, t0=0, t1=1, inflate=1){
     if(!wall) return null;
     const len = Math.max(1, wallLength(wall));
     const start = Math.max(0, Math.min(1, Number(t0) || 0));
@@ -11346,6 +11360,73 @@ function getSheetBranchOpenMap(){
       center:{x:(p0.x+p1.x)/2+normal.x*(left-right)/2,y:(p0.y+p1.y)/2+normal.y*(left-right)/2},
       thickness:rawThickness,dir,a:p0,b:p1
     };
+  }
+
+  // V210: one source of truth for 2D/3D wall footprint joins.
+  // Join the physical faces, NOT merely the two centerline endpoints.  Previous
+  // separate wall rectangles + a convex hull patch left visible gaps at oblique
+  // corners and could produce doubled faces in WebGL.
+  function wallEndpointFaceFrame(wall, atStart, inflate=1){
+    const raw=getWallRawSlicePolygon(wall,0,1,inflate);
+    if(!raw?.poly)return null;
+    const node=atStart?raw.a:raw.b;
+    const other=atStart?raw.b:raw.a;
+    const length=Math.hypot(other.x-node.x,other.y-node.y);
+    if(length<1e-5)return null;
+    const ray={x:(other.x-node.x)/length,y:(other.y-node.y)/length};
+    // Polygon order: start-right, end-right, end-left, start-left.
+    const leftIndex=atStart?3:1;
+    const rightIndex=atStart?0:2;
+    return {node,ray,atStart,leftIndex,rightIndex,
+      left:raw.poly[leftIndex],right:raw.poly[rightIndex],poly:raw.poly,
+      thickness:Number(raw.thickness)||12};
+  }
+  function wallMiterFacePoint(a,b, node, maxThickness){
+    const a2={x:a.point.x+a.ray.x*100,y:a.point.y+a.ray.y*100};
+    const b2={x:b.point.x+b.ray.x*100,y:b.point.y+b.ray.y*100};
+    const hit=lineIntersection2D(a.point,a2,b.point,b2);
+    if(!hit)return null;
+    // A very shallow angle yields unbounded miters. A separate bevel is safer.
+    const limit=Math.max(24,Number(maxThickness||12)*5.5);
+    return pointDist2D(hit,node)<=limit?hit:null;
+  }
+  function getWallSlicePolygon(wall,t0=0,t1=1,inflate=1){
+    const raw=getWallRawSlicePolygon(wall,t0,t1,inflate);
+    if(!raw?.poly || wall?.autoZoneEdge)return raw;
+    const poly=raw.poly.map(p=>({...p}));
+    const walls=(appState.layout?.walls||[]).filter(w=>w && w.id!==wall.id && !w.autoZoneEdge && wallLength(w)>1);
+    const join=(atStart)=>{
+      const t=atStart?Number(t0||0):Number(t1??1);
+      if(atStart?t>1e-5:t<1-1e-5)return;
+      const self=wallEndpointFaceFrame(wall,atStart,inflate);
+      if(!self)return;
+      const joined=walls.map(w=>{
+        const a={x:Number(w.x1||0),y:Number(w.y1||0)};
+        const b={x:Number(w.x2||0),y:Number(w.y2||0)};
+        const aDistance=pointDist2D(a,self.node),bDistance=pointDist2D(b,self.node);
+        const tolerance=2.25;
+        if(Math.min(aDistance,bDistance)>tolerance)return null;
+        return wallEndpointFaceFrame(w,aDistance<=bDistance,inflate);
+      }).filter(Boolean);
+      // Two incident walls: exact face-to-face miters. For T/X nodes the
+      // bounded junction polygon is built separately (never move 3+ wall ends
+      // to a single incorrect miter).
+      if(joined.length!==1)return;
+      const other=joined[0];
+      const cross=self.ray.x*other.ray.y-self.ray.y*other.ray.x;
+      if(Math.abs(cross)<0.012)return;
+      const thickness=Math.max(self.thickness,other.thickness);
+      const leftHit=wallMiterFacePoint(
+        {point:self.left,ray:self.ray},{point:other.right,ray:other.ray},self.node,thickness);
+      const rightHit=wallMiterFacePoint(
+        {point:self.right,ray:self.ray},{point:other.left,ray:other.ray},self.node,thickness);
+      // Do not mutate the opposite end: openings and other pieces preserve
+      // their own profile. Both neighbors compute identical intersections.
+      if(leftHit)poly[self.leftIndex]=leftHit;
+      if(rightHit)poly[self.rightIndex]=rightHit;
+    };
+    join(true);join(false);
+    return {...raw,poly};
   }
 
   function getOpeningFootprint(opening, wall=findWallById(opening?.wallId), inflate=1){
@@ -19401,9 +19482,22 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const breaks=cuts.filter((n,i)=>i===0||Math.abs(n-cuts[i-1])>.001);
           const addWallPiece=(l,r,y0,y1)=>{
             if(r-l<.008||y1-y0<.008)return;
-            const geo=new THREE.BoxGeometry(r-l,y1-y0,thickness);
+            let geo=null,position=null;
+            // V210: project the joined CAD footprint into this wall's local
+            // x/z frame so the virtual designer and layout close on the same
+            // bevel/miter points, even at diagonal-to-vertical intersections.
+            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1):null;
+            if(slice?.poly?.length===4){
+              const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
+              const ax=Number(wall.x1||0),ay=Number(wall.y1||0);
+              const coords=slice.poly.map(p=>{const rx=p.x-ax,ry=p.y-ay;return {x:(rx*d.x+ry*d.y)*scale,z:(rx*n.x+ry*n.y)*scale};});
+              const positions=[];coords.forEach(p=>positions.push(p.x,y0,p.z));coords.forEach(p=>positions.push(p.x,y1,p.z));
+              const indices=[0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7];
+              geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setIndex(indices);geo.computeVertexNormals();
+              position={x:0,y:0,z:0};
+            }else{geo=new THREE.BoxGeometry(r-l,y1-y0,thickness);position={x:(l+r)/2,y:(y0+y1)/2,z:faceCenter};}
             const mesh=new THREE.Mesh(geo,mat);
-            mesh.position.set((l+r)/2,(y0+y1)/2,faceCenter);
+            mesh.position.set(position.x,position.y,position.z);
             mesh.castShadow=true;mesh.receiveShadow=true;
             mesh.userData={wallId:wall.id,entityType:'wall'};
             group.add(mesh);state.architectureMeshes.push(mesh);

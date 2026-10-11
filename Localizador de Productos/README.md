@@ -1,5 +1,30 @@
-# WMS Industrial V209 — Área comercial y zonificación virtual
+# WMS Industrial V210 — Uniones CAD de muros (2D / 3D)
 
+Esta versión conserva Arquitectura, Urbanismo, Distribución, Mobiliario 3D y configuración D1/Cloudflare Pages de la V209.
+
+## Corrección de encuentros
+
+- Los tramos conectados por un nodo ahora **comparten la intersección exacta de sus caras**, no solo la intersección de los ejes.
+- Uniones en L vertical–diagonal y de 90°: mitras para muros **hacia dentro / centrados / hacia fuera**, incluso si los segmentos fueron creados en sentidos inversos.
+- En caso de vanos, las caras del extremo del muro se empalman mientras el corte interno de la abertura queda recto.
+- Ya no se usa el polígono de parche de unión para los nodos de solo dos muros, evitando dobles superposiciones.
+- Los nodos con tres o más muros conservan un cierre local de fallback; los casos estructurales complejos requieren comprobación visual específica.
+- Los dos motores 3D reutilizan la huella de muro CAD que usa el layout; no crean simplemente cajas independientes con cortes rectos.
+
+## Comprobaciones
+
+`npm run check` compila, verifica el bundle y ejecuta pruebas de regresión V202–V210, incluidas las nuevas pruebas geométricas de muros.
+
+Las pruebas automatizadas comprueban encuentros de 45° y 90°, las tres posiciones de espesor, inversión de extremos, huecos de puerta y fallback en T. No sustituyen la validación visual de todos los casos WebGL ni el guardado remoto con Cloudflare D1.
+
+## Cloudflare Pages
+
+- Framework: `None`
+- Build: `npm ci && npm run build`
+- Output: `public`
+- Vinculación D1: conservar `DB` en `wrangler.toml` y Pages.
+
+**No necesita migraciones SQL ni crear otra base.**
 ## Arquitectura: nuevo modelo
 
 - **Área interior útil del local:** `layout.meta.siteBoundary.pts` es el perímetro principal editable. No se recalcula automáticamente al mover, crear o eliminar zonas.

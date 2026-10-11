@@ -685,6 +685,18 @@
       const makeWallBandGeometry = (seg, t0, t1, y0, y1, thicknessUnits, offsetUnits=0) => {
         const height = Math.max(.02, Number(y1 || 0) - Number(y0 || 0));
         if(t1 - t0 <= .002 || height <= .02) return null;
+        // V210: use exactly the same joined footprint as the layout editor.
+        // Decorative skirting keeps its own profile, while actual wall bands
+        // (including bands above doors) share the CAD miter at each node.
+        if(seg.raw && Math.abs(Number(offsetUnits||0))<1e-7 &&
+            Math.abs(Number(thicknessUnits)-Number(seg.thickness))<.001 &&
+            typeof getWallSlicePolygon==='function'){
+          const joined=getWallSlicePolygon(seg.raw,t0,t1,1);
+          if(joined?.poly?.length>=4){
+            const prism=makeWallPrismGeometry(joined.poly,height);
+            if(prism){prism.translate(0,Number(y0||0),0);return prism;}
+          }
+        }
         const ax = Number(seg.a?.x || 0), ay = Number(seg.a?.y || 0);
         const bx = Number(seg.b?.x || 0), by = Number(seg.b?.y || 0);
         const n = getSegmentNormal(seg);
@@ -895,10 +907,12 @@
             addArchitecturalBaseboards(group,seg,openings,thicknessUnits,isActive);
             return;
           }
-          const autoPoly = seg.autoZoneEdge && seg.zoneId && Number.isFinite(seg.edgeIndex) ? getAutoWallPolygon(seg.raw || seg) : null;
+          const joinedPoly = !seg.autoZoneEdge && seg.raw && typeof getWallSlicePolygon==='function'
+            ? getWallSlicePolygon(seg.raw,0,1,1)?.poly :
+            (seg.autoZoneEdge && seg.zoneId && Number.isFinite(seg.edgeIndex) ? getAutoWallPolygon(seg.raw || seg) : null);
           let wall = null;
-          if(Array.isArray(autoPoly) && autoPoly.length >= 4){
-            const geo = makeWallPrismGeometry(autoPoly, height);
+          if(Array.isArray(joinedPoly) && joinedPoly.length >= 4){
+            const geo = makeWallPrismGeometry(joinedPoly, height);
             if(geo) wall = new THREE.Mesh(geo, wallMat);
           }
           if(!wall){

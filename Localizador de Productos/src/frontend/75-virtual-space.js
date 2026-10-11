@@ -1121,9 +1121,22 @@
           const breaks=cuts.filter((n,i)=>i===0||Math.abs(n-cuts[i-1])>.001);
           const addWallPiece=(l,r,y0,y1)=>{
             if(r-l<.008||y1-y0<.008)return;
-            const geo=new THREE.BoxGeometry(r-l,y1-y0,thickness);
+            let geo=null,position=null;
+            // V210: project the joined CAD footprint into this wall's local
+            // x/z frame so the virtual designer and layout close on the same
+            // bevel/miter points, even at diagonal-to-vertical intersections.
+            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1):null;
+            if(slice?.poly?.length===4){
+              const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
+              const ax=Number(wall.x1||0),ay=Number(wall.y1||0);
+              const coords=slice.poly.map(p=>{const rx=p.x-ax,ry=p.y-ay;return {x:(rx*d.x+ry*d.y)*scale,z:(rx*n.x+ry*n.y)*scale};});
+              const positions=[];coords.forEach(p=>positions.push(p.x,y0,p.z));coords.forEach(p=>positions.push(p.x,y1,p.z));
+              const indices=[0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7];
+              geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setIndex(indices);geo.computeVertexNormals();
+              position={x:0,y:0,z:0};
+            }else{geo=new THREE.BoxGeometry(r-l,y1-y0,thickness);position={x:(l+r)/2,y:(y0+y1)/2,z:faceCenter};}
             const mesh=new THREE.Mesh(geo,mat);
-            mesh.position.set((l+r)/2,(y0+y1)/2,faceCenter);
+            mesh.position.set(position.x,position.y,position.z);
             mesh.castShadow=true;mesh.receiveShadow=true;
             mesh.userData={wallId:wall.id,entityType:'wall'};
             group.add(mesh);state.architectureMeshes.push(mesh);

@@ -149,6 +149,7 @@
       wall.height = Math.max(120, Number(wall.height || layout.meta.defaultWallHeight || 290) || 290);
       wall.thickness = Math.max(4, Number(wall.thickness || layout.meta.defaultWallThickness || 12) || 12);
       wall.kind = wall.kind || 'wall';
+      if(layout.meta?.commercialAreaV209)wall.ownerAreaId='AREA-GENERAL';
     });
     syncManualWallsFromNodes(layout);
     syncRoomLinkedZones(layout);
@@ -339,6 +340,8 @@
   }
   function syncRoomLinkedZones(layout=appState.layout){
     if(!layout || !Array.isArray(layout.zones) || !Array.isArray(layout.rooms)) return layout;
+    // Los muros y recintos físicos nunca modifican las delimitaciones virtuales.
+    if(layout.meta?.zoneSemantics==='virtual')return layout;
     const roomMap = new Map(layout.rooms.map(r => [r.id,r]));
     layout.zones.forEach(zone => {
       if(!zone?.linkedRoomId) return;
@@ -385,9 +388,75 @@
     if(pointStrictlyInsidePolygon(ca,b,tolerance) || pointStrictlyInsidePolygon(cb,a,tolerance)) return true;
     return false;
   }
+  // V209: una zona representa una delimitación virtual, sin paredes automáticas.
+  // Los polígonos pueden compartir vértices y aristas, pero no superficies.
+  function v209PointOnSegment(p,a,b,eps=.65){
+    if(!p||!a||!b)return false;
+    const vx=b.x-a.x,vy=b.y-a.y,den=vx*vx+vy*vy;
+    if(den<eps*eps)return Math.hypot(p.x-a.x,p.y-a.y)<=eps;
+    const t=((p.x-a.x)*vx+(p.y-a.y)*vy)/den;
+    if(t< -0.0001||t>1.0001)return false;
+    return Math.hypot(p.x-(a.x+t*vx),p.y-(a.y+t*vy))<=eps;
+  }
+  function v209InsideOrOnBoundary(p,pts,eps=.65){
+    if(!Array.isArray(pts)||pts.length<3)return false;
+    if(pts.some((a,i)=>v209PointOnSegment(p,a,pts[(i+1)%pts.length],eps)))return true;
+    return pointInPoly(p,pts);
+  }
+  function v209SimplePolygon(pts){
+    if(!Array.isArray(pts)||pts.length<3)return false;
+    if(!pts.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)))return false;
+    if(polygonAreaAbs(pts)<1)return false;
+    const eps=.01;
+    for(let i=0;i<pts.length;i++){
+      const a=pts[i],b=pts[(i+1)%pts.length];
+      if(Math.hypot(b.x-a.x,b.y-a.y)<1)return false;
+      for(let j=i+1;j<pts.length;j++){
+        if(j===i+1||(i===0&&j===pts.length-1))continue;
+        if(segmentProperIntersection(a,b,pts[j],pts[(j+1)%pts.length],eps))return false;
+      }
+    }
+    return true;
+  }
+  function v209ZoneInsideArea(pts,areaPts){
+    if(!v209SimplePolygon(pts)||!v209SimplePolygon(areaPts))return false;
+    for(let i=0;i<pts.length;i++){
+      const a=pts[i],b=pts[(i+1)%pts.length];
+      // Los puntos intermedios impiden cruzar un entrante del perímetro
+      // aunque ambos extremos permanezcan dentro del área comercial.
+      for(const t of [0,.125,.25,.5,.75,.875,1]){
+        if(!v209InsideOrOnBoundary({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t},areaPts))return false;
+      }
+      for(let j=0;j<areaPts.length;j++){
+        if(segmentProperIntersection(a,b,areaPts[j],areaPts[(j+1)%areaPts.length],.001))return false;
+      }
+    }
+    return true;
+  }
+  function v209ZoneViolation(zoneId, pts, layout=appState.layout){
+    if(!v209SimplePolygon(pts))return {id:'INVALIDA',name:'Geometría inválida',reason:'invalid'};
+    const area=layout?.meta?.siteBoundary?.pts;
+    if(Array.isArray(area)&&area.length>=3&&!v209ZoneInsideArea(pts,area)){
+      return {id:'AREA-GENERAL',name:'Área útil del local',reason:'outside'};
+    }
+    const overlap=(layout?.zones||[]).find(other=>other?.id!==zoneId && Array.isArray(other.pts)&&other.pts.length>=3&&zonePolygonsOverlap(pts,other.pts));
+    return overlap ? {...overlap,reason:'overlap'} : null;
+  }
   function findZoneOverlap(zoneId, pts, layout=appState.layout){
-    if(!Array.isArray(pts)||pts.length<3) return null;
-    return (layout?.zones||[]).find(other=>other?.id!==zoneId && Array.isArray(other.pts) && other.pts.length>=3 && zonePolygonsOverlap(pts,other.pts)) || null;
+    if(!Array.isArray(pts)||pts.length<3)return {id:'INVALIDA',name:'Geometría inválida',reason:'invalid'};
+    return v209ZoneViolation(zoneId,pts,layout);
+  }
+  function v209AreaMetrics(layout=appState.layout){
+    const scale=Math.max(.001,Number(layout?.meta?.scaleCmPerUnit||1));
+    const sqm=pts=>polygonAreaAbs(pts||[])*scale*scale/10000;
+    const areaPts=layout?.meta?.siteBoundary?.pts||[];
+    const total=sqm(areaPts);
+    let assigned=0,invalid=0;
+    (layout?.zones||[]).forEach(z=>{
+      if(v209ZoneViolation(z.id,z.pts,layout)){invalid++;return;}
+      assigned+=sqm(z.pts);
+    });
+    return {total,assigned,unassigned:Math.max(0,total-assigned),invalid,count:layout?.zones?.length||0};
   }
   function clearZoneCollisionPreview(){ if(appState.editor) appState.editor.zoneCollisionPreview=null; }
   function setZoneCollisionPreview(zoneId, other, pts=null){
@@ -491,19 +560,18 @@
     const id = nextZoneId();
     const palette = Array.isArray(ZONE_COLOR_PALETTE) && ZONE_COLOR_PALETTE.length ? ZONE_COLOR_PALETTE : ['#6ff0a8','#6fa8ff','#ffd66f'];
     const zone = {
-      id, name:nextRoomZoneName(room), color:palette[(appState.layout.zones||[]).length % palette.length], pts:pts.map(p=>({...p})),
-      linkedRoomId:room.id, dynamicFromRoom:true, roomLinkBroken:false, edgeWalls:{}, source:'room'
+      id, kind:'virtual', name:nextRoomZoneName(room), color:palette[(appState.layout.zones||[]).length % palette.length], pts:pts.map(p=>({...p})),
+      sourceRoomId:room.id, edgeWalls:{}, source:'room-snapshot'
     };
     const collision=findZoneOverlap('',zone.pts);
     if(collision){ showToast(`No se puede crear la zona: el recinto se superpone con ${collision.name||collision.id}.`,'warning',2800); return null; }
     appState.layout.zones.push(zone);
-    room.zoneId=id;
     appState.selectedRoomId=room.id;
     appState.selectedZoneId=id;
     appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId='';
     normalizeZoneAndRackIds();
     persistActiveLayout();
-    showToast(`${room.name} convertido en ${zone.name}. La zona seguirá a las muros.`, 'success', 3200);
+    showToast(`${room.name} convertido en zona virtual. Los muros físicos no quedarán vinculados a sus límites.`, 'success', 3200);
     return zone;
   }
   function detachRoomZone(zoneOrId){
@@ -1018,7 +1086,7 @@
       wall.zoneBoundarySource={zoneId:zone.id,edgeIndex:edge.idx};
       wall.placement=normalizeWallPlacement(updates.placement||appState.editor?.wallDefaultPlacement||'inside');
     }
-    wall.kind='wall'; wall.autoZoneEdge=false; delete wall.zoneId; delete wall.edgeIndex; delete wall.locked;
+    wall.kind='wall'; wall.ownerAreaId='AREA-GENERAL'; wall.autoZoneEdge=false; delete wall.zoneId; delete wall.edgeIndex; delete wall.locked;
     wall.thickness=Math.max(4,Number(updates.thickness ?? wall.thickness ?? getZoneWallThickness(zone) ?? 14)||14);
     wall.height=Math.max(120,Number(updates.height ?? wall.height ?? appState.layout?.meta?.defaultWallHeight ?? 290)||290);
     wall.side=getWallSideSign(updates.side ?? wall.side ?? 1);
@@ -1457,7 +1525,7 @@
       startNodeId:startNode.id, endNodeId:endNode.id,
       thickness:Math.max(4,Number(appState.layout?.meta?.defaultWallThickness||12)||12),
       height:Math.max(120,Number(appState.layout?.meta?.defaultWallHeight||290)||290),
-      kind:'wall'
+      ownerAreaId:'AREA-GENERAL', kind:'wall'
     };
     appState.layout.walls.push(wall);
     syncManualWallsFromNodes();
@@ -1712,7 +1780,7 @@
       }));
     }
     const collision=findZoneOverlap(zone.id,candidate);
-    if(collision){ setZoneCollisionPreview(zone.id,collision,candidate); showToast(`Cambio bloqueado: ${zone.name||zone.id} no puede superponerse con ${collision.name||collision.id}.`,'warning',2400); return false; }
+    if(collision){setZoneCollisionPreview(zone.id,collision,candidate);showToast(collision.reason==='outside'?'La zona debe permanecer dentro del área útil del local.':`Cambio bloqueado: ${collision.name||collision.id}.`,'warning',3000);return false;}
     zone.pts=candidate; clearZoneCollisionPreview();
     // v110: la estructura no reposiciona racks; se corrigen luego en Distribución de racks.
     return true;
@@ -1723,7 +1791,9 @@
     const x = snapGrid(bounds.x + bounds.w + 100);
     const y = snapGrid(bounds.y + 60);
     const id = nextZoneId();
-    const zone = { id, name:'Almacén', color:'#62d7a0', wallThickness:14, pts:[{x,y},{x:x+520,y},{x:x+520,y:y+360},{x,y:y+360}] };
+    const zone = { id, kind:'virtual', name:'Almacén', color:'#62d7a0', wallThickness:14, pts:[{x,y},{x:x+520,y},{x:x+520,y:y+360},{x,y:y+360}] };
+    const invalid=v209ZoneViolation('',zone.pts);
+    if(invalid){showToast('No cabe una nueva zona aquí. Selecciona + Zona y un punto libre dentro del área comercial.','warning',3400);return;}
     appState.layout.zones.push(zone);
     appState.selectedZoneId = zone.id;
     appState.selectedRackLayoutId = '';
@@ -1737,7 +1807,9 @@
     const x = snapGrid(bounds.x + bounds.w + 90);
     const y = snapGrid(bounds.y + 80);
     const id = nextZoneId();
-    const zone = { id, name:`Zona ${id}`, color:getNextZoneColor(getBranchColor(getActiveLayoutBranchIndex())), wallThickness:14, pts:[{x,y},{x:x+420,y},{x:x+420,y:y+280},{x,y:y+280}] };
+    const zone = { id, kind:'virtual', name:`Zona ${id}`, color:getNextZoneColor(getBranchColor(getActiveLayoutBranchIndex())), wallThickness:14, pts:[{x,y},{x:x+420,y},{x:x+420,y:y+280},{x,y:y+280}] };
+    const invalid=v209ZoneViolation('',zone.pts);
+    if(invalid){showToast('No cabe la plantilla en el área útil sin invadir otras zonas.','warning',3400);return;}
     appState.layout.zones.push(zone);
     const fp = getRackFootprint(appState.selectedModelId, 0);
     const rack = { id:`${id}-E1`, zoneId:id, x:x+40, y:y+40, w:fp.w, h:fp.h, rot:0, modelId:appState.selectedModelId, front:'auto', baseHeight:0, rackHeight:(rackModel(appState.selectedModelId)?.height || 238) };
@@ -1895,11 +1967,13 @@
     }
     const zoneTools=architectureMode && zone && appState.editor.architectureTool!=='walls' && !appState.selectedWallId && !appState.selectedOpeningId;
     const zoneRacks=zoneTools?(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length:0;
+    const metricsV209=architectureMode?v209AreaMetrics():null;
+    const areaDashboard=architectureMode?`<section class="layout-v209-area-summary"><div class="layout-prop-title">Área interior útil · local comercial</div><div class="layout-v209-stats"><div><strong>${metricsV209.total.toFixed(2)}</strong><small>m² totales</small></div><div><strong>${metricsV209.assigned.toFixed(2)}</strong><small>m² zonificados</small></div><div><strong>${metricsV209.unassigned.toFixed(2)}</strong><small>m² libres</small></div></div><p class="tiny muted">${metricsV209.count} zonas virtuales · los muros son elementos físicos del área; dividir zonas no crea paredes.</p>${metricsV209.invalid?`<p class="tiny layout-v209-warning">${metricsV209.invalid} zona(s) heredadas necesitan ajuste: fuera del área, superposición o geometría inválida. No se han eliminado ni movido.</p>`:''}</section>`:'';
     const quickZone=zoneTools?`<section class="layout-v207-context-card" aria-label="Acciones de zona">
         <div class="layout-v207-zone-title"><span class="layout-v207-zone-dot" style="background:${escapeHtml(zone.color||'#4a896e')}"></span><div><strong>${escapeHtml(zone.name||zone.id)}</strong><small>${escapeHtml(zone.id)} · ${zoneRacks} racks vinculados</small></div></div>
         <button type="button" class="btn primary layout-v207-convert" id="v206ZoneToArea" title="Usa el contorno de la zona como nueva área principal">⇧ Convertir zona en área</button>
         <div class="layout-v207-context-actions"><button type="button" class="seg-btn" id="v207FocusZone">Centrar zona</button><button type="button" class="seg-btn" id="v207EditArea">Editar área</button></div>
-        <p class="tiny muted">La conversión conserva los racks, muros y datos de la zona. Puedes deshacerla con Ctrl+Z.</p>
+        <p class="tiny muted">Zona virtual: no genera paredes. Al convertirla en área, todas las demás zonas deberán quedar dentro del nuevo perímetro.</p>
       </section>`:'';
     return `
       <div class="layout-right-head">
@@ -1908,6 +1982,7 @@
       </div>
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
         ${!zoneTools?`<div class="layout-v207-selection"><span>Seleccionado</span><strong>${escapeHtml(summary.title)}</strong></div>`:''}
+        ${areaDashboard}
         ${quickZone}
         ${rackMode && rack ? modularStackCard(rack) : ''}
         ${layoutFold('visual','Visualización y capas',`        <section class="layout-prop-card">
@@ -2041,7 +2116,7 @@
             ${isRoomLinkedZone(zone)?`<label>Geometría<input value="Vinculada · arrastrable" disabled></label>`:''}
           </div>
           <details class="layout-v207-advanced" data-layout-fold="zoneAdvanced" ${layoutPanelOpen('zoneAdvanced',false)?'open':''}><summary>Edición avanzada <span>Vértices · giros · división</span></summary>
-          <div class="layout-template-grid zone-rotate-grid" style="margin-top:10px">${isRoomLinkedZone(zone)?`<button class="seg-btn active" id="rpSelectZoneRoom">Editar muros del recinto</button><button class="seg-btn" id="rpDetachRoomZone">Desvincular geometría</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><div class="tiny muted layout-panel-hint" style="grid-column:1/-1">Arrastra para mover toda la geometría vinculada.</div>`:`<button class="seg-btn" id="rpZoneMinus15">Girar -15°</button><button class="seg-btn" id="rpZone15">Girar 15°</button><button class="seg-btn" id="rpZone45">Girar 45°</button><button class="seg-btn" id="rpZone90">Girar 90°</button><button class="seg-btn" id="rpDuplicateZone">Duplicar zona</button><button class="seg-btn" id="rpLockZones">${appState.editor.zonesLocked?'Desbloquear zonas':'Bloquear zonas'}</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><button class="seg-btn" id="rpZoneRemoveVertex">− Vértice</button><button class="seg-btn" id="rpZoneSplitVertical">Dividir vertical</button><button class="seg-btn" id="rpZoneSplitHorizontal">Dividir horizontal</button><button class="seg-btn" id="rpAllEdgesWalls">Todas aristas → muro</button><button class="seg-btn" id="rpClearEdgesWalls">Quitar muros zona</button>`}</div>
+          <div class="layout-template-grid zone-rotate-grid" style="margin-top:10px">${isRoomLinkedZone(zone)?`<button class="seg-btn active" id="rpSelectZoneRoom">Editar muros del recinto</button><button class="seg-btn" id="rpDetachRoomZone">Desvincular geometría</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><div class="tiny muted layout-panel-hint" style="grid-column:1/-1">Arrastra para mover toda la geometría vinculada.</div>`:`<button class="seg-btn" id="rpZoneMinus15">Girar -15°</button><button class="seg-btn" id="rpZone15">Girar 15°</button><button class="seg-btn" id="rpZone45">Girar 45°</button><button class="seg-btn" id="rpZone90">Girar 90°</button><button class="seg-btn" id="rpDuplicateZone">Duplicar zona</button><button class="seg-btn" id="rpLockZones">${appState.editor.zonesLocked?'Desbloquear zonas':'Bloquear zonas'}</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><button class="seg-btn" id="rpZoneRemoveVertex">− Vértice</button><button class="seg-btn" id="rpZoneSplitVertical">Dividir vertical</button><button class="seg-btn" id="rpZoneSplitHorizontal">Dividir horizontal</button><button class="seg-btn" id="rpGoWalls">Abrir Muros físicos</button>`}</div>
           </details>
         </section>` : ''}
         </div></details>
@@ -2283,7 +2358,8 @@
   function v206PromoteZoneToArea(zone){
     if(!zone||!Array.isArray(zone.pts)||zone.pts.length<3)return;
     const others=(appState.layout?.zones||[]).filter(z=>z.id!==zone.id);
-    const out=others.filter(z=>(z.pts||[]).some(p=>!(pointInPoly(p,zone.pts)||pointNearPolygonEdge(p,zone.pts,1))));
+    const out=others.filter(z=>!v209ZoneInsideArea(z.pts,zone.pts));
+    if(out.length){showToast(`No se puede convertir: ${out.length} zona(s) quedarían fuera del nuevo perímetro. Reubícalas primero.`, 'warning',5200);return false;}
     recordHistorySnapshot('structure');ensureLayoutMeta();
     appState.layout.meta.siteBoundary={id:'AREA-GENERAL',name:zone.name||`Área de ${zone.id}`,pts:clone(zone.pts)};
     appState.layout.meta.autoFitBoundaryToZones=false;
@@ -2544,6 +2620,7 @@
 
     const selectedWall = findWallById(appState.selectedWallId);
     const selectedOpening = findOpeningById(appState.selectedOpeningId);
+    if($('#rpGoWalls')) $('#rpGoWalls').onclick=()=>{appState.editor.architectureTool='walls';appState.editor.mode='select';renderLayoutEditor();};
     if($('#v203WallPlacement')) $('#v203WallPlacement').onchange=e=>{appState.editor.wallDefaultPlacement=normalizeWallPlacement(e.target.value);};
     if($('#v203WallThickness')) $('#v203WallThickness').oninput=e=>{const n=Number(e.target.value);if(Number.isFinite(n))appState.editor.wallDraftThickness=n;};
     if($('#v203WallHeight')) $('#v203WallHeight').oninput=e=>{const n=Number(e.target.value);if(Number.isFinite(n))appState.editor.wallDraftHeight=n;};
@@ -2749,7 +2826,7 @@
           ${layoutWorkspaceTabs()}
           ${architectureMode?layoutWallSubtabs():''}
           <div class="layout-cad-localbar-v80">
-            ${architectureMode ? '<button class="btn primary v80-zone-btn" id="btnAreaPlus">+ Área</button><button class="btn primary v80-zone-btn" id="btnZonePlus">+ Zona</button>' : urbanismMode ? '<button class="btn primary v80-zone-btn" id="btnStreetPlus">+ Calle</button>' : '<button class="btn primary v80-zone-btn" data-emode="rack">+ Rack</button>'}
+            ${architectureMode ? '<button class="btn primary v80-zone-btn" id="btnAreaPlus">+ Área</button><button class="btn primary v80-zone-btn" id="btnZonePlus">+ Zona virtual</button>' : urbanismMode ? '<button class="btn primary v80-zone-btn" id="btnStreetPlus">+ Calle</button>' : '<button class="btn primary v80-zone-btn" data-emode="rack">+ Rack</button>'}
             <select id="layoutBranchSelect" class="seg-btn v80-branch-select">${(appState.admin.branches||[]).map((b,i)=>`<option value="${i}" ${i===getActiveLayoutBranchIndex()?'selected':''}>${escapeHtml(b.name||('Sucursal '+(i+1)))}</option>`).join('')}</select>
             ${rackMode?layoutLevelSelector():''}
             ${urbanismMode?`<button type="button" class="seg-btn" id="streetCornerToggle">${getStreetCornerStyle()==='diagonal'?'Esquina diagonal':'Esquina 90°'}</button>`:''}
@@ -3307,18 +3384,36 @@
           if(e.button!==0)return;
           e.preventDefault();e.stopPropagation();
           const original=clone(sites[index]),historyBefore=snapshotForType('structure');let moved=false;
+          // El muro perimetral comparte el punto estructural con el vértice
+          // del área. Conservar nodos e ID de muros evita desprendimientos.
+          const attachedNodes=(appState.layout.wallNodes||[])
+            .filter(n=>Math.hypot(n.x-original.x,n.y-original.y)<=1.2)
+            .map(n=>({id:n.id,x:n.x,y:n.y}));
+          const attachedWallEnds=(appState.layout.walls||[]).flatMap(w=>[
+            ...(Math.hypot(w.x1-original.x,w.y1-original.y)<=1.2?[{wallId:w.id,side:'a',x:w.x1,y:w.y1}]:[]),
+            ...(Math.hypot(w.x2-original.x,w.y2-original.y)<=1.2?[{wallId:w.id,side:'b',x:w.x2,y:w.y2}]:[])
+          ]);
+          const updateAttached=next=>{
+            const dx=next.x-original.x,dy=next.y-original.y;
+            attachedNodes.forEach(old=>{const n=(appState.layout.wallNodes||[]).find(n=>n.id===old.id);if(n){n.x=old.x+dx;n.y=old.y+dy;}});
+            attachedWallEnds.forEach(old=>{const w=(appState.layout.walls||[]).find(w=>w.id===old.wallId);if(!w)return;
+              if(old.side==='a'){w.x1=old.x+dx;w.y1=old.y+dy;}else{w.x2=old.x+dx;w.y2=old.y+dy;}
+            });
+            syncManualWallsFromNodes();
+          };
           const move=evt=>{
             const raw=svgPoint(evt,svg);const next={x:isSnapEnabled()?snapGrid(raw.x):raw.x,y:isSnapEnabled()?snapGrid(raw.y):raw.y};
             if(appState.editor.orthoEnabled||evt.shiftKey){if(Math.abs(next.x-original.x)>=Math.abs(next.y-original.y))next.y=original.y;else next.x=original.x;}
             const polygon=sites.map((v,i)=>i===index?next:v);
-            if((appState.layout?.zones||[]).some(z=>(z.pts||[]).some(v=>!(pointInPoly(v,polygon)||pointNearPolygonEdge(v,polygon,1)))))return;
+            if((appState.layout?.zones||[]).some(z=>!v209ZoneInsideArea(z.pts,polygon)))return;
             if(!isValidStreetPolygon(polygon))return;
             sites[index]={...sites[index],...next};point.setAttribute('cx',String(next.x));point.setAttribute('cy',String(next.y));
+            updateAttached(next);
             moved=true;
           };
           const cleanup=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);};
           const finish=()=>{cleanup();if(moved && (sites[index].x!==original.x||sites[index].y!==original.y)){recordHistorySnapshot('structure',historyBefore);appState.layout.meta.autoFitBoundaryToZones=false;rebuildStreetNetwork();persistActiveLayout();}renderLayoutEditor();};
-          const cancel=()=>{sites[index]=original;cleanup();renderLayoutEditor();};
+          const cancel=()=>{sites[index]=original;updateAttached(original);cleanup();renderLayoutEditor();};
           window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish,{once:true});window.addEventListener('pointercancel',cancel,{once:true});
         });
         overlayLayer.appendChild(point);
@@ -3376,7 +3471,7 @@
     }
 
     ensureWallTopology();
-    (appState.layout.rooms||[]).forEach(room=>{ const pts=roomPointsRaw(room); if(pts.length<3) return; const linked=getRoomLinkedZone(room); const selected=appState.selectedRoomId===room.id; const d=pts.map((pt,i)=>`${i?'L':'M'} ${pt.x} ${pt.y}`).join(' ')+' Z'; const path=svgEl('path',{d,class:`layout-room-fill ${selected?'selected':''} ${linked?'is-zone':''}`,fill:linked?hexToRgba(linked.color||'#6ff0a8',selected?.14:.075):(selected?'rgba(77,222,166,.12)':'rgba(77,222,166,.055)'),stroke:linked?(linked.color||'#6ff0a8'):(selected?'rgba(111,240,168,.88)':'rgba(77,222,166,.22)'),'stroke-width':selected?'2.3':'1','stroke-dasharray':linked?'5 4':'8 7','data-room-id':room.id,style:'cursor:pointer'}); path.addEventListener('pointerdown',evt=>{ if(!isStructureLayoutScreen()||appState.editor.mode!=='select') return; evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; appState.selectedEdge={zoneId:'',a:-1,b:-1}; appState.selectedVertex={zoneId:'',idx:-1}; renderLayoutEditor(); }); roomLayer.appendChild(path); const c={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}; const t=svgEl('text',{x:c.x,y:c.y,class:`layout-room-label ${selected?'selected':''}`,'text-anchor':'middle','data-room-id':room.id,style:'cursor:pointer;pointer-events:auto'}); const area=Math.round(polygonAreaAbs(pts)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000*100)/100; t.textContent=`${linked?`${linked.name||linked.id} · `:''}${room.name} · ${area} m²`; t.addEventListener('pointerdown',evt=>{ evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); }); roomLayer.appendChild(t); });
+    (appState.layout.meta?.zoneSemantics==='virtual'?[]:(appState.layout.rooms||[])).forEach(room=>{ const pts=roomPointsRaw(room); if(pts.length<3) return; const linked=getRoomLinkedZone(room); const selected=appState.selectedRoomId===room.id; const d=pts.map((pt,i)=>`${i?'L':'M'} ${pt.x} ${pt.y}`).join(' ')+' Z'; const path=svgEl('path',{d,class:`layout-room-fill ${selected?'selected':''} ${linked?'is-zone':''}`,fill:linked?hexToRgba(linked.color||'#6ff0a8',selected?.14:.075):(selected?'rgba(77,222,166,.12)':'rgba(77,222,166,.055)'),stroke:linked?(linked.color||'#6ff0a8'):(selected?'rgba(111,240,168,.88)':'rgba(77,222,166,.22)'),'stroke-width':selected?'2.3':'1','stroke-dasharray':linked?'5 4':'8 7','data-room-id':room.id,style:'cursor:pointer'}); path.addEventListener('pointerdown',evt=>{ if(!isStructureLayoutScreen()||appState.editor.mode!=='select') return; evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; appState.selectedEdge={zoneId:'',a:-1,b:-1}; appState.selectedVertex={zoneId:'',idx:-1}; renderLayoutEditor(); }); roomLayer.appendChild(path); const c={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}; const t=svgEl('text',{x:c.x,y:c.y,class:`layout-room-label ${selected?'selected':''}`,'text-anchor':'middle','data-room-id':room.id,style:'cursor:pointer;pointer-events:auto'}); const area=Math.round(polygonAreaAbs(pts)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000*100)/100; t.textContent=`${linked?`${linked.name||linked.id} · `:''}${room.name} · ${area} m²`; t.addEventListener('pointerdown',evt=>{ evt.stopPropagation(); appState.selectedRoomId=room.id; appState.selectedZoneId=linked?.id||''; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); }); roomLayer.appendChild(t); });
 
 
     const flipSectionDirection = (axis) => {
@@ -3473,7 +3568,7 @@
       const d = zone.pts.map((p,i)=>`${i===0?'M':'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
       const zoneWallThickness = getZoneWallThickness(zone);
       const wallInsetOpacity = appState.editor.wallsVisible === false ? (appState.selectedZoneId===zone.id ? .34 : .22) : (appState.selectedZoneId===zone.id ? .20 : .12);
-      const path = svgEl('path',{d,class:'ortho-zone' + (appState.selectedZoneId===zone.id ? ' selected' : ''),fill:zone.floorFinish && FLOOR_FINISHES[zone.floorFinish] && zone.floorFinish!=='default' ? `url(#floor-${zone.floorFinish})` : hexToRgba(zone.color || '#ffd84d', wallInsetOpacity),stroke:hexToRgba(zone.color || '#ffd84d', appState.editor.wallsVisible === false ? .98 : .46),'stroke-width':'1.4','data-zone-id':zone.id});
+      const path = svgEl('path',{d,class:'ortho-zone' + (appState.selectedZoneId===zone.id ? ' selected' : ''),fill:zone.floorFinish && FLOOR_FINISHES[zone.floorFinish] && zone.floorFinish!=='default' ? `url(#floor-${zone.floorFinish})` : hexToRgba(zone.color || '#ffd84d', wallInsetOpacity),stroke:hexToRgba(zone.color || '#ffd84d', appState.editor.wallsVisible === false ? .98 : .46),'stroke-width':'1.4','stroke-dasharray':'6 4','data-zone-id':zone.id});
       path.addEventListener('pointerdown', e => {
         try{ e.currentTarget?.setPointerCapture?.(e.pointerId); }catch(_){}
         startZoneDrag(e, zone.id);
@@ -4640,7 +4735,13 @@
       ensureLayoutMeta();
       const w = 760, h = 540;
       const cx = Number(p.x || 0), cy = Number(p.y || 0);
-      appState.layout.meta.siteBoundary = { id:'AREA-GENERAL', name:'Área general', pts:[{x:cx-w/2,y:cy-h/2},{x:cx+w/2,y:cy-h/2},{x:cx+w/2,y:cy+h/2},{x:cx-w/2,y:cy+h/2}] };
+      const proposedArea=[{x:cx-w/2,y:cy-h/2},{x:cx+w/2,y:cy-h/2},{x:cx+w/2,y:cy+h/2},{x:cx-w/2,y:cy+h/2}];
+      if((appState.layout.zones||[]).some(z=>!v209ZoneInsideArea(z.pts,proposedArea))){
+        showToast('El área nueva dejaría zonas existentes fuera. Usa Editar vértices o mueve el local completo.', 'warning',3800);
+        appState.editor.mode='select';renderLayoutEditor();return;
+      }
+      recordHistorySnapshot('structure');
+      appState.layout.meta.siteBoundary = { id:'AREA-GENERAL', name:'Área útil del local', pts:proposedArea };
       appState.layout.meta.autoFitBoundaryToZones=false;
       appState.editor.mode = 'select';
       persistActiveLayout();
@@ -4663,8 +4764,8 @@
       const id = nextZoneId();
       const halfW = Math.min(90, Math.max(48, layoutBoundaryBounds().w * 0.14));
       const halfH = Math.min(64, Math.max(38, layoutBoundaryBounds().h * 0.12));
-      const newZone={ id, name:'Zona ' + id, color:getNextZoneColor(getBranchColor(getActiveLayoutBranchIndex())), wallThickness:14, pts:[{x:safe.x-halfW,y:safe.y-halfH},{x:safe.x+halfW,y:safe.y-halfH},{x:safe.x+halfW,y:safe.y+halfH},{x:safe.x-halfW,y:safe.y+halfH}] };
-      if(!newZone.pts.every(pt => pointInLayoutBoundary(pt))){ showToast('La zona debe quedar dentro del área general.','warning',2200); return; }
+      const newZone={ id, kind:'virtual', name:'Zona ' + id, color:getNextZoneColor(getBranchColor(getActiveLayoutBranchIndex())), wallThickness:14, pts:[{x:safe.x-halfW,y:safe.y-halfH},{x:safe.x+halfW,y:safe.y-halfH},{x:safe.x+halfW,y:safe.y+halfH},{x:safe.x-halfW,y:safe.y+halfH}] };
+      if(!v209ZoneInsideArea(newZone.pts,layoutBoundaryPts())){showToast('La zona debe quedar totalmente dentro del área útil. Prueba más cerca del centro o un espacio libre.','warning',2700);return;}
       const collision=findZoneOverlap('',newZone.pts); if(collision){showToast(`No se puede crear aquí: se superpondría con ${collision.name||collision.id}.`,'warning',2400);return;}
       appState.layout.zones.push(newZone); normalizeZoneAndRackIds(); persistActiveLayout();
       appState.selectedZoneId = id; appState.selectedStreetId = ''; appState.selectedStreetFurnitureId=''; appState.editor.mode = 'select'; renderLayoutEditor(); return;

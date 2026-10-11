@@ -446,7 +446,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   function ensureLayoutMeta(){
     if(!appState.layout.meta || typeof appState.layout.meta !== 'object') appState.layout.meta = {};
     if(!Number.isFinite(Number(appState.layout.meta.scaleCmPerUnit)) || Number(appState.layout.meta.scaleCmPerUnit) <= 0) appState.layout.meta.scaleCmPerUnit = 1;
-    if(typeof appState.layout.meta.autoFitBoundaryToZones !== 'boolean') appState.layout.meta.autoFitBoundaryToZones = true;
+    if(typeof appState.layout.meta.autoFitBoundaryToZones !== 'boolean') appState.layout.meta.autoFitBoundaryToZones = !Array.isArray(appState.layout.meta.siteBoundary?.pts);
     if(!appState.layout.meta.siteBoundary || !Array.isArray(appState.layout.meta.siteBoundary.pts) || appState.layout.meta.siteBoundary.pts.length < 3){
       if(!fitSiteBoundaryToZones(true)){
         appState.layout.meta.siteBoundary = {
@@ -460,9 +460,26 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
           ]
         };
       }
-    } else if(appState.layout.meta.autoFitBoundaryToZones !== false){
-      fitSiteBoundaryToZones(true);
     }
+    // V209: el perímetro interior útil deja de recalcularse según las zonas.
+    // Migración no destructiva: se conserva el área guardada, todos los muros,
+    // racks, nomenclaturas y referencias geométricas preexistentes.
+    if(!appState.layout.meta.commercialAreaV209){
+      appState.layout.meta.commercialAreaV209=true;
+      appState.layout.meta.zoneSemantics='virtual';
+      appState.layout.meta.wallSemantics='area-physical';
+      (appState.layout.zones||[]).forEach(z=>{
+        z.kind='virtual';
+        if(z.linkedRoomId){
+          z.legacyRoomId=z.linkedRoomId;
+          delete z.linkedRoomId;
+          delete z.dynamicFromRoom;
+          delete z.roomLinkBroken;
+        }
+      });
+      (appState.layout.walls||[]).forEach(w=>{w.ownerAreaId='AREA-GENERAL';});
+    }
+    appState.layout.meta.autoFitBoundaryToZones=false;
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
     appState.layout.streets = appState.layout.streets.map(street => {
       if(street && street.side && (!Array.isArray(street.outerSidewalkPts) || street.outerSidewalkPts.length < 4)){

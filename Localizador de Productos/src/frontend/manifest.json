@@ -1,5 +1,5 @@
 {
-  "version": "211",
+  "version": "212",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -9,6 +9,7 @@
     "40-sheet-viewer-tools.js",
     "50-viewer-3d.js",
     "60-layout-editor.js",
+    "61-polygon-editor-v212.js",
     "65-layout-pro-v117.js",
     "66-topology-v128.js",
     "70-rack-editor.js",
@@ -17,5 +18,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V211: zonas virtuales editables, colores únicos, fusión, eliminación no destructiva, límites compartidos, Undo/Redo con referencias de racks y muros independientes"
+  "notes": "V212: modos independientes, pol\u00edgonos, v\u00e9rtices y aristas exactas, edici\u00f3n segura del \u00e1rea"
 }

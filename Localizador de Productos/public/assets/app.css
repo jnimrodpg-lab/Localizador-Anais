@@ -7535,4 +7535,27 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
 .v211-zone-merge small{color:var(--ink-soft,#766e65);font-size:10px;line-height:1.45}
 .layout-v207-context-actions .danger{background:rgba(170,65,54,.08);color:#a74c3e;border-color:rgba(170,65,54,.3)}
 @media(max-width:1050px){.v211-zone-list{grid-template-columns:minmax(0,1fr)}}
+/* V212 — herramientas poligonales separadas */
+.v212-subtabs {display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}
+.v212-subtabs .seg-btn {white-space:normal;min-width:0;min-height:38px;font-size:12px}
+.v212-editor {display:grid;gap:10px;min-width:0}
+.v212-editor label {display:grid;gap:5px;min-width:0;font-size:12px}
+.v212-editor select,.v212-editor input {width:100%;min-width:0;box-sizing:border-box}
+.v212-editor .layout-template-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.v212-editor .seg-btn {white-space:normal;min-width:0;font-size:12px;line-height:1.35;min-height:36px}
+.v212-editor small {font-size:11px;line-height:1.5}
+.v212-review,.v212-draft {padding:12px;border-radius:10px;border:1px solid var(--border,rgba(166,141,96,.4));background:var(--panel-bg,rgba(158,133,83,.08));font-size:12px;line-height:1.5}
+.v212-review {border-color:#b87932}
+.v212-editor button:disabled {opacity:.45;cursor:not-allowed}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .layout-v209-area-summary {order:-4!important}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .v211-zone-manager {order:-3!important;max-height:220px;overflow:auto;flex-shrink:0}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .v212-editor {order:-2!important;flex-shrink:0}
+.v212-editor .v212-exact {border:1px solid var(--line);border-radius:9px;padding:8px}
+.v212-editor .v212-exact summary {cursor:pointer;font-weight:600;font-size:12px}
+.v212-editor .v212-exact[open] summary {margin-bottom:10px}
+/* La regla responsive heredada de cuatro paneles no corresponde al editor. */
+@media(min-width:981px){
+ #appRoot.app.editor-workspace {grid-template-rows:minmax(0,1fr)!important}
+ #appRoot.app.editor-workspace > .sidebar,#appRoot.app.editor-workspace > .content-panel {grid-row:1!important;height:100%!important;min-height:0!important}
+}
 

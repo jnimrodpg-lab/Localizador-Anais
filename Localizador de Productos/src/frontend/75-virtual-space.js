@@ -1244,8 +1244,10 @@
           });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
-            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .98, 4, zone.floorFinish||'default');
-            addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
+            const zoneColor=new THREE.Color(zone.color||'#2f7b6e');
+            const surface=addTopSurfaceFromPts(pts, 0xe9d7bb, .022, zoneColor, .98, 4, zone.floorFinish||'default');
+            if(surface)surface.userData.zoneId=zone.id;
+            addOutlineFromPts(pts, zoneColor, .03, .98);
             addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
           }
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();

@@ -1008,7 +1008,7 @@
   }
   function updateUndoRedoUi(){
     ['layout','structure','distribution','racks'].forEach(type => {
-      const bucket = getHistoryBucket(type);
+      const bucket = getHistoryBucket(type==='layout'&&isLayoutWorkspaceScreen()?(isRackDistributionScreen()?'distribution':appState.editor.areaMoveMode?'layout':'structure'):type);
       const undoBtn = document.querySelector(`[data-history-undo="${type}"]`);
       const redoBtn = document.querySelector(`[data-history-redo="${type}"]`);
       if(undoBtn) undoBtn.disabled = !bucket.undoStack.length;
@@ -3645,6 +3645,7 @@ const DEFAULT_GRID_SIZE = 2;
   }
 
   function rotateZoneWithContents(zoneId, deltaDegrees, { persist=true, rerender=true } = {}){
+    if(findZoneById(zoneId)?.locked)return false;
     const zone = findZoneById(zoneId);
     if(!zone || !Array.isArray(zone.pts) || zone.pts.length < 3) return false;
     const delta = Number(deltaDegrees) || 0;
@@ -4439,6 +4440,7 @@ const DEFAULT_GRID_SIZE = 2;
     const zoneRemap = new Map();
     const preserveRackPlacement = isStructureLayoutScreen() || (typeof distributionIsFreeMove==='function' && distributionIsFreeMove());
     zones.forEach((z, zi)=>{
+      if(appState.layout.meta?.zoneSemantics==='virtual'){if(!z.name)z.name='Zona '+z.id;return;}
       const previousId = String(z?.id || '').toUpperCase();
       let nextId = previousId;
       if(isStorageZoneLike(previousId, z?.name)) nextId = 'ALM';
@@ -4454,7 +4456,7 @@ const DEFAULT_GRID_SIZE = 2;
     (appState.layout.racks||[]).forEach(r=>{
       if(!r) return;
       if(zoneRemap.has(String(r.zoneId || '').toUpperCase())) r.zoneId = zoneRemap.get(String(r.zoneId || '').toUpperCase());
-      if(r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
+      if(appState.layout.meta?.zoneSemantics!=='virtual' && r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
         const est = parseInt((String(r.id || '').match(/-E(\d+)/i)||[])[1] || '1', 10) || 1;
         r.id = `ALM-E${est}`;
       }
@@ -4510,6 +4512,7 @@ const DEFAULT_GRID_SIZE = 2;
     renderLayoutEditor();
   }
   function duplicateSelectedZone(){
+    if(findZoneById(appState.selectedZoneId)?.locked)return;
     const zone = findZoneById(appState.selectedZoneId); if(!zone || !isStructureLayoutScreen()) return;
     const cloneZone = clone(zone);
     const newId = nextZoneId();
@@ -4524,6 +4527,7 @@ const DEFAULT_GRID_SIZE = 2;
       if(!hit){candidate=pts;break;}
     }
     if(!candidate){ if(typeof showToast==='function')showToast('No hay espacio libre cercano para duplicar la zona sin superponerla.','warning',2600); return; }
+    recordHistorySnapshot('structure');
     cloneZone.pts = candidate;
     ensureZoneSectionCuts(cloneZone);
     appState.layout.zones.push(cloneZone);
@@ -10004,6 +10008,7 @@ function getSheetBranchOpenMap(){
     if(appState.editor.selectedStackLevel===undefined) appState.editor.selectedStackLevel=0;
     if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
     if(appState.editor.editSiteBoundary === undefined) appState.editor.editSiteBoundary=false;
+    if(!['area','zones','walls'].includes(appState.editor.architectureTool)) appState.editor.architectureTool='zones';
     if(appState.editor.structureClipboard === undefined) appState.editor.structureClipboard = null;
     if(appState.editor.keyboardBoundV111 === undefined) appState.editor.keyboardBoundV111 = false;
     if(appState.editor.wallMergePreview === undefined) appState.editor.wallMergePreview = null;
@@ -10377,12 +10382,14 @@ function getSheetBranchOpenMap(){
     if(!pts.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)))return false;
     if(polygonAreaAbs(pts)<1)return false;
     const eps=.01;
+    for(let i=0;i<pts.length;i++) {const a=pts[(i+pts.length-1)%pts.length],b=pts[i],c=pts[(i+1)%pts.length];if(Math.abs((b.x-a.x)*(c.y-b.y)-(b.y-a.y)*(c.x-b.x))<eps&&(b.x-a.x)*(c.x-b.x)+(b.y-a.y)*(c.y-b.y)<0)return false;}
     for(let i=0;i<pts.length;i++){
       const a=pts[i],b=pts[(i+1)%pts.length];
       if(Math.hypot(b.x-a.x,b.y-a.y)<1)return false;
       for(let j=i+1;j<pts.length;j++){
         if(j===i+1||(i===0&&j===pts.length-1))continue;
-        if(segmentProperIntersection(a,b,pts[j],pts[(j+1)%pts.length],eps))return false;
+        const c=pts[j],d=pts[(j+1)%pts.length];
+        if(segmentProperIntersection(a,b,c,d,eps)||v209PointOnSegment(a,c,d,eps)||v209PointOnSegment(b,c,d,eps)||v209PointOnSegment(c,a,b,eps)||v209PointOnSegment(d,a,b,eps))return false;
       }
     }
     return true;
@@ -10450,6 +10457,7 @@ function getSheetBranchOpenMap(){
     });
   }
   function v211DeleteZone(zoneId){
+    if(findZoneById(zoneId)?.locked){showToast('Desbloquea la zona antes de eliminarla.','warning');return false;}
     const zone=findZoneById(zoneId);if(!zone)return false;
     const related=(appState.layout?.racks||[]).filter(r=>r.zoneId===zoneId);
     const msg=`¿Eliminar la delimitación virtual «${zone.name||zone.id}»?${related.length?' Sus '+related.length+' rack(s) quedarán SIN ZONA, sin perder sus ID, modelos, SKU ni posiciones.':''} Los muros físicos no se eliminarán.`;
@@ -10528,7 +10536,10 @@ function getSheetBranchOpenMap(){
     for(const [id,pts] of changes){const z=findZoneById(id);if(z)z.pts=clone(pts);}
   }
   function v211TrySharedZoneMove(zoneId,indices,nextPts,originalZones){
-    const changes=v211SharedVertexEdits(zoneId,indices,nextPts,originalZones);
+    let changes=v211SharedVertexEdits(zoneId,indices,nextPts,originalZones);
+    if(typeof v212ZoneChanges==='function'){const original=originalZones.find(z=>z.id===zoneId);if(original){const next=clone(original.pts);indices.forEach((i,k)=>next[i]=nextPts[k]);changes=v212ZoneChanges(original,next,originalZones);}}
+    const locked=[...changes.keys()].find(id=>findZoneById(id)?.locked);
+    if(locked){showToast('Hay una zona bloqueada en el límite compartido.','warning');return false;}
     const problem=v211ValidateZoneEdits(changes);
     if(!problem){v211ApplyZoneEdits(changes);clearZoneCollisionPreview();return true;}
     setZoneCollisionPreview(zoneId,problem,changes?.get(zoneId));return false;
@@ -10582,6 +10593,7 @@ function getSheetBranchOpenMap(){
     return cleaned;
   }
   function v211MergeZones(baseId,otherId){
+    if(findZoneById(baseId)?.locked||findZoneById(otherId)?.locked){showToast('Desbloquea ambas zonas antes de fusionarlas.','warning');return false;}
     const base=findZoneById(baseId),other=findZoneById(otherId);if(!base||!other||base===other)return false;
     if(isRoomLinkedZone(base)||isRoomLinkedZone(other)){showToast('Desvincula las zonas de recintos físicos antes de unirlas.','warning',3000);return false;}
     const merged=v211MergePolygons(base.pts,other.pts);
@@ -10994,7 +11006,8 @@ function getSheetBranchOpenMap(){
     }
     return {x,y,type,label,nodeId};
   }
-  function cancelLayoutDrawing(){
+  function cancelLayoutDrawing({render=true}={}){
+    if(appState.editor)appState.editor.polygonDraft=null;
     if(!appState.editor) return;
     appState.editor.rackAlignMode='';appState.editor.rackAlignVertexA=null;appState.editor.rackAlignTargetId='';appState.editor.areaMoveMode=false;
     appState.editor.pendingWallPoint=null;
@@ -11003,8 +11016,8 @@ function getSheetBranchOpenMap(){
     appState.editor.wallChainStartNodeId='';
     appState.editor.wallLengthDraft='';
     appState.editor.measureDraft=null;
-    if(['wall','door','opening','measure','zone'].includes(appState.editor.mode)) appState.editor.mode='select';
-    if(isLayoutWorkspaceScreen()) renderLayoutEditor();
+    if(['wall','door','opening','measure','zone','polygon'].includes(appState.editor.mode)) appState.editor.mode='select';
+    if(render&&isLayoutWorkspaceScreen())renderLayoutEditor();
   }
   function commitWallLengthFromHud(value){
     if(appState.editor.mode!=='wall' || !appState.editor.pendingWallPoint) return false;
@@ -11115,6 +11128,7 @@ function getSheetBranchOpenMap(){
     }else if(clip.type==='wall'){
       const src=clip.data; const a={x:Number(src.x1||0)+off,y:Number(src.y1||0)+off}, b={x:Number(src.x2||0)+off,y:Number(src.y2||0)+off}; const next=createWallSegment(a,b); if(next){ next.thickness=src.thickness; next.height=src.height; next.name=src.name; }
     }else if(clip.type==='zone'){
+      const proposal=(clip.data.pts||[]).map(pt=>({x:pt.x+off,y:pt.y+off}));const problem=v209ZoneViolation('',proposal);if(problem){showToast('No se puede pegar la zona: '+problem.name,'warning');return false;}
       const next=clone(clip.data); next.id=nextZoneId(); next.name=`${next.name||'Zona'} copia`; next.pts=(next.pts||[]).map(pt=>({x:pt.x+off,y:pt.y+off})); delete next.edgeWalls; appState.layout.zones.push(next); appState.selectedZoneId=next.id;
     }
     ensureWallTopology(); persistActiveLayout(); renderLayoutEditor(); return true;
@@ -11132,6 +11146,7 @@ function getSheetBranchOpenMap(){
       const tag=String(e.target?.tagName||'').toLowerCase(); const editing=['input','textarea','select'].includes(tag) || e.target?.isContentEditable;
       if(e.key==='Escape'){ e.preventDefault(); cancelLayoutDrawing(); return; }
       if(editing) return;
+      if(e.key==='Enter'&&appState.editor.polygonDraft){e.preventDefault();v212FinishPolygon();return;}
       if((e.ctrlKey||e.metaKey) && String(e.key||'').toLowerCase()==='z'){
         e.preventDefault();const bucket=isRackDistributionScreen()?'distribution':(appState.editor.areaMoveMode?'layout':'structure');
         if(e.shiftKey)redoHistory(bucket);else undoHistory(bucket);
@@ -11142,7 +11157,7 @@ function getSheetBranchOpenMap(){
       }
       if(e.key==='F8' && !isRackDistributionScreen()){e.preventDefault();appState.editor.orthoEnabled=!appState.editor.orthoEnabled;renderLayoutEditor();return;}
       const key=String(e.key||'').toLowerCase();
-      if((e.key==='Delete'||e.key==='Backspace') && !e.ctrlKey && !e.metaKey){ e.preventDefault(); deleteLayoutSelection(); return; }
+      if((e.key==='Delete'||e.key==='Backspace') && !e.ctrlKey && !e.metaKey){e.preventDefault();if(appState.editor.polygonDraft){appState.editor.polygonDraft.pts.pop();renderLayoutEditor();return;}if(appState.editor.architectureTool==='area'){const sel=appState.editor.geometrySelection;if(sel?.type==='vertex')v212Remove('area',sel.index);return;}if(appState.editor.architectureTool==='zones'&&appState.selectedVertex?.idx>=0){v212Remove('zones',appState.selectedVertex.idx);return;}deleteLayoutSelection();return;}
       if((e.ctrlKey||e.metaKey) && key==='c'){ if(copySelectedStructure()) e.preventDefault(); return; }
       if((e.ctrlKey||e.metaKey) && key==='v'){ if(pasteStructureClipboard()) e.preventDefault(); return; }
       if((e.ctrlKey||e.metaKey) && key==='d'){ if(duplicateSelectedStructure()) e.preventDefault(); return; }
@@ -11865,11 +11880,8 @@ function getSheetBranchOpenMap(){
     return `<nav class="layout-v200-tabs" aria-label="Herramientas del layout">${choices.map(([key,label,desc])=>`<button type="button" data-layout-workspace="${key}" class="layout-v200-tab ${active===key?'active':''}" aria-pressed="${active===key}"><b>${label}</b><small>${desc}</small></button>`).join('')}</nav>`;
   }
   function layoutWallSubtabs(){
-    const active=appState.editor.architectureTool==='walls'?'walls':'geometry';
-    return `<div class="v203-wall-subtabs" role="group" aria-label="Herramientas de arquitectura">
-      <button type="button" class="seg-btn ${active==='geometry'?'active':''}" data-architecture-tool="geometry">Geometría · áreas y zonas</button>
-      <button type="button" class="seg-btn ${active==='walls'?'active':''}" data-architecture-tool="walls">Muros · crear y editar</button>
-    </div>`;
+    const active=appState.editor.architectureTool;
+    return `<div class="v203-wall-subtabs v212-subtabs" role="group" aria-label="Herramientas de arquitectura">${[['area','Área comercial'],['zones','Zonas'],['walls','Muros']].map(([key,label])=>`<button type="button" class="seg-btn ${active===key?'active':''}" data-architecture-tool="${key}" aria-pressed="${active===key}">${label}</button>`).join('')}</div>`;
   }
   function layoutWallToolsMarkup(){
     const wallMode=appState.editor.architectureTool==='walls';
@@ -12158,11 +12170,11 @@ function getSheetBranchOpenMap(){
       appState.editor.layoutInspectorSelection=focusIdentity;
       appState.editor.rightPanelScrollTop=0;
     }
-    const zoneTools=architectureMode && zone && appState.editor.architectureTool!=='walls' && !appState.selectedWallId && !appState.selectedOpeningId;
+    const zoneTools=architectureMode && zone && appState.editor.architectureTool==='zones' && !appState.selectedWallId && !appState.selectedOpeningId;
     const zoneRacks=zoneTools?(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length:0;
     const metricsV209=architectureMode?v209AreaMetrics():null;
     const areaDashboard=architectureMode?`<section class="layout-v209-area-summary"><div class="layout-prop-title">Área interior útil · local comercial</div><div class="layout-v209-stats"><div><strong>${metricsV209.total.toFixed(2)}</strong><small>m² totales</small></div><div><strong>${metricsV209.assigned.toFixed(2)}</strong><small>m² zonificados</small></div><div><strong>${metricsV209.unassigned.toFixed(2)}</strong><small>m² libres</small></div></div><p class="tiny muted">${metricsV209.count} zonas virtuales · los muros son elementos físicos del área; dividir zonas no crea paredes.</p>${metricsV209.invalid?`<p class="tiny layout-v209-warning">${metricsV209.invalid} zona(s) heredadas necesitan ajuste: fuera del área, superposición o geometría inválida. No se han eliminado ni movido.</p>`:''}</section>`:'';
-    const zoneList=architectureMode && appState.editor.architectureTool!=='walls' ? `<section class="v211-zone-manager" aria-label="Gestor de zonas virtuales"><div class="layout-prop-title">Zonas virtuales · ${appState.layout.zones.length}</div><p class="tiny muted">Selecciona una zona por su color. Sus límites se editan en el plano; las paredes no se modifican.</p><div class="v211-zone-list">${appState.layout.zones.map(z=>`<button type="button" data-v211-zone="${escapeHtml(z.id)}" class="v211-zone-item ${z.id===appState.selectedZoneId?'active':''}"><span class="v211-zone-chip" style="background:${escapeHtml(z.color||'#72b58b')}"></span><b>${escapeHtml(z.name||z.id)}</b><small>${escapeHtml(z.id)}</small></button>`).join('')}</div>${v211OrphanRackCount()>0?`<div class="v211-orphans"><b>${v211OrphanRackCount()} rack(s) sin zona</b><div class="layout-prop-grid two"><select id="v211OrphanTarget"><option value="">Elegir destino</option>${appState.layout.zones.map(z=>`<option value="${escapeHtml(z.id)}">${escapeHtml(z.name||z.id)}</option>`).join('')}</select><button class="seg-btn" type="button" id="v211ReassignRacks">Reasignar</button></div></div>`:''}</section>`:'';
+    const zoneList=architectureMode && appState.editor.architectureTool==='zones' ? `<section class="v211-zone-manager" aria-label="Gestor de zonas virtuales"><div class="layout-prop-title">Zonas virtuales · ${appState.layout.zones.length}</div><p class="tiny muted">Selecciona una zona por su color. Sus límites se editan en el plano; las paredes no se modifican.</p><div class="v211-zone-list">${appState.layout.zones.map(z=>`<button type="button" data-v211-zone="${escapeHtml(z.id)}" class="v211-zone-item ${z.id===appState.selectedZoneId?'active':''}"><span class="v211-zone-chip" style="background:${escapeHtml(z.color||'#72b58b')}"></span><b>${escapeHtml(z.name||z.id)}</b><small>${escapeHtml(z.id)}</small></button>`).join('')}</div>${v211OrphanRackCount()>0?`<div class="v211-orphans"><b>${v211OrphanRackCount()} rack(s) sin zona</b><div class="layout-prop-grid two"><select id="v211OrphanTarget"><option value="">Elegir destino</option>${appState.layout.zones.map(z=>`<option value="${escapeHtml(z.id)}">${escapeHtml(z.name||z.id)}</option>`).join('')}</select><button class="seg-btn" type="button" id="v211ReassignRacks">Reasignar</button></div></div>`:''}</section>`:'';
     const quickZone=zoneTools?`<section class="layout-v207-context-card" aria-label="Acciones de zona">
         <div class="layout-v207-zone-title"><span class="layout-v207-zone-dot" style="background:${escapeHtml(zone.color||'#4a896e')}"></span><div><strong>${escapeHtml(zone.name||zone.id)}</strong><small>${escapeHtml(zone.id)} · ${zoneRacks} racks vinculados</small></div></div>
         <button type="button" class="btn primary layout-v207-convert" id="v206ZoneToArea" title="Usa el contorno de la zona como nueva área principal">⇧ Convertir zona en área</button>
@@ -12177,6 +12189,7 @@ function getSheetBranchOpenMap(){
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
         ${!zoneTools?`<div class="layout-v207-selection"><span>Seleccionado</span><strong>${escapeHtml(summary.title)}</strong></div>`:''}
         ${areaDashboard}
+        ${architectureMode?v212GeometryMarkup():''}
         ${zoneList}
         ${quickZone}
         ${rackMode && rack ? modularStackCard(rack) : ''}
@@ -12204,7 +12217,7 @@ function getSheetBranchOpenMap(){
           </div>
 
         </section>`,false,'Orto · rejilla · cotas')}
-        ${rackMode ? layoutDistributionInspector() + v117RackToolsMarkup() + v117ValidationMarkup() : architectureMode ? layoutWallToolsMarkup() + (appState.editor.architectureTool==='walls'?'':layoutFold('technical','Herramientas CAD',v117StructureToolsMarkup(),false,'Recintos · nodos · contactos')) : layoutUrbanismInspector()}
+        ${rackMode ? layoutDistributionInspector() + v117RackToolsMarkup() + v117ValidationMarkup() : architectureMode ? layoutWallToolsMarkup() + (appState.editor.architectureTool!=='walls'?'':layoutFold('technical','Herramientas CAD',v117StructureToolsMarkup(),false,'Recintos · nodos · contactos')) : layoutUrbanismInspector()}
         <details class="layout-v207-fold layout-v207-tools" data-layout-fold="quick" ${layoutPanelOpen('quick',false)?'open':''}><summary><span>Herramientas adicionales</span><small>Acciones · referencia</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
         ${rackMode ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Acciones rápidas</div>
@@ -12227,7 +12240,7 @@ function getSheetBranchOpenMap(){
 
         </section>` : ''}
         </div></details>
-        <details class="layout-v207-fold layout-v207-area" data-layout-fold="area" ${layoutPanelOpen('area',false)?'open':''} ${architectureMode?'':'style="display:none"'}><summary><span>Área principal</span><small>Perímetro · posición · muros</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
+        <details class="layout-v207-fold layout-v207-area" data-layout-fold="area" ${layoutPanelOpen('area',false)?'open':''} ${architectureMode&&appState.editor.architectureTool==='area'?'':'style="display:none"'}><summary><span>Área principal</span><small>Perímetro · posición · muros</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
         ${architectureMode ? `<section class="layout-prop-card layout-site-properties">
           <div class="layout-prop-title">Área general · perímetro editable</div>
           <div class="layout-template-grid">
@@ -12291,7 +12304,7 @@ function getSheetBranchOpenMap(){
           </div><button type="button" class="seg-btn" id="rpUrbanTransform">Aplicar posición y giro</button>`;})():''}
           <div class="tiny muted" style="margin-top:8px">El mobiliario urbano se trata como un solo objeto agrupado. Puedes seleccionarlo y moverlo con snap en el layout, manteniendo la misma lectura en 2D y en Diseñar espacio 3D.</div>
         </section>`;})() : ''}
-        <details class="layout-v207-fold layout-v207-zone" data-layout-fold="zone" ${layoutPanelOpen('zone',true)?'open':''} ${architectureMode&&zone?'':'style="display:none"'}><summary><span>Propiedades de zona</span><small>Nombre · tamaño · acabado</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
+        <details class="layout-v207-fold layout-v207-zone" data-layout-fold="zone" ${layoutPanelOpen('zone',true)?'open':''} ${architectureMode&&zone&&appState.editor.architectureTool==='zones'?'':'style="display:none"'}><summary><span>Propiedades de zona</span><small>Nombre · tamaño · acabado</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
         ${architectureMode && zone ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Zona</div>
           <div class="layout-prop-grid two">
@@ -12544,6 +12557,7 @@ function getSheetBranchOpenMap(){
     (layout.streets||[]).forEach(st=>{const old=streetsById.get(st.id);if(!old)return;for(const field of ['roadPts','sidewalkPts','outerSidewalkPts'])movePoints(st[field],old[field]);(st.streetFurniture||[]).forEach(it=>{const oi=(old.streetFurniture||[]).find(n=>n.id===it.id);if(oi){it.x=Number(oi.x||0)+dx;it.y=Number(oi.y||0)+dy;}});});
   }
   function v206MoveAreaBy(dx,dy){
+    if(appState.layout.meta?.siteBoundary?.locked||(appState.layout.zones||[]).some(z=>z.locked)){showToast('Desbloquea el área y sus zonas para trasladar el conjunto.','warning');return;}
     if(!Number.isFinite(dx)||!Number.isFinite(dy)||(!dx&&!dy))return;
     const original=clone(appState.layout);
     recordHistorySnapshot('layout',original);
@@ -12552,6 +12566,7 @@ function getSheetBranchOpenMap(){
     persistActiveLayout();renderLayoutEditor();
   }
   function v206PromoteZoneToArea(zone){
+    if(appState.layout.meta?.siteBoundary?.locked){showToast('Desbloquea el área antes de reemplazarla.','warning');return;}
     if(!zone||!Array.isArray(zone.pts)||zone.pts.length<3)return;
     const others=(appState.layout?.zones||[]).filter(z=>z.id!==zone.id);
     const out=others.filter(z=>!v209ZoneInsideArea(z.pts,zone.pts));
@@ -12591,6 +12606,7 @@ function getSheetBranchOpenMap(){
   }
 
   function bindLayoutRightPanel(){
+    v212BindGeometryPanel();
     document.querySelectorAll('[data-layout-fold]').forEach(el=>{
       el.addEventListener('toggle',evt=>{
         if(evt.target!==el)return;
@@ -12695,33 +12711,17 @@ function getSheetBranchOpenMap(){
     const zone = findZoneById(appState.selectedZoneId);
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
-    if($('#rpSiteEdit')) $('#rpSiteEdit').onclick=()=>{ appState.editor.editSiteBoundary=!appState.editor.editSiteBoundary;renderLayoutEditor(); };
+    if($('#rpSiteEdit')) $('#rpSiteEdit').onclick=()=>v212SetMode('area');
     if($('#v206MoveArea'))$('#v206MoveArea').onclick=()=>{appState.editor.areaMoveMode=!appState.editor.areaMoveMode;appState.editor.mode='select';renderLayoutEditor();};
     if($('#v206AreaApplyCoordinates'))$('#v206AreaApplyCoordinates').onclick=()=>{const cm=Math.max(.0001,getScaleCmPerUnit()),b=layoutBoundaryBounds();const x=Number($('#v206AreaX')?.value),y=Number($('#v206AreaY')?.value);if(!Number.isFinite(x)||!Number.isFinite(y))return;v206MoveAreaBy(x/cm-b.minX,y/cm-b.minY);};
     if($('#v206AreaUndo'))$('#v206AreaUndo').onclick=()=>undoHistory('layout');
     if($('#v206AreaRedo'))$('#v206AreaRedo').onclick=()=>redoHistory('layout');
     if($('#v206ZoneToArea'))$('#v206ZoneToArea').onclick=()=>{const z=findZoneById(appState.selectedZoneId);if(z)v206PromoteZoneToArea(z);};
     if($('#v207FocusZone'))$('#v207FocusZone').onclick=()=>v207FocusZone(findZoneById(appState.selectedZoneId));
-    if($('#v207EditArea'))$('#v207EditArea').onclick=()=>{
-      appState.editor.layoutPanelOpen={...(appState.editor.layoutPanelOpen||{}),area:true};
-      renderLayoutEditor();
-      const el=document.querySelector('[data-layout-fold="area"]');el?.scrollIntoView({behavior:'smooth',block:'nearest'});
-    };
-    if($('#rpSiteAddVertex')) $('#rpSiteAddVertex').onclick=()=>{
-      ensureLayoutMeta(); const boundary=appState.layout.meta.siteBoundary;
-      const pts=boundary?.pts;if(!Array.isArray(pts)||pts.length<3)return;
-      let edge=0,max=-1;
-      for(let i=0;i<pts.length;i++){
-        const a=pts[i],b=pts[(i+1)%pts.length],distance=Math.hypot(a.x-b.x,a.y-b.y);
-        if(distance>max){max=distance;edge=i;}
-      }
-      const a=pts[edge],b=pts[(edge+1)%pts.length];
-      recordHistorySnapshot('structure');
-      pts.splice(edge+1,0,{x:snapGrid((a.x+b.x)/2),y:snapGrid((a.y+b.y)/2)});
-      appState.layout.meta.autoFitBoundaryToZones=false;appState.editor.editSiteBoundary=true;
-      rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
-    };
+    if($('#v207EditArea'))$('#v207EditArea').onclick=()=>v212SetMode('area');
+    if($('#rpSiteAddVertex')) $('#rpSiteAddVertex').onclick=()=>v212Insert('area',appState.editor.areaEdgeIndex||0);
     if($('#rpSiteReset')) $('#rpSiteReset').onclick=()=>{
+      if(appState.layout.meta.siteBoundary?.locked){showToast('Desbloquea el área antes de editarla.','warning');return;}
       ensureLayoutMeta(); recordHistorySnapshot('structure');
       appState.layout.meta.autoFitBoundaryToZones=true;fitSiteBoundaryToZones(true);rebuildStreetNetwork();
       persistActiveLayout();renderLayoutEditor();
@@ -12732,9 +12732,10 @@ function getSheetBranchOpenMap(){
     if($('#rpSelectLinkedZone')) $('#rpSelectLinkedZone').onclick = () => { const linked=room?getRoomLinkedZone(room):null; if(!linked) return; appState.selectedZoneId=linked.id; appState.selectedRoomId=room.id; renderLayoutEditor(); };
     if($('#rpSelectZoneRoom')) $('#rpSelectZoneRoom').onclick = () => { const rr=zone?getRoomForZone(zone):null; if(!rr) return; appState.selectedRoomId=rr.id; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); };
     if($('#rpDetachRoomZone')) $('#rpDetachRoomZone').onclick = () => { if(zone && detachRoomZone(zone)){ renderLayoutEditor(); } };
-    document.querySelectorAll('[data-v211-zone]').forEach(btn=>btn.onclick=()=>{appState.selectedZoneId=btn.dataset.v211Zone;appState.selectedWallId='';appState.selectedOpeningId='';appState.selectedVertex={zoneId:'',idx:-1};appState.editor.mode='select';renderLayoutEditor();});
+    document.querySelectorAll('[data-v211-zone]').forEach(btn=>btn.onclick=()=>{appState.editor.architectureTool='zones';appState.editor.editSiteBoundary=false;appState.selectedZoneId=btn.dataset.v211Zone;appState.selectedWallId='';appState.selectedOpeningId='';appState.selectedVertex={zoneId:'',idx:-1};appState.editor.mode='select';renderLayoutEditor();});
     if($('#v211DeleteZone')) $('#v211DeleteZone').onclick=()=>v211DeleteZone(zone?.id);
     if($('#v211EditZone')) $('#v211EditZone').onclick=()=>{
+      appState.editor.architectureTool='zones';appState.editor.editSiteBoundary=false;
       if(!zone)return;
       if(isRoomLinkedZone(zone)){
         if(typeof window!=='undefined' && !window.confirm('Esta zona heredada está vinculada a un recinto físico. ¿Separar la delimitación virtual de sus muros para poder editarla? Los muros se conservarán.'))return;
@@ -12766,7 +12767,7 @@ function getSheetBranchOpenMap(){
     if($('#rpZoneSplitHorizontal')) $('#rpZoneSplitHorizontal').onclick=()=>splitSelectedZoneByAxis('y');
     if($('#rpZoneRemoveVertex')) $('#rpZoneRemoveVertex').onclick = () => { if(!zone) return; if(appState.selectedVertex?.zoneId!==zone.id) showToast('Primero selecciona un vértice de la zona.','warning',2300); else removeSelectedVertex(); };
     const applyZoneGeometry = () => {
-      if(!zone) return;
+      if(!zone||zone.locked) return;
       const linkedRoom=getRoomForZone(zone);
       if(linkedRoom){
         const b=zoneBoundsOf(zone);
@@ -13129,13 +13130,7 @@ function getSheetBranchOpenMap(){
       if(evt.target && evt.target.closest('button, select, input, .seg-btn')) markLayoutManualInteraction();
     }, { capture:true });
     bindLayoutToolbar();
-    document.querySelectorAll('[data-architecture-tool]').forEach(btn=>btn.onclick=()=>{
-      appState.editor.architectureTool=btn.dataset.architectureTool==='walls'?'walls':'geometry';
-      appState.editor.wallDraftThickness=null;appState.editor.wallDraftHeight=null;
-      appState.editor.mode='select';appState.selectedEdge={zoneId:'',a:-1,b:-1};
-      appState.selectedWallId='';appState.editor.selectedWallIds=[];
-      renderLayoutEditor();
-    });
+    document.querySelectorAll('[data-architecture-tool]').forEach(btn=>btn.onclick=()=>v212SetMode(btn.dataset.architectureTool));
     ensureLayoutKeyboardBindings();
     const wallLengthInput=$('#wallLengthInput'); if(wallLengthInput){ wallLengthInput.oninput=e=>{ appState.editor.wallLengthDraft=e.target.value; }; wallLengthInput.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); commitWallLengthFromHud(e.currentTarget.value); } if(e.key==='Escape'){ e.preventDefault(); cancelLayoutDrawing(); } }; }
     document.querySelectorAll('[data-tool-proxy]').forEach(btn => {
@@ -13147,8 +13142,8 @@ function getSheetBranchOpenMap(){
       if(scroller) scroller.scrollTop = appState.editor?.rightPanelScrollTop || __layoutRightScrollBefore || 0;
     });
     bindLayoutAutoFit();
-    const undoBtn = document.querySelector('[data-history-undo="layout"]'); if(undoBtn) undoBtn.onclick = () => undoHistory('layout');
-    const redoBtn = document.querySelector('[data-history-redo="layout"]'); if(redoBtn) redoBtn.onclick = () => redoHistory('layout');
+    const undoBtn = document.querySelector('[data-history-undo="layout"]'); if(undoBtn) undoBtn.onclick = () => undoHistory(isRackDistributionScreen()?'distribution':appState.editor.areaMoveMode?'layout':'structure');
+    const redoBtn = document.querySelector('[data-history-redo="layout"]'); if(redoBtn) redoBtn.onclick = () => redoHistory(isRackDistributionScreen()?'distribution':appState.editor.areaMoveMode?'layout':'structure');
     updateUndoRedoUi();
     const zl = $('#zoomLabel'); if(zl){ const vb = appState.editor.viewBox || {w:900}; zl.textContent = `${Math.round((900 / vb.w) * 100)}%`; }
     updateLayoutSaveStatus();
@@ -13539,7 +13534,7 @@ function getSheetBranchOpenMap(){
     ensureLayoutMeta();
     const boundary = layoutBoundary();
     const boundaryPts = layoutBoundaryPts();
-    if(boundaryPts.length >= 4){
+    if(boundaryPts.length >= 3){
       const bd = pathFromPts(boundaryPts);
       areaLayer.appendChild(svgEl('path',{ d:bd, fill:'rgba(226,221,209,.16)', stroke:'rgba(198,171,128,.58)', 'stroke-width':'1.5', 'stroke-dasharray':'10 8', class:'layout-site-boundary' }));
       const bb = layoutBoundaryBounds();
@@ -13592,49 +13587,7 @@ function getSheetBranchOpenMap(){
         streetsLayer.appendChild(txt);
       }
     });
-    if(activeLayoutWorkspace()==='architecture' && appState.editor.editSiteBoundary && appState.editor.mode==='select'){
-      const sites=layoutBoundaryPts();
-      sites.forEach((pt,index)=>{
-        const point=svgEl('circle',{cx:pt.x,cy:pt.y,r:'8',fill:'#fff8e9',stroke:'#ba7a46','stroke-width':'2.7',style:'cursor:move;touch-action:none','data-site-vertex':index});
-        point.addEventListener('pointerdown',e=>{
-          if(e.button!==0)return;
-          e.preventDefault();e.stopPropagation();
-          const original=clone(sites[index]),historyBefore=snapshotForType('structure');let moved=false;
-          // El muro perimetral comparte el punto estructural con el vértice
-          // del área. Conservar nodos e ID de muros evita desprendimientos.
-          const attachedNodes=(appState.layout.wallNodes||[])
-            .filter(n=>Math.hypot(n.x-original.x,n.y-original.y)<=1.2)
-            .map(n=>({id:n.id,x:n.x,y:n.y}));
-          const attachedWallEnds=(appState.layout.walls||[]).flatMap(w=>[
-            ...(Math.hypot(w.x1-original.x,w.y1-original.y)<=1.2?[{wallId:w.id,side:'a',x:w.x1,y:w.y1}]:[]),
-            ...(Math.hypot(w.x2-original.x,w.y2-original.y)<=1.2?[{wallId:w.id,side:'b',x:w.x2,y:w.y2}]:[])
-          ]);
-          const updateAttached=next=>{
-            const dx=next.x-original.x,dy=next.y-original.y;
-            attachedNodes.forEach(old=>{const n=(appState.layout.wallNodes||[]).find(n=>n.id===old.id);if(n){n.x=old.x+dx;n.y=old.y+dy;}});
-            attachedWallEnds.forEach(old=>{const w=(appState.layout.walls||[]).find(w=>w.id===old.wallId);if(!w)return;
-              if(old.side==='a'){w.x1=old.x+dx;w.y1=old.y+dy;}else{w.x2=old.x+dx;w.y2=old.y+dy;}
-            });
-            syncManualWallsFromNodes();
-          };
-          const move=evt=>{
-            const raw=svgPoint(evt,svg);const next={x:isSnapEnabled()?snapGrid(raw.x):raw.x,y:isSnapEnabled()?snapGrid(raw.y):raw.y};
-            if(appState.editor.orthoEnabled||evt.shiftKey){if(Math.abs(next.x-original.x)>=Math.abs(next.y-original.y))next.y=original.y;else next.x=original.x;}
-            const polygon=sites.map((v,i)=>i===index?next:v);
-            if((appState.layout?.zones||[]).some(z=>!v209ZoneInsideArea(z.pts,polygon)))return;
-            if(!isValidStreetPolygon(polygon))return;
-            sites[index]={...sites[index],...next};point.setAttribute('cx',String(next.x));point.setAttribute('cy',String(next.y));
-            updateAttached(next);
-            moved=true;
-          };
-          const cleanup=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);};
-          const finish=()=>{cleanup();if(moved && (sites[index].x!==original.x||sites[index].y!==original.y)){recordHistorySnapshot('structure',historyBefore);appState.layout.meta.autoFitBoundaryToZones=false;rebuildStreetNetwork();persistActiveLayout();}renderLayoutEditor();};
-          const cancel=()=>{sites[index]=original;updateAttached(original);cleanup();renderLayoutEditor();};
-          window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish,{once:true});window.addEventListener('pointercancel',cancel,{once:true});
-        });
-        overlayLayer.appendChild(point);
-      });
-    }
+    v212RenderGeometryOverlay(svg,overlayLayer);
     const editedStreet=(appState.layout?.streets||[]).find(street=>street.id===appState.selectedStreetId);
     if(editedStreet && activeLayoutWorkspace()==='urbanism' && appState.editor.streetVerticesVisible){
       const part=['roadPts','sidewalkPts','outerSidewalkPts'].includes(appState.editor.streetVertexPart) ? appState.editor.streetVertexPart : 'roadPts';
@@ -13814,7 +13767,7 @@ function getSheetBranchOpenMap(){
       zoneLayer.appendChild(badge);
       if(appState.editor.showDims) drawZoneEdgeDimensions(edgeLayer, zone);
 
-      if(appState.selectedZoneId===zone.id && activeLayoutWorkspace()==='architecture'){
+      if(appState.selectedZoneId===zone.id && activeLayoutWorkspace()==='architecture' && appState.editor.architectureTool!=='area'){
         if(appState.editor.sectionVisible){
           drawSectionGuide(zone, 'x');
           drawSectionGuide(zone, 'y');
@@ -13825,9 +13778,11 @@ function getSheetBranchOpenMap(){
           const hx = p.x;
           const hy = p.y;
           const selectedVertex = appState.selectedVertex.zoneId===zone.id && appState.selectedVertex.idx===idx;
-          const hit = svgEl('circle',{cx:hx,cy:hy,r:'14',class:'vertex-hit'});
-          const v = svgEl('circle',{cx:hx,cy:hy,r:selectedVertex?'8':'7',class:'vertex' + (selectedVertex ? ' selected' : '')});
-          [hit, v].forEach(el => { el.addEventListener('pointerdown', e => startVertexDrag(e, zone.id, idx)); if(appState.editor.mode!=='select'||appState.editor.zonesLocked || isRackDistributionScreen() || (isRoomLinkedZone(zone) && appState.editor.architectureTool!=='walls')) el.style.pointerEvents='none'; });
+          const px=appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width);
+          const hit = svgEl('circle',{cx:hx,cy:hy,r:12*px,class:'vertex-hit'});
+          const v = svgEl('circle',{cx:hx,cy:hy,r:(selectedVertex?7:5)*px,class:'vertex' + (selectedVertex ? ' selected' : '')});
+          [hit, v].forEach(el => { el.addEventListener('pointerdown', e => startVertexDrag(e, zone.id, idx)); if(appState.editor.mode!=='select'||zone.locked||appState.editor.zonesLocked || isRackDistributionScreen() || (isRoomLinkedZone(zone) && appState.editor.architectureTool!=='walls')) el.style.pointerEvents='none'; });
+          [hit,v].forEach(el=>el.addEventListener('contextmenu',e=>{if(appState.editor.architectureTool!=='zones')return;e.preventDefault();e.stopPropagation();appState.selectedZoneId=zone.id;v212Remove('zones',idx);}));
           vertexLayer.appendChild(hit);
           vertexLayer.appendChild(v);
         });
@@ -13839,12 +13794,12 @@ function getSheetBranchOpenMap(){
           const hy = my + en.y * handleOffsetUnits;
           const activeEdge = (appState.selectedEdge.zoneId===zone.id && appState.selectedEdge.a===idx);
           const edgeLineHit = svgEl('line',{x1:p.x + en.x*4,y1:p.y + en.y*4,x2:q.x + en.x*4,y2:q.y + en.y*4,class:'edge-hit','stroke-width':'20'});
-          edgeLineHit.addEventListener('pointerdown', e => {if(appState.editor.architectureTool!=='walls')startEdgeDrag(e, zone.id, idx, (idx+1)%zone.pts.length);}); if(appState.editor.architectureTool==='walls')edgeLineHit.style.pointerEvents='none'; if(appState.editor.zonesLocked || isRackDistributionScreen() || isRoomLinkedZone(zone)) edgeLineHit.style.pointerEvents='none';
+          edgeLineHit.addEventListener('pointerdown', e => {if(appState.editor.architectureTool!=='walls')startEdgeDrag(e, zone.id, idx, (idx+1)%zone.pts.length);}); if(appState.editor.architectureTool==='walls')edgeLineHit.style.pointerEvents='none'; if(zone.locked||appState.editor.zonesLocked || isRackDistributionScreen() || isRoomLinkedZone(zone)) edgeLineHit.style.pointerEvents='none';
           edgeLayer.appendChild(edgeLineHit);
           if(activeEdge) edgeLayer.appendChild(svgEl('line',{x1:p.x,y1:p.y,x2:q.x,y2:q.y,class:'edge-guide'}));
           const hitBox = svgEl('circle',{cx:hx,cy:hy,r:14,class:'edge-hit'});
           const handle = svgEl('circle',{cx:hx,cy:hy,r:8,class:'edge-handle' + (activeEdge ? ' active' : '')});
-          [hitBox, handle].forEach(el => { el.addEventListener('pointerdown', e => startEdgeDrag(e, zone.id, idx, (idx+1)%zone.pts.length)); if(appState.editor.zonesLocked || isRackDistributionScreen() || isRoomLinkedZone(zone)) el.style.pointerEvents='none'; });
+          [hitBox, handle].forEach(el => { el.addEventListener('pointerdown', e => startEdgeDrag(e, zone.id, idx, (idx+1)%zone.pts.length)); if(zone.locked||appState.editor.zonesLocked || isRackDistributionScreen() || isRoomLinkedZone(zone)) el.style.pointerEvents='none'; });
           if(appState.editor.architectureTool!=='walls'){
             edgeLayer.appendChild(hitBox);
             edgeLayer.appendChild(handle);
@@ -13912,7 +13867,7 @@ function getSheetBranchOpenMap(){
       const accent = svgEl('line',{ x1:slice.a.x, y1:slice.a.y, x2:slice.b.x, y2:slice.b.y, stroke:innerStroke, 'stroke-width':'1.8', 'stroke-linecap':'round', opacity:'.92', style:'pointer-events:none' });
       const selectWall = evt => {
         if(isRackDistributionScreen() || appState.editor.mode !== 'select') return;
-        if(!wall.autoZoneEdge && appState.editor.architectureTool!=='walls'){ startWallBodyDrag(evt,wall.id); return; }
+        if(appState.editor.architectureTool!=='walls'){return;}
         evt.stopPropagation();
         appState.selectedWallId = wall.id;
         if(appState.editor.architectureTool==='walls'){
@@ -14425,7 +14380,7 @@ function getSheetBranchOpenMap(){
     if(svg.__v206AreaCapture){svg.removeEventListener('pointerdown',svg.__v206AreaCapture,true);svg.__v206AreaCapture=null;}
     if(isStructureLayoutScreen() && appState.editor.areaMoveMode && activeLayoutWorkspace()==='architecture'){
       const areaCapture=evt=>{
-        if(evt.button!==0||!appState.editor.areaMoveMode)return;
+        if(evt.button!==0||!appState.editor.areaMoveMode||appState.layout.meta?.siteBoundary?.locked||(appState.layout.zones||[]).some(z=>z.locked))return;
         const p=svgPoint(evt,svg);
         if(!pointInLayoutBoundary(p))return;
         evt.stopImmediatePropagation();evt.preventDefault();
@@ -14700,7 +14655,7 @@ function getSheetBranchOpenMap(){
         if(isRackDistributionScreen())renderLayoutEditor();
       });
     }
-    $$('.seg-btn[data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode; if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; if(activeLayoutWorkspace()==='urbanism' && !['select','street','navigate'].includes(nextMode))return; if(activeLayoutWorkspace()==='architecture' && nextMode==='street')return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } if(nextMode!=='measure')appState.editor.measureDraft=null; renderLayoutEditor(); } });
+    $$('.seg-btn[data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode;if(activeLayoutWorkspace()==='architecture'&&['area','zone'].includes(nextMode)){v212BeginDraw(nextMode==='area'?'area':'zones');return;}if(activeLayoutWorkspace()==='architecture'&&['wall','door','opening'].includes(nextMode)){v212SetMode('walls');} if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; if(activeLayoutWorkspace()==='urbanism' && !['select','street','navigate'].includes(nextMode))return; if(activeLayoutWorkspace()==='architecture' && nextMode==='street')return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } if(nextMode!=='measure')appState.editor.measureDraft=null; renderLayoutEditor(); } });
     $$('[data-layout-tag-action]').forEach(btn => btn.onclick = () => {
       markLayoutManualInteraction();
       const action = btn.getAttribute('data-layout-tag-action');
@@ -14724,8 +14679,8 @@ function getSheetBranchOpenMap(){
       renderLayoutEditor();
     });
     if($('#layoutBranchSelect')) $('#layoutBranchSelect').onchange = e => { markLayoutManualInteraction(); setLayoutBranch(+e.target.value || 0); renderLayoutEditor(); };
-    if($('#btnAreaPlus')) $('#btnAreaPlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'area'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
-    if($('#btnZonePlus')) $('#btnZonePlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'zone'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
+    if($('#btnAreaPlus')) $('#btnAreaPlus').onclick=()=>v212BeginDraw('area');
+    if($('#btnZonePlus')) $('#btnZonePlus').onclick=()=>v212BeginDraw('zones');
     if(!document.getElementById('btnStreetPlus') && activeLayoutWorkspace()==='urbanism'){
       const localbar = document.querySelector('.layout-cad-localbar-v80');
       if(localbar && activeLayoutWorkspace()==='urbanism'){
@@ -14762,7 +14717,7 @@ function getSheetBranchOpenMap(){
       if(action === 'ctx-duplicate-rack') return duplicateSelectedRack();
       if(action === 'ctx-delete') return deleteLayoutSelection();
       if(action === 'ctx-duplicate-zone') return duplicateSelectedZone();
-      if(action === 'ctx-mode-wall'){ appState.editor.mode = 'wall'; appState.editor.pendingWallPoint = null; return renderLayoutEditor(); }
+      if(action === 'ctx-mode-wall'){v212SetMode('walls'); appState.editor.mode = 'wall'; appState.editor.pendingWallPoint = null; return renderLayoutEditor(); }
       if(action === 'ctx-add-door'){ const sw=findWallById(appState.selectedWallId); if(!sw) return; createOpeningOnWall(sw.id, 'door'); persistActiveLayout(); return renderLayoutEditor(); }
       if(action === 'ctx-add-window'){ const sw=findWallById(appState.selectedWallId); if(!sw) return; createOpeningOnWall(sw.id, 'window'); persistActiveLayout(); return renderLayoutEditor(); }
       if(action === 'ctx-duplicate-opening'){ const op=findOpeningById(appState.selectedOpeningId); if(!op) return; duplicateOpening(op); persistActiveLayout(); return renderLayoutEditor(); }
@@ -14882,7 +14837,7 @@ function getSheetBranchOpenMap(){
   }
 
   function handleLayoutCanvasDown(e){
-    const svg = e.currentTarget; const raw = svgPoint(e, svg); const p = { x:snapGrid(raw.x), y:snapGrid(raw.y) };
+    const svg = e.currentTarget; if(v212CanvasDown(e,svg))return; const raw = svgPoint(e, svg); const p = { x:snapGrid(raw.x), y:snapGrid(raw.y) };
     if(isRackDistributionScreen() && ['zone','area','street','wall','opening','door','measure'].includes(appState.editor.mode)) appState.editor.mode = 'select';
     if(isStructureLayoutScreen() && appState.editor.mode === 'rack') appState.editor.mode = 'select';
     if(isRackDistributionScreen() && appState.editor.pendingFurnitureModelId && e.button===0){
@@ -15014,6 +14969,7 @@ function getSheetBranchOpenMap(){
   // V187: partición del área en dos zonas a partir de una línea X/Y.
   // Se valida la geometría y se impide cortar racks por la mitad.
   function splitSelectedZoneByAxis(axis='x'){
+    if(findZoneById(appState.selectedZoneId)?.locked)return false;
     const zone=findZoneById(appState.selectedZoneId);
     if(!zone || isRoomLinkedZone(zone)){showToast('Desvincula primero la geometría de este recinto para dividirlo.','warning',2500);return false;}
     const pts=Array.isArray(zone.pts)?zone.pts:[];
@@ -15051,12 +15007,13 @@ function getSheetBranchOpenMap(){
     recordHistorySnapshot('structure');
     zone.pts=left;appState.layout.zones.push(second);
     migration.forEach(([rack,id])=>rack.zoneId=id);
-    normalizeZoneAndRackIds();
+    if(appState.layout.meta?.zoneSemantics!=='virtual')normalizeZoneAndRackIds();
     appState.selectedZoneId=zone.id;appState.selectedEdge={zoneId:'',a:-1,b:-1};
     persistActiveLayout();renderLayoutEditor();return true;
   }
 
   function insertVertexOnSelectedEdge(){
+    if(findZoneById(appState.selectedEdge?.zoneId)?.locked)return;
     const sel=appState.selectedEdge;const zone=findZoneById(sel.zoneId);if(!zone||sel.a<0)return;
     const a=zone.pts[sel.a],b=zone.pts[sel.b];if(!a||!b)return;
     const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
@@ -15087,6 +15044,7 @@ function getSheetBranchOpenMap(){
   }
 
   function removeSelectedVertex(){
+    if(findZoneById(appState.selectedVertex?.zoneId)?.locked)return;
     const sel = appState.selectedVertex || { zoneId:'', idx:-1 };
     const zone = findZoneById(sel.zoneId);
     if(!zone || sel.idx < 0 || !Array.isArray(zone.pts) || zone.pts.length <= 3) return;
@@ -15107,7 +15065,8 @@ function getSheetBranchOpenMap(){
   }
 
   function startZoneDrag(e, zoneId){
-    if(!isStructureLayoutScreen() || appState.editor.mode !== 'select' || appState.editor.zonesLocked) return;
+    if(appState.editor.architectureTool==='area')return;
+    if(!isStructureLayoutScreen() || appState.editor.mode !== 'select') return;
     e.stopPropagation();
     const svg = $('#layoutSvg'); const p = svgPoint(e, svg);
     appState.selectedZoneId = zoneId; appState.selectedRackLayoutId = ''; appState.selectedWallId = ''; appState.selectedOpeningId = '';
@@ -15115,6 +15074,7 @@ function getSheetBranchOpenMap(){
     const zone = findZoneById(zoneId);
     if(!zone) return;
     appState.selectedRoomId = zone.linkedRoomId || '';
+    if(zone.locked||appState.editor.zonesLocked){renderLayoutEditor();return;}
     const linkedRoom=getRoomForZone(zone);
     if(linkedRoom){
       ensureWallTopology();
@@ -15189,6 +15149,7 @@ function getSheetBranchOpenMap(){
     });
   }
   function startVertexDrag(e, zoneId, idx){
+    if(appState.editor.architectureTool==='area'||findZoneById(zoneId)?.locked)return;
     if(!isStructureLayoutScreen() || appState.editor.mode !== 'select' || appState.editor.zonesLocked) return;
     if(appState.editor.architectureTool==='walls'){
       selectWallVertex(e, zoneId, idx);
@@ -15206,6 +15167,7 @@ function getSheetBranchOpenMap(){
     renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
   }
   function startEdgeDrag(e, zoneId, a, b){
+    if(appState.editor.architectureTool==='area'||findZoneById(zoneId)?.locked)return;
     if(!isStructureLayoutScreen() || appState.editor.mode !== 'select' || appState.editor.zonesLocked) return;
     e.stopPropagation();
     const svg = $('#layoutSvg'); const p = svgPoint(e, svg);
@@ -15367,9 +15329,10 @@ function getSheetBranchOpenMap(){
       const zone = dragZoneFromState(d);
       if(!zone) return;
       const a0 = d.originalA, b0 = d.originalB; const candidate=clone(zone.pts);
-      const horizontal = Math.abs(a0.y - b0.y) <= Math.abs(a0.x - b0.x);
-      if(horizontal){ const base={x:(a0.x+b0.x)/2,y:a0.y+dy}; const snapped=snapPointAdvanced(base,{zoneId:d.zoneId,keepAxis:'y',origin:{x:base.x,y:a0.y}}); candidate[d.a].y=snapped.y;candidate[d.b].y=snapped.y; }
-      else { const base={x:a0.x+dx,y:(a0.y+b0.y)/2}; const snapped=snapPointAdvanced(base,{zoneId:d.zoneId,keepAxis:'x',origin:{x:a0.x,y:base.y}}); candidate[d.a].x=snapped.x;candidate[d.b].x=snapped.x; }
+      const len=Math.hypot(b0.x-a0.x,b0.y-a0.y)||1,nx=-(b0.y-a0.y)/len,ny=(b0.x-a0.x)/len;
+      let distance=(p.x-d.start.x)*nx+(p.y-d.start.y)*ny;
+      if(isSnapEnabled())distance=snapGrid(distance);
+      candidate[d.a]={x:a0.x+nx*distance,y:a0.y+ny*distance};candidate[d.b]={x:b0.x+nx*distance,y:b0.y+ny*distance};
       clearRackSnapPreview();
       const moved=v211TrySharedZoneMove(zone.id,[d.a,d.b],[candidate[d.a],candidate[d.b]],d.originalZones||clone(appState.layout.zones));
       d.blockedByZoneCollision=!moved;
@@ -15446,6 +15409,7 @@ function getSheetBranchOpenMap(){
     const d = appState.editor.dragging;
     const svg = $('#layoutSvg');
     if(svg) svg.style.cursor = '';
+    if(!d)return;
     if(d && d.type==='section-guide'){
       const zone = findZoneById(d.zoneId) || appState.layout.zones[0];
       if(zone && d.source === 'arrow' && !d.moved){
@@ -15483,7 +15447,7 @@ function getSheetBranchOpenMap(){
     if(d && d.type==='room-zone'){
       if(typeof v128FinalizeRoomMove === 'function') v128FinalizeRoomMove(d.roomId,{targetRoomId:d.mergeCandidate?.targetRoomId||'',notify:true});
       else { if(d.mergeCandidate && mergeRoomSharedWall(d.mergeCandidate)) showToast('Muros coincidentes unidas como muro compartido.', 'success', 2400); v117ResolveWallIntersections(); v117RefreshRooms(); syncRoomLinkedZones(); }
-      normalizeZoneAndRackIds(); appState.editor.roomMovePreview=null;
+      if(appState.layout.meta?.zoneSemantics!=='virtual')normalizeZoneAndRackIds();appState.editor.roomMovePreview=null;
     }
     if(d && (d.type==='wall-node' || d.type==='wall-body' || d.type==='wall-group')){ syncManualWallsFromNodes(); v117ResolveWallIntersections(); if(typeof v128FuseAllTouchingRooms==='function')v128FuseAllTouchingRooms(); v117RefreshRooms(); syncRoomLinkedZones(); if(typeof v128RebuildSharedWallRegistry==='function')v128RebuildSharedWallRegistry(); ensureOpeningAttachmentOffsets(); appState.editor.wallMergePreview=null; }
     clearRackSnapPreview();
@@ -15794,6 +15758,252 @@ function getSheetBranchOpenMap(){
     if($('#btnAddRackAbove')) $('#btnAddRackAbove').onclick = () => { if(!rack) return; duplicateRackAbove(rack.id); };
   }
 
+  // V212 — editor poligonal de superficies lógicas; no crea muros al zonificar.
+  function v212Target(kind=appState.editor.architectureTool){
+    return kind==='area'?appState.layout.meta.siteBoundary:findZoneById(appState.selectedZoneId);
+  }
+  function v212SetMode(mode){
+    appState.editor.architectureTool=['area','zones','walls'].includes(mode)?mode:'zones';
+    cancelLayoutDrawing({render:false});appState.editor.mode='select';appState.editor.areaMoveMode=false;
+    appState.editor.editSiteBoundary=mode==='area';appState.editor.geometrySelection=null;
+    appState.selectedWallId='';appState.selectedOpeningId='';appState.selectedRoomId='';appState.selectedRackLayoutId='';
+    appState.editor.selectedWallIds=[];appState.selectedVertex={zoneId:'',idx:-1};appState.selectedEdge={zoneId:'',a:-1,b:-1};
+    if(mode==='area')appState.selectedZoneId='';
+    appState.editor.layoutPanelOpen={...(appState.editor.layoutPanelOpen||{}),area:mode==='area',zone:mode==='zones'};
+    renderLayoutEditor();
+  }
+  function v212BeginDraw(kind){
+    if(!isStructureLayoutScreen())return;
+    if(kind==='area'&&v212Target('area')?.locked){showToast('Desbloquea el área antes de dibujar su perímetro.','warning');return;}
+    v212SetMode(kind);appState.editor.mode='polygon';appState.editor.polygonDraft={kind,pts:[]};renderLayoutEditor();
+  }
+  function v212GeometryMarkup(){
+    const mode=appState.editor.architectureTool;if(mode==='walls')return '';
+    const target=v212Target(mode),pts=target?.pts||[],area=mode==='area';
+    const sel=area?appState.editor.geometrySelection:appState.selectedVertex?.zoneId===target?.id&&appState.selectedVertex.idx>=0?{type:'vertex',index:appState.selectedVertex.idx}:appState.selectedEdge?.zoneId===target?.id&&appState.selectedEdge.a>=0?{type:'edge',index:appState.selectedEdge.a}:null;
+    const i=Math.max(0,Math.min(pts.length-1,sel?.index||0)),a=pts[i],b=pts[(i+1)%pts.length],u=getScaleCmPerUnit()/100;
+    const locked=!!target?.locked;
+    const pending=appState.editor.pendingAreaEdit;
+    return `<section class="layout-prop-card v212-editor" aria-label="Editor ${area?'del área comercial':'de zonas'}"><div class="layout-prop-title">${area?'Área comercial · perímetro útil':'Zonas · polígonos virtuales'}</div>
+      <p class="tiny muted">${area?'Selecciona el área o uno de sus bordes.':'Selecciona una zona en el plano o en la lista.'} Doble clic en un borde agrega un vértice; clic derecho en un punto lo elimina. Arrastra puntos y lados para modificar el contorno.</p>
+      <div class="layout-template-grid"><button type="button" class="seg-btn" id="v212Draw">${area?'Dibujar nuevo perímetro':'Dibujar zona irregular'}</button><button type="button" class="seg-btn" id="v212Lock" ${!target?'disabled':''}>${locked?'Desbloquear':'Bloquear'} ${area?'área':'zona'}</button><button type="button" class="seg-btn" id="v212Undo">↶ Deshacer</button><button type="button" class="seg-btn" id="v212Redo">↷ Rehacer</button></div>
+      ${appState.editor.polygonDraft?`<div class="v212-draft"><b>${appState.editor.polygonDraft.pts.length} puntos</b><p>Clic para agregar puntos con snap a límites existentes. Cierra con el botón o haciendo clic en el primer punto.</p><div class="layout-template-grid"><button type="button" class="btn primary" id="v212Finish">Cerrar polígono</button><button type="button" class="seg-btn" id="v212Back">Quitar último</button><button type="button" class="seg-btn" id="v212Cancel">Cancelar</button></div></div>`:''}
+      ${pts.length?`<p class="tiny"><b>${escapeHtml(target.name||target.id||'Área comercial')}</b> · ${pts.length} vértices · ${(polygonAreaAbs(pts)*u*u).toFixed(2)} m² ${locked?'· Bloqueada':''}</p>
+      <div class="layout-template-grid"><button type="button" class="seg-btn" id="v212AddPoint" ${locked?'disabled':''}>+ Vértice en lado</button><button type="button" class="seg-btn danger" id="v212RemovePoint" ${locked||pts.length<=3?'disabled':''}>Eliminar vértice</button>${!area?`<button type="button" class="seg-btn" id="v212Duplicate">Duplicar zona</button><button type="button" class="seg-btn danger" id="v212DeleteZone" ${locked?'disabled':''}>Eliminar zona</button>`:''}</div>
+      <label>Vértice<select id="v212VertexIndex">${pts.map((p,j)=>`<option value="${j}" ${i===j?'selected':''}>V${j+1} · ${(p.x*u).toFixed(2)}, ${(p.y*u).toFixed(2)} m</option>`).join('')}</select></label>
+      <div class="layout-prop-grid two"><label>X (m)<input type="number" step="0.01" id="v212X" value="${(a.x*u).toFixed(3)}"></label><label>Y (m)<input type="number" step="0.01" id="v212Y" value="${(a.y*u).toFixed(3)}"></label></div><button type="button" class="seg-btn" id="v212ApplyPoint" ${locked?'disabled':''}>Aplicar coordenadas del vértice</button>
+      <label style="margin-top:12px">Lado<select id="v212EdgeIndex">${pts.map((p,j)=>`<option value="${j}" ${i===j?'selected':''}>L${j+1} · V${j+1} → V${(j+1)%pts.length+1}</option>`).join('')}</select></label>
+      <div class="layout-prop-grid two"><label>Longitud (m)<input type="number" min="0.01" step="0.01" id="v212Length" value="${(Math.hypot(b.x-a.x,b.y-a.y)*u).toFixed(3)}"></label><label>Ángulo (°)<input type="number" min="0" max="360" step="0.1" id="v212Angle" value="${((Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI+360)%360).toFixed(2)}"></label><label>Desplazar lado (m)<input type="number" step="0.01" id="v212Offset" value="0"></label></div>
+      <div class="layout-template-grid"><button type="button" class="seg-btn" id="v212ApplyEdge" ${locked?'disabled':''}>Aplicar medida y ángulo</button><button type="button" class="seg-btn" id="v212MoveEdge" ${locked?'disabled':''}>Desplazar lado</button></div>
+      ${!area?`<div class="layout-prop-grid two"><label>Giro de zona (°)<input id="v212Rotation" type="number" min="0" max="360" step="0.1" value="0"></label><button type="button" class="seg-btn" id="v212Rotate" ${locked?'disabled':''}>Girar zona</button></div><button type="button" class="seg-btn" id="v212Split" ${locked?'disabled':''}>Dividir con dos puntos del borde</button>`:''}
+      <small class="muted">Ángulo medido desde +X; +Y apunta hacia abajo en el plano. Los límites compartidos se editan juntos. Las zonas pueden ser colindantes; no superponerse.</small>`:'<p class="tiny muted">Selecciona una zona o dibuja un polígono nuevo.</p>'}
+      ${pending?`<div class="v212-review" role="status"><b>Revisar cambio del área</b><p>El nuevo perímetro afecta: ${pending.affected.map(id=>escapeHtml(findZoneById(id)?.name||id)).join(', ')}. El contorno propuesto aparece en naranja.</p><div class="layout-template-grid"><button class="seg-btn" id="v212AdjustArea">Ajustar límites compartidos</button><button class="seg-btn" id="v212KeepArea">Conservar zonas para corregir</button><button class="seg-btn" id="v212CancelArea">Cancelar cambio</button></div><small>El ajuste solo se aplica si mantiene polígonos válidos y sin traslapes. Ninguna zona se elimina.</small></div>`:''}
+    </section>`;
+  }
+  function v212Select(kind,type,index){
+    if(kind==='area'){appState.editor.geometrySelection={type,index};appState.editor.areaEdgeIndex=type==='edge'?index:appState.editor.areaEdgeIndex||0;}
+    else if(type==='vertex'){appState.selectedVertex={zoneId:appState.selectedZoneId,idx:index};appState.selectedEdge={zoneId:'',a:-1,b:-1};}
+    else {const z=v212Target(kind);appState.selectedEdge={zoneId:z.id,a:index,b:(index+1)%z.pts.length};appState.selectedVertex={zoneId:'',idx:-1};}
+    renderLayoutEditor();
+  }
+  function v212BindGeometryPanel(){
+    const mode=appState.editor.architectureTool;if(mode==='walls')return;
+    const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn;};
+    const value=id=>Number($('#'+id)?.value),kind=mode==='area'?'area':'zones';
+    on('v212Draw',()=>v212BeginDraw(kind));
+    on('v212Lock',()=>{const t=v212Target(kind);if(!t)return;recordHistorySnapshot('structure');t.locked=!t.locked;persistActiveLayout();renderLayoutEditor();});
+    on('v212Undo',()=>{appState.editor.pendingAreaEdit=null;appState.editor.polygonDraft=null;undoHistory('structure');});on('v212Redo',()=>redoHistory('structure'));
+    on('v212Finish',v212FinishPolygon);on('v212Back',()=>{appState.editor.polygonDraft?.pts.pop();renderLayoutEditor();});on('v212Cancel',()=>{cancelLayoutDrawing({render:false});appState.editor.mode='select';renderLayoutEditor();});
+    const vi=$('#v212VertexIndex'),ei=$('#v212EdgeIndex');if(vi)vi.onchange=()=>v212Select(kind,'vertex',Number(vi.value));if(ei)ei.onchange=()=>v212Select(kind,'edge',Number(ei.value));
+    on('v212ApplyPoint',()=>{const t=v212Target(kind);if(!t)return;const index=value('v212VertexIndex'),u=100/getScaleCmPerUnit(),next=clone(t.pts);next[index]={x:value('v212X')*u,y:value('v212Y')*u};v212Commit(kind,next);});
+    on('v212ApplyEdge',()=>{const t=v212Target(kind),index=value('v212EdgeIndex');if(!t)return;const length=value('v212Length')*100/getScaleCmPerUnit(),angle=value('v212Angle')*Math.PI/180;if(!Number.isFinite(length)||length<=0)return;const next=clone(t.pts),a=next[index];next[(index+1)%next.length]={x:a.x+length*Math.cos(angle),y:a.y+length*Math.sin(angle)};v212Commit(kind,next);});
+    on('v212MoveEdge',()=>{const t=v212Target(kind),index=value('v212EdgeIndex');if(!t)return;v212Commit(kind,v212OffsetEdge(t.pts,index,value('v212Offset')*100/getScaleCmPerUnit()));});
+    on('v212Duplicate',duplicateSelectedZone);on('v212DeleteZone',()=>v211DeleteZone(appState.selectedZoneId));
+    on('v212AddPoint',()=>v212Insert(kind,value('v212EdgeIndex')));on('v212RemovePoint',()=>v212Remove(kind,value('v212VertexIndex')));
+    on('v212Rotate',()=>{const t=v212Target(kind);if(!t)return;const angle=value('v212Rotation')*Math.PI/180,c=polygonCentroid(t.pts);v212Commit(kind,t.pts.map(p=>({x:c.x+(p.x-c.x)*Math.cos(angle)-(p.y-c.y)*Math.sin(angle),y:c.y+(p.x-c.x)*Math.sin(angle)+(p.y-c.y)*Math.cos(angle)})));});
+    on('v212Split',()=>{appState.editor.polygonDraft={kind:'split',zoneId:appState.selectedZoneId,pts:[]};appState.editor.mode='polygon';showToast('Selecciona dos puntos sobre el borde de la zona.','success',3000);renderLayoutEditor();});
+    on('v212CancelArea',()=>{appState.editor.pendingAreaEdit=null;renderLayoutEditor();});
+    on('v212KeepArea',()=>{const p=appState.editor.pendingAreaEdit;if(p){v212ApplyArea(p.pts);appState.editor.pendingAreaEdit=null;renderLayoutEditor();}});
+    on('v212AdjustArea',()=>{const p=appState.editor.pendingAreaEdit;if(!p)return;const old=layoutBoundaryPts(),zones=clone(appState.layout.zones);
+      zones.forEach(z=>z.pts=z.pts.map(pt=>{const index=old.findIndex(v=>v211SamePoint(v,pt));return index>=0&&p.pts.length===old.length?clone(p.pts[index]):pt;}));
+      const trial={...appState.layout,meta:{...appState.layout.meta,siteBoundary:{...v212Target('area'),pts:p.pts}},zones};
+      const invalid=zones.find(z=>v209ZoneViolation(z.id,z.pts,trial)||z.locked&&JSON.stringify(z.pts)!==JSON.stringify(findZoneById(z.id)?.pts));
+      if(invalid){showToast('No es posible ajustar automáticamente '+(invalid.name||invalid.id)+'. Corrige el perímetro o conserva las zonas para editarlas.','warning',4200);return;}
+      v212ApplyArea(p.pts,zones);appState.editor.pendingAreaEdit=null;renderLayoutEditor();
+    });
+  }
+  function v212OffsetEdge(pts,index,distance){
+    const result=clone(pts),a=pts[index],b=pts[(index+1)%pts.length],len=Math.hypot(b.x-a.x,b.y-a.y)||1,nx=-(b.y-a.y)/len,ny=(b.x-a.x)/len;
+    result[index]={x:a.x+nx*distance,y:a.y+ny*distance};result[(index+1)%pts.length]={x:b.x+nx*distance,y:b.y+ny*distance};return result;
+  }
+  function v212Commit(kind,next,{preview=false}={}){
+    const target=v212Target(kind);if(!target||target.locked||!v209SimplePolygon(next)){showToast('Geometría bloqueada o inválida: revisa cruces, vértices y longitudes.','warning',2600);return false;}
+    if(kind==='area'){
+      const affected=appState.layout.zones.filter(z=>!v209ZoneInsideArea(z.pts,next)).map(z=>z.id);
+      if(affected.length){if(!preview){appState.editor.pendingAreaEdit={pts:clone(next),affected};renderLayoutEditor();}return false;}
+      if(preview){v212ApplyArea(next,null,false);return true;}
+      v212ApplyArea(next);appState.editor.pendingAreaEdit=null;
+    } else {
+      const changes=v212ZoneChanges(target,next),blocked=[...changes.keys()].find(id=>findZoneById(id)?.locked);
+      const problem=v211ValidateZoneEdits(changes);
+      if(blocked||problem){showToast(blocked?'Un límite compartido pertenece a una zona bloqueada.':`Cambio rechazado: ${problem.name||problem.reason}.`,'warning',2800);return false;}
+      if(!preview)recordHistorySnapshot('structure');v211ApplyZoneEdits(changes);
+    }
+    if(!preview){persistActiveLayout();renderLayoutEditor();}return true;
+  }
+  function v212ZoneChanges(target,next,zones=appState.layout.zones){
+    const changes=new Map([[target.id,clone(next)]]);
+    // Igual cantidad de puntos: propagar cada punto de un límite compartido,
+    // incluidos puntos intermedios sobre una arista que no tiene el mismo número de vértices.
+    if(next.length!==target.pts.length)return changes;
+    zones.forEach(z=>{if(z.id===target.id)return;let changed=false;
+      const pts=z.pts.map(pt=>{for(let i=0;i<target.pts.length;i++){
+        const a=target.pts[i],b=target.pts[(i+1)%target.pts.length],na=next[i],nb=next[(i+1)%next.length];
+        if(v209PointOnSegment(pt,a,b,.12)){
+          const den=(b.x-a.x)**2+(b.y-a.y)**2,t=den?((pt.x-a.x)*(b.x-a.x)+(pt.y-a.y)*(b.y-a.y))/den:0;
+          const p={x:na.x+(nb.x-na.x)*t,y:na.y+(nb.y-na.y)*t};if(!v211SamePoint(pt,p,.00001))changed=true;return p;
+        }
+      }return clone(pt);});if(changed)changes.set(z.id,pts);
+    });return changes;
+  }
+  function v212ApplyArea(next,zones=null,history=true){
+    const old=clone(layoutBoundaryPts());if(history)recordHistorySnapshot('structure');
+    // Mover solo nodos/endpoints coincidentes con vértices del área; IDs y vanos se conservan.
+    if(old.length===next.length){
+      const moved=pt=>{const i=old.findIndex(p=>v211SamePoint(p,pt));return i>=0?next[i]:null;};
+      appState.layout.wallNodes?.forEach(n=>{const p=moved(n);if(p){n.x=p.x;n.y=p.y;}});
+      appState.layout.walls?.forEach(w=>{const a=moved({x:w.x1,y:w.y1}),b=moved({x:w.x2,y:w.y2});if(a){w.x1=a.x;w.y1=a.y;}if(b){w.x2=b.x;w.y2=b.y;}});
+      syncManualWallsFromNodes();
+    }
+    appState.layout.meta.siteBoundary.pts=clone(next);appState.layout.meta.autoFitBoundaryToZones=false;
+    if(zones)appState.layout.zones=zones;rebuildStreetNetwork();if(history)persistActiveLayout();
+  }
+  function v212Insert(kind,index,point=null){
+    const target=v212Target(kind);if(!target||target.locked||appState.editor.zonesLocked&&kind!=='area')return false;
+    const a=target.pts[index],b=target.pts[(index+1)%target.pts.length];if(!a||!b)return false;
+    const p=point?projectPointToSegment(point,a,b):{x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    if(Math.hypot(p.x-a.x,p.y-a.y)<1||Math.hypot(p.x-b.x,p.y-b.y)<1)return false;
+    const next=clone(target.pts);next.splice(index+1,0,{x:p.x,y:p.y});
+    if(kind==='area'){if(!v212Commit(kind,next))return false;appState.editor.geometrySelection={type:'vertex',index:index+1};}
+    else {
+      const changes=new Map([[target.id,next]]);
+      appState.layout.zones.forEach(z=>{if(z.id===target.id)return;const j=z.pts.findIndex((a,j)=>v211PointOnSegmentSafe(p,a,z.pts[(j+1)%z.pts.length]));if(j>=0){const pts=clone(z.pts);pts.splice(j+1,0,{x:p.x,y:p.y});changes.set(z.id,pts);}});
+      if([...changes.keys()].some(id=>findZoneById(id)?.locked)||v211ValidateZoneEdits(changes))return false;
+      recordHistorySnapshot('structure');v211ApplyZoneEdits(changes);appState.selectedVertex={zoneId:target.id,idx:index+1};appState.selectedEdge={zoneId:'',a:-1,b:-1};persistActiveLayout();
+    }
+    renderLayoutEditor();return true;
+  }
+  function v212Remove(kind,index){
+    const t=v212Target(kind);if(!t||t.locked||t.pts.length<=3){showToast('El polígono debe conservar al menos tres vértices.','warning');return false;}
+    const next=clone(t.pts);const removed=next.splice(index,1)[0];let ok;
+    if(kind==='area')ok=v212Commit(kind,next);
+    else {const changes=new Map([[t.id,next]]);appState.layout.zones.forEach(z=>{if(z.id===t.id)return;const j=z.pts.findIndex(p=>v211SamePoint(p,removed));if(j>=0){const pts=clone(z.pts);pts.splice(j,1);changes.set(z.id,pts);}});
+      const invalid=v211ValidateZoneEdits(changes);if(invalid||[...changes.keys()].some(id=>findZoneById(id)?.locked)){showToast('No se puede eliminar el vértice compartido: revisa geometría y bloqueos.','warning');return false;}
+      recordHistorySnapshot('structure');v211ApplyZoneEdits(changes);persistActiveLayout();ok=true;
+    }
+    if(ok){appState.editor.geometrySelection=null;appState.selectedVertex={zoneId:'',idx:-1};appState.selectedEdge={zoneId:'',a:-1,b:-1};renderLayoutEditor();}return ok;
+  }
+  function v212Snap(raw,origin=null){
+    if(!isSnapEnabled())return{x:raw.x,y:raw.y};
+    const points=[...layoutBoundaryPts(),...appState.layout.zones.flatMap(z=>z.pts),...(appState.layout.wallNodes||[])];
+    const svg=$('#layoutSvg'),threshold=svg?appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width)*10:10;
+    const nearest=points.map(p=>({p,d:Math.hypot(raw.x-p.x,raw.y-p.y)})).sort((a,b)=>a.d-b.d)[0];if(nearest?.d<threshold)return{x:nearest.p.x,y:nearest.p.y};
+    const edges=[layoutBoundaryPts(),...appState.layout.zones.map(z=>z.pts)];let best={d:threshold,p:null};
+    edges.forEach(poly=>poly.forEach((a,i)=>{const p=projectPointToSegment(raw,a,poly[(i+1)%poly.length]),d=Math.hypot(p.x-raw.x,p.y-raw.y);if(d<best.d)best={p,d};}));
+    const p=best.p?{x:best.p.x,y:best.p.y}:{x:snapGrid(raw.x),y:snapGrid(raw.y)};
+    if(origin&&appState.editor.orthoEnabled){if(Math.abs(p.x-origin.x)>Math.abs(p.y-origin.y))p.y=origin.y;else p.x=origin.x;}return p;
+  }
+  function v212FinishPolygon(){
+    const draft=appState.editor.polygonDraft;if(!draft)return false;
+    if(draft.kind==='split')return v212SplitZone(draft.zoneId,draft.pts);
+    if(!v209SimplePolygon(draft.pts)){showToast('Dibuja al menos tres puntos, sin cruces ni lados repetidos.','warning');return false;}
+    if(draft.kind==='area'){
+      // Conservar borrador si no se pudo aceptar; la revisión tiene el candidato completo.
+      const ok=v212Commit('area',draft.pts);if(!ok&&!appState.editor.pendingAreaEdit)return false;
+    } else {
+      const id=nextZoneId(),problem=v209ZoneViolation(id,draft.pts);if(problem){showToast('No se puede crear la zona: '+problem.name,'warning');return false;}
+      recordHistorySnapshot('structure');appState.layout.zones.push({id,name:'Zona '+id,kind:'virtual',color:v211ZoneColor(),pts:clone(draft.pts)});appState.selectedZoneId=id;persistActiveLayout();
+    }
+    appState.editor.polygonDraft=null;appState.editor.mode='select';renderLayoutEditor();return true;
+  }
+  function v212SplitPolygons(pts,a,b){
+    if(Math.hypot(a.x-b.x,a.y-b.y)<1)return null;
+    const path=clone(pts);
+    for(const p of [a,b]){if(path.some(q=>v211SamePoint(q,p)))continue;const index=path.findIndex((q,i)=>v211PointOnSegmentSafe(p,q,path[(i+1)%path.length]));if(index<0)return null;path.splice(index+1,0,clone(p));}
+    const ia=path.findIndex(p=>v211SamePoint(p,a)),ib=path.findIndex(p=>v211SamePoint(p,b));if(ia<0||ib<0)return null;
+    const walk=(from,to)=>{const out=[path[from]];for(let j=(from+1)%path.length;j!==to;j=(j+1)%path.length){out.push(path[j]);if(out.length>path.length)return [];}out.push(path[to]);return out;};
+    const first=walk(ia,ib),second=walk(ib,ia);
+    if(!v209SimplePolygon(first)||!v209SimplePolygon(second)||!v209ZoneInsideArea(first,pts)||!v209ZoneInsideArea(second,pts)||Math.abs(polygonAreaAbs(first)+polygonAreaAbs(second)-polygonAreaAbs(pts))>.1)return null;
+    return [first,second];
+  }
+  function v212SplitZone(id,points){
+    const zone=findZoneById(id);if(!zone||zone.locked||points.length!==2)return false;
+    const result=v212SplitPolygons(zone.pts,...points);if(!result){showToast('La línea debe unir dos bordes y quedar dentro de la zona, formando dos polígonos válidos.','warning',3500);return false;}
+    const nextId=nextZoneId(),one={...zone,pts:result[0]},two={...clone(zone),id:nextId,name:(zone.name||id)+' · B',color:v211ZoneColor(),pts:result[1]},refs=[];
+    const trial={...appState.layout,zones:appState.layout.zones.filter(z=>z.id!==id).concat(one,two)};
+    if(v209ZoneViolation(one.id,one.pts,trial)||v209ZoneViolation(two.id,two.pts,trial))return false;
+    for(const rack of appState.layout.racks.filter(r=>r.zoneId===id)){if(rackFullyInsideZone(rack,one))refs.push([rack,id]);else if(rackFullyInsideZone(rack,two))refs.push([rack,nextId]);else{showToast('Mueve primero el rack '+rack.id+': la división lo atraviesa.','warning');return false;}}
+    recordHistorySnapshot('structure');zone.pts=clone(one.pts);appState.layout.zones.push(two);refs.forEach(([r,id])=>r.zoneId=id);appState.editor.polygonDraft=null;appState.editor.mode='select';persistActiveLayout();renderLayoutEditor();return true;
+  }
+  function v212CanvasDown(e,svg){
+    if(activeLayoutWorkspace()!=='architecture')return false;
+    const draft=appState.editor.polygonDraft;if(!draft||e.button!==0)return false;
+    e.preventDefault();e.stopPropagation();const raw=svgPoint(e,svg);
+    let p=v212Snap(raw,draft.pts.at(-1));
+    if(draft.kind==='split'){
+      const z=findZoneById(draft.zoneId);if(!z)return true;let best={d:Infinity};z.pts.forEach((a,i)=>{const q=projectPointToSegment(raw,a,z.pts[(i+1)%z.pts.length]),d=Math.hypot(raw.x-q.x,raw.y-q.y);if(d<best.d)best={d,p:q};});
+      const limit=appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width)*15;if(best.d>limit){showToast('Elige un punto sobre el borde de la zona.','warning');return true;}p={x:best.p.x,y:best.p.y};
+    }
+    if(draft.pts.length>=3&&Math.hypot(p.x-draft.pts[0].x,p.y-draft.pts[0].y)<1){v212FinishPolygon();return true;}
+    if(draft.pts.at(-1)&&v211SamePoint(p,draft.pts.at(-1)))return true;
+    draft.pts.push(p);if(draft.kind==='split'&&draft.pts.length===2)v212FinishPolygon();else renderLayoutEditor();return true;
+  }
+  function v212RenderGeometryOverlay(svg,layer){
+    if(activeLayoutWorkspace()!=='architecture')return;
+    // Capture at the canvas before zone/wall handlers; drawing never starts a drag.
+    if(!svg.dataset.v212Capture){svg.dataset.v212Capture='1';svg.addEventListener('pointerdown',e=>{
+      if(appState.editor.polygonDraft&&e.button===0){e.stopImmediatePropagation();v212CanvasDown(e,svg);return;}
+    },true);svg.addEventListener('mousedown',e=>{if(e.detail>=2)v212AddAtEvent(e,svg);},true);svg.addEventListener('dblclick',e=>v212AddAtEvent(e,svg),true);}
+    const pending=appState.editor.pendingAreaEdit;if(pending)layer.appendChild(svgEl('path',{d:pathFromPts(pending.pts),fill:'rgba(205,137,61,.10)',stroke:'#b87932','stroke-width':2,'stroke-dasharray':'6 4','pointer-events':'none'}));
+    const draft=appState.editor.polygonDraft;if(draft){const p=draft.pts;if(p.length)layer.appendChild(svgEl('path',{d:p.map((v,i)=>`${i?'L':'M'} ${v.x} ${v.y}`).join(' '),fill:'none',stroke:'#267760','stroke-width':2,'pointer-events':'none'}));p.forEach((v,i)=>layer.appendChild(svgEl('circle',{cx:v.x,cy:v.y,r:5,fill:i===0?'#b87932':'#267760','pointer-events':'none'})));}
+    if(appState.editor.architectureTool!=='area'||appState.editor.mode!=='select')return;
+    const t=v212Target('area');if(!t)return;const pts=t.pts,px=appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width);
+    pts.forEach((p,i)=>{const q=pts[(i+1)%pts.length],selected=appState.editor.geometrySelection?.type==='edge'&&appState.editor.geometrySelection.index===i;
+      const line=svgEl('line',{x1:p.x,y1:p.y,x2:q.x,y2:q.y,stroke:selected?'#b87932':'transparent','stroke-width':selected?4*px:14*px,'pointer-events':'stroke',style:'cursor:move','data-area-edge':i});
+      line.addEventListener('pointerdown',e=>v212AreaDrag(e,svg,'edge',i));layer.appendChild(line);
+      const u=getScaleCmPerUnit()/100,label=svgEl('text',{x:(p.x+q.x)/2,y:(p.y+q.y)/2-8*px,'text-anchor':'middle',style:`font-size:${11*px}px;fill:#805b30;pointer-events:none`});label.textContent=`L${i+1} · ${(Math.hypot(q.x-p.x,q.y-p.y)*u).toFixed(2)} m`;layer.appendChild(label);
+    });
+    pts.forEach((p,i)=>{const circle=svgEl('circle',{cx:p.x,cy:p.y,r:6*px,fill:'#fff8e9',stroke:'#b87932','stroke-width':2*px,'data-site-vertex':i,style:'cursor:move;touch-action:none'});
+      circle.addEventListener('pointerdown',e=>v212AreaDrag(e,svg,'vertex',i));circle.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();v212Remove('area',i);});layer.appendChild(circle);
+    });
+  }
+  function v212AddAtEvent(e,svg){
+    if(appState.editor.polygonDraft||appState.editor.architectureTool==='walls'||e.button!==0)return;
+    const kind=appState.editor.architectureTool,target=v212Target(kind);if(!target)return;
+    const raw=svgPoint(e,svg),threshold=appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width)*10;let hit={d:threshold,index:-1};
+    target.pts.forEach((a,i)=>{const q=projectPointToSegment(raw,a,target.pts[(i+1)%target.pts.length]),d=Math.hypot(raw.x-q.x,raw.y-q.y);if(d<hit.d)hit={d,index:i};});
+    if(hit.index<0)return;e.preventDefault();e.stopImmediatePropagation();
+    const last=appState.editor.lastVertexInsertion,now=performance.now();if(last&&now-last.time<1000&&Math.hypot(e.clientX-last.x,e.clientY-last.y)<6)return;
+    appState.editor.dragging=null;
+    if(v212Insert(kind,hit.index,raw))appState.editor.lastVertexInsertion={time:now,x:e.clientX,y:e.clientY};
+  }
+  function v212AreaDrag(e,svg,type,index){
+    if(e.button!==0)return;e.preventDefault();e.stopPropagation();
+    appState.editor.geometrySelection={type,index};appState.editor.areaEdgeIndex=type==='edge'?index:0;
+    if(v212Target('area')?.locked){renderLayoutEditor();return;}
+    const original=clone(layoutBoundaryPts()),start=svgPoint(e,svg);let next=original,lastValid=original,moved=false;
+    const move=evt=>{const p=v212Snap(svgPoint(evt,svg)),dx=p.x-start.x,dy=p.y-start.y;
+      if(Math.hypot(dx,dy)<1)return;
+      next=type==='vertex'?original.map((v,j)=>j===index?p:v):(()=>{const a=original[index],b=original[(index+1)%original.length],len=Math.hypot(b.x-a.x,b.y-a.y)||1;return v212OffsetEdge(original,index,dx*-(b.y-a.y)/len+dy*(b.x-a.x)/len);})();
+      if(!v209SimplePolygon(next)){next=lastValid;return;}lastValid=next;moved=true;
+      // A preview path does not mutate zones or walls before release.
+      let path=svg.querySelector('[data-area-preview]');if(!path){path=svgEl('path',{'data-area-preview':'1',fill:'rgba(205,137,61,.1)',stroke:'#b87932','stroke-width':2,'pointer-events':'none'});svg.appendChild(path);}path.setAttribute('d',pathFromPts(next));
+    };
+    const cleanup=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);};
+    const finish=()=>{cleanup();if(moved)v212Commit('area',next);else renderLayoutEditor();};
+    const cancel=()=>{cleanup();renderLayoutEditor();};
+    window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish,{once:true});window.addEventListener('pointercancel',cancel,{once:true});
+  }
 /* WMS_V128_CAD_TOPOLOGY */
   // v114-v117 acumulativa: topología CAD, recintos inteligentes, distribución masiva y validación operativa.
   function v117GetSelectedWallIds(){ const ids=Array.isArray(appState.editor?.selectedWallIds)?appState.editor.selectedWallIds.filter(Boolean):[]; if(appState.selectedWallId&&!ids.includes(appState.selectedWallId))ids.unshift(appState.selectedWallId); return [...new Set(ids)]; }
@@ -19814,8 +20024,10 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           });
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
-            addTopSurfaceFromPts(pts, 0xe9d7bb, .022, 0x2f7b6e, .98, 4, zone.floorFinish||'default');
-            addOutlineFromPts(pts, 0x2f7b6e, .03, .98);
+            const zoneColor=new THREE.Color(zone.color||'#2f7b6e');
+            const surface=addTopSurfaceFromPts(pts, 0xe9d7bb, .022, zoneColor, .98, 4, zone.floorFinish||'default');
+            if(surface)surface.userData.zoneId=zone.id;
+            addOutlineFromPts(pts, zoneColor, .03, .98);
             addOutlineFromPts(pts, 0xe6d5b5, .041, .82);
           }
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();

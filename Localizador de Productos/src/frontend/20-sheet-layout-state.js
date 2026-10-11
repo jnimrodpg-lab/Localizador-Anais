@@ -749,6 +749,7 @@
     const zoneRemap = new Map();
     const preserveRackPlacement = isStructureLayoutScreen() || (typeof distributionIsFreeMove==='function' && distributionIsFreeMove());
     zones.forEach((z, zi)=>{
+      if(appState.layout.meta?.zoneSemantics==='virtual'){if(!z.name)z.name='Zona '+z.id;return;}
       const previousId = String(z?.id || '').toUpperCase();
       let nextId = previousId;
       if(isStorageZoneLike(previousId, z?.name)) nextId = 'ALM';
@@ -764,7 +765,7 @@
     (appState.layout.racks||[]).forEach(r=>{
       if(!r) return;
       if(zoneRemap.has(String(r.zoneId || '').toUpperCase())) r.zoneId = zoneRemap.get(String(r.zoneId || '').toUpperCase());
-      if(r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
+      if(appState.layout.meta?.zoneSemantics!=='virtual' && r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
         const est = parseInt((String(r.id || '').match(/-E(\d+)/i)||[])[1] || '1', 10) || 1;
         r.id = `ALM-E${est}`;
       }
@@ -820,6 +821,7 @@
     renderLayoutEditor();
   }
   function duplicateSelectedZone(){
+    if(findZoneById(appState.selectedZoneId)?.locked)return;
     const zone = findZoneById(appState.selectedZoneId); if(!zone || !isStructureLayoutScreen()) return;
     const cloneZone = clone(zone);
     const newId = nextZoneId();
@@ -834,6 +836,7 @@
       if(!hit){candidate=pts;break;}
     }
     if(!candidate){ if(typeof showToast==='function')showToast('No hay espacio libre cercano para duplicar la zona sin superponerla.','warning',2600); return; }
+    recordHistorySnapshot('structure');
     cloneZone.pts = candidate;
     ensureZoneSectionCuts(cloneZone);
     appState.layout.zones.push(cloneZone);

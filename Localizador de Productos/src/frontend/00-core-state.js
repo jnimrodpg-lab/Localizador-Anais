@@ -1008,7 +1008,7 @@
   }
   function updateUndoRedoUi(){
     ['layout','structure','distribution','racks'].forEach(type => {
-      const bucket = getHistoryBucket(type);
+      const bucket = getHistoryBucket(type==='layout'&&isLayoutWorkspaceScreen()?(isRackDistributionScreen()?'distribution':appState.editor.areaMoveMode?'layout':'structure'):type);
       const undoBtn = document.querySelector(`[data-history-undo="${type}"]`);
       const redoBtn = document.querySelector(`[data-history-redo="${type}"]`);
       if(undoBtn) undoBtn.disabled = !bucket.undoStack.length;

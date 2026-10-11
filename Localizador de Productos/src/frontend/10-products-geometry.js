@@ -2626,6 +2626,7 @@ const DEFAULT_GRID_SIZE = 2;
   }
 
   function rotateZoneWithContents(zoneId, deltaDegrees, { persist=true, rerender=true } = {}){
+    if(findZoneById(zoneId)?.locked)return false;
     const zone = findZoneById(zoneId);
     if(!zone || !Array.isArray(zone.pts) || zone.pts.length < 3) return false;
     const delta = Number(deltaDegrees) || 0;

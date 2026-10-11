@@ -7650,4 +7650,28 @@ body.theme-light #appRoot.app .layout-type-pill{color:var(--primary)!important}
 }
 #appRoot.app .layout-cad-localbar-v80 .layout-v200-levels{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important;width:auto!important;height:33px!important;min-height:33px!important;max-height:33px!important}
 #appRoot.app .layout-cad-localbar-v80 .layout-v200-levels>*{flex:0 0 auto;white-space:nowrap!important}
+/* V214: primary task, selected properties, progressive disclosure. */
+#appRoot.app .layout-cad-shell-v80 [hidden]{display:none!important}
+#appRoot.app .v214-more{display:flex;align-items:center}
+#appRoot.app .v214-more-menu{position:fixed;inset:auto;margin:0;width:215px;max-width:calc(100vw - 16px);max-height:65vh;overflow:auto;padding:10px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface-1);color:var(--ink);box-shadow:0 10px 30px rgba(0,0,0,.2)}
+#appRoot.app .v214-more-menu:popover-open{display:grid;gap:7px}
+#appRoot.app .v214-more-menu button{width:100%;text-align:left;justify-content:flex-start;min-height:34px!important;font-size:12px!important}
+#appRoot.app .v214-more-menu .v80-icon-btn{width:100%!important;display:block!important;padding:7px 10px!important}
+#appRoot.app .v214-more-menu .v80-icon-btn[title]::after{content:' ' attr(title);font-size:12px}
+#appRoot.app .v214-more-menu::backdrop{background:transparent}
+#appRoot.app .v214-advanced-options{border:1px solid var(--line);border-radius:10px;padding:12px;order:6;flex-shrink:0}
+#appRoot.app .v214-advanced-options>summary{font-size:12px;font-weight:700;cursor:pointer;color:var(--ink-soft)}
+#appRoot.app .v214-advanced-options>div{display:grid;gap:10px;padding-top:12px}
+#appRoot.app .v214-advanced-action{margin-top:8px}
+#appRoot.app .v214-creation{order:-12!important;display:grid;gap:10px;flex-shrink:0}
+#appRoot.app .v214-area-wall-edge{stroke:transparent;cursor:pointer;vector-effect:non-scaling-stroke}
+#appRoot.app .v214-area-wall-edge:hover{stroke:rgba(184,137,73,.35)}
+#appRoot.app .v214-area-wall-edge.active{stroke:rgba(184,137,73,.65);stroke-width:4}
+#appRoot.app .layout-cad-shell-v80[data-v214-mode=area] .layout-v207-selection{display:none}
+#appRoot.app .layout-cad-shell-v80[data-v214-mode=walls] .v80-tool-rail{max-height:calc(100% - 80px)!important}
+#appRoot.app .layout-cad-shell-v80 .v212-editor .layout-template-grid:has(>#v212Draw[hidden]){display:none!important}
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80 [hidden][hidden]{display:none!important}
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80 .layout-right-scroll .v203-wall-card[hidden]{display:none!important}
+#appRoot.app .layout-cad-v80 .v214-more-menu .v80-tool-btn.seg-btn{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;gap:8px!important;padding:6px 9px!important;min-height:34px!important}
+#appRoot.app .v214-more-menu .v80-tool-btn b{font-size:12px!important}
 

@@ -9,10 +9,11 @@
     appState.selectedWallId='';appState.selectedOpeningId='';appState.selectedRoomId='';appState.selectedRackLayoutId='';
     appState.editor.selectedWallIds=[];appState.selectedVertex={zoneId:'',idx:-1};appState.selectedEdge={zoneId:'',a:-1,b:-1};
     if(mode==='area')appState.selectedZoneId='';
-    appState.editor.layoutPanelOpen={...(appState.editor.layoutPanelOpen||{}),area:false,zone:false,geometry:false};appState.editor.geometryError=null;
+    appState.editor.layoutPanelOpen={...(appState.editor.layoutPanelOpen||{}),area:false,zone:false,geometry:false};appState.editor.geometryError=null;appState.editor.areaWallEdgeIndex=null;
     renderLayoutEditor();
   }
-  function v212BeginDraw(kind){
+  function v212BeginDraw(kind,{polygon=false}={}){
+    if(kind==='zones'&&!polygon&&typeof v214BeginZone==='function'){v214BeginZone();return;}
     if(!isStructureLayoutScreen())return;
     if(kind==='zones'&&typeof v213LayerLocked==='function'&&v213LayerLocked('zones')){showToast('Desbloquea la capa Zonas antes de dibujar.','warning');return;}
     if(kind==='area'&&v212Target('area')?.locked){showToast('Desbloquea el área antes de dibujar su perímetro.','warning');return;}
@@ -59,34 +60,34 @@
     on('v212Undo',()=>{appState.editor.pendingAreaEdit=null;appState.editor.polygonDraft=null;undoHistory('structure');});on('v212Redo',()=>redoHistory('structure'));
     on('v212Finish',v212FinishPolygon);on('v212Back',()=>{appState.editor.polygonDraft?.pts.pop();renderLayoutEditor();});on('v212Cancel',()=>{cancelLayoutDrawing({render:false});appState.editor.mode='select';renderLayoutEditor();});
     const vi=$('#v212VertexIndex'),ei=$('#v212EdgeIndex');if(vi)vi.onchange=()=>v212Select(kind,'vertex',Number(vi.value));if(ei)ei.onchange=()=>v212Select(kind,'edge',Number(ei.value));
-    on('v212ApplyPoint',()=>{const t=v212Target(kind);if(!t)return;const index=value('v212VertexIndex'),u=100/getScaleCmPerUnit(),next=clone(t.pts);next[index]={x:value('v212X')*u,y:value('v212Y')*u};v212Commit(kind,next);});
-    on('v212ApplyEdge',()=>{const t=v212Target(kind),index=value('v212EdgeIndex');if(!t)return;const length=value('v212Length')*100/getScaleCmPerUnit(),angle=value('v212Angle')*Math.PI/180;if(!Number.isFinite(length)||length<=0)return;const next=clone(t.pts),a=next[index];next[(index+1)%next.length]={x:a.x+length*Math.cos(angle),y:a.y+length*Math.sin(angle)};v212Commit(kind,next);});
+    on('v212ApplyPoint',()=>{const t=v212Target(kind);if(!t)return;const index=value('v212VertexIndex'),u=100/getScaleCmPerUnit(),next=clone(t.pts);next[index]={...next[index],x:value('v212X')*u,y:value('v212Y')*u};v212Commit(kind,next);});
+    on('v212ApplyEdge',()=>{const t=v212Target(kind),index=value('v212EdgeIndex');if(!t)return;const length=value('v212Length')*100/getScaleCmPerUnit(),angle=value('v212Angle')*Math.PI/180;if(!Number.isFinite(length)||length<=0)return;const next=clone(t.pts),a=next[index];next[(index+1)%next.length]={...next[(index+1)%next.length],x:a.x+length*Math.cos(angle),y:a.y+length*Math.sin(angle)};v212Commit(kind,next);});
     on('v212MoveEdge',()=>{const t=v212Target(kind),index=value('v212EdgeIndex');if(!t)return;v212Commit(kind,v212OffsetEdge(t.pts,index,value('v212Offset')*100/getScaleCmPerUnit()));});
     on('v212Duplicate',duplicateSelectedZone);on('v212DeleteZone',()=>v211DeleteZone(appState.selectedZoneId));
     on('v212AddPoint',()=>v212Insert(kind,value('v212EdgeIndex')));on('v212RemovePoint',()=>v212Remove(kind,value('v212VertexIndex')));
     on('v212Rotate',()=>{const t=v212Target(kind);if(!t)return;const angle=value('v212Rotation')*Math.PI/180,c=polygonCentroid(t.pts);v212Commit(kind,t.pts.map(p=>({x:c.x+(p.x-c.x)*Math.cos(angle)-(p.y-c.y)*Math.sin(angle),y:c.y+(p.x-c.x)*Math.sin(angle)+(p.y-c.y)*Math.cos(angle)})));});
     on('v212Split',()=>{appState.editor.polygonDraft={kind:'split',zoneId:appState.selectedZoneId,pts:[]};appState.editor.mode='polygon';showToast('Selecciona dos puntos sobre el borde de la zona.','success',3000);renderLayoutEditor();});
     on('v212CancelArea',()=>{appState.editor.pendingAreaEdit=null;renderLayoutEditor();});
-    on('v212KeepArea',()=>{const p=appState.editor.pendingAreaEdit;if(p){v212ApplyArea(p.pts);appState.editor.pendingAreaEdit=null;renderLayoutEditor();}});
+    on('v212KeepArea',()=>{const p=appState.editor.pendingAreaEdit;if(p){if(v212ApplyArea(p.pts)===false)return;appState.editor.pendingAreaEdit=null;renderLayoutEditor();}});
     on('v212AdjustArea',()=>{const p=appState.editor.pendingAreaEdit;if(!p)return;const old=layoutBoundaryPts(),zones=clone(appState.layout.zones);
       zones.forEach(z=>z.pts=z.pts.map(pt=>{const index=old.findIndex(v=>v211SamePoint(v,pt));return index>=0&&p.pts.length===old.length?clone(p.pts[index]):pt;}));
       const trial={...appState.layout,meta:{...appState.layout.meta,siteBoundary:{...v212Target('area'),pts:p.pts}},zones};
       const invalid=zones.find(z=>v209ZoneViolation(z.id,z.pts,trial)||z.locked&&JSON.stringify(z.pts)!==JSON.stringify(findZoneById(z.id)?.pts));
       if(invalid){showToast('No es posible ajustar automáticamente '+(invalid.name||invalid.id)+'. Corrige el perímetro o conserva las zonas para editarlas.','warning',4200);return;}
-      v212ApplyArea(p.pts,zones);appState.editor.pendingAreaEdit=null;renderLayoutEditor();
+      if(v212ApplyArea(p.pts,zones)===false)return;appState.editor.pendingAreaEdit=null;renderLayoutEditor();
     });
   }
   function v212OffsetEdge(pts,index,distance){
     const result=clone(pts),a=pts[index],b=pts[(index+1)%pts.length],len=Math.hypot(b.x-a.x,b.y-a.y)||1,nx=-(b.y-a.y)/len,ny=(b.x-a.x)/len;
-    result[index]={x:a.x+nx*distance,y:a.y+ny*distance};result[(index+1)%pts.length]={x:b.x+nx*distance,y:b.y+ny*distance};return result;
+    result[index]={...result[index],x:a.x+nx*distance,y:a.y+ny*distance};result[(index+1)%pts.length]={...result[(index+1)%pts.length],x:b.x+nx*distance,y:b.y+ny*distance};return result;
   }
   function v212Commit(kind,next,{preview=false,label='geometría'}={}){
     const target=v212Target(kind);if(!target||target.locked||kind==='zones'&&typeof v213LayerLocked==='function'&&v213LayerLocked('zones')||!v209SimplePolygon(next)){if(target)appState.editor.geometryError={pts:clone(next),message:'Geometría inválida o bloqueada'};showToast('Geometría bloqueada o inválida: revisa cruces, vértices y longitudes.','warning',2600);if(!preview&&typeof v213ShowGeometryError==='function')v213ShowGeometryError(document.getElementById('layoutSvg'));return false;}
     if(kind==='area'){
       const affected=appState.layout.zones.filter(z=>!v209ZoneInsideArea(z.pts,next)).map(z=>z.id);
       if(affected.length){if(!preview){appState.editor.pendingAreaEdit={pts:clone(next),affected};renderLayoutEditor();}return false;}
-      if(preview){v212ApplyArea(next,null,false);return true;}
-      v212ApplyArea(next);appState.editor.pendingAreaEdit=null;
+      if(preview)return v212ApplyArea(next,null,false)!==false;
+      if(v212ApplyArea(next)===false)return false;appState.editor.pendingAreaEdit=null;
     } else {
       const changes=v212ZoneChanges(target,next),blocked=[...changes.keys()].find(id=>findZoneById(id)?.locked);
       const problem=v211ValidateZoneEdits(changes);
@@ -111,6 +112,7 @@
     });return changes;
   }
   function v212ApplyArea(next,zones=null,history=true){
+    if(typeof v214ApplyArea==='function')return v214ApplyArea(next,zones,history);
     const old=clone(layoutBoundaryPts());if(history)recordHistorySnapshot('structure');
     // Mover solo nodos/endpoints coincidentes con vértices del área; IDs y vanos se conservan.
     if(old.length===next.length){
@@ -245,7 +247,7 @@
       let path=svg.querySelector('[data-area-preview]');if(!path){path=svgEl('path',{'data-area-preview':'1',fill:'rgba(205,137,61,.1)',stroke:'#b87932','stroke-width':2,'pointer-events':'none'});svg.appendChild(path);}path.setAttribute('d',pathFromPts(next));
     };
     const cleanup=()=>{appState.editor.geometrySnapPreview=null;window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);};
-    const finish=()=>{cleanup();if(moved)v212Commit('area',next);else renderLayoutEditor();};
+    const finish=()=>{cleanup();if(moved)v212Commit('area',next);else if(typeof v214RefreshInspector==='function')v214RefreshInspector();else renderLayoutEditor();};
     const cancel=()=>{cleanup();renderLayoutEditor();};
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish,{once:true});window.addEventListener('pointercancel',cancel,{once:true});
   }

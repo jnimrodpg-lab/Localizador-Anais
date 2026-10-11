@@ -1,5 +1,5 @@
 {
-  "version": "213",
+  "version": "214",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -11,6 +11,7 @@
     "60-layout-editor.js",
     "61-polygon-editor-v212.js",
     "62-editor-ux-v213.js",
+    "63-area-hierarchy-v214.js",
     "65-layout-pro-v117.js",
     "66-topology-v128.js",
     "70-rack-editor.js",
@@ -19,5 +20,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V213: edición directa, inspector contextual, cotas editables, capas bloqueables y estados de guardado"
+  "notes": "V214: Área comercial maestra, muros vinculados a sus vértices, zonas secundarias e interfaz simplificada"
 }

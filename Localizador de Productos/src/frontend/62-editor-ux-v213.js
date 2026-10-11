@@ -101,6 +101,7 @@
   function v213ApplyLength(kind,id,index,metres,anchor='start'){
     const units=Number(metres)*100/getScaleCmPerUnit();if(!Number.isFinite(units)||units<1){showToast('Introduce una longitud válida, mayor o igual a 0,01 m.','warning');return false;}
     if(kind==='wall'){
+      const bound=findWallById(id);if(bound?.areaBinding&&(bound.areaBinding.start||bound.areaBinding.end)&&typeof v214BoundWallLength==='function')return v214BoundWallLength(bound,units,anchor);
       const wall=findWallById(id);if(!wall||wall.autoZoneEdge||v213LayerLocked('walls'))return false;
       const a=getWallNode(wall.startNodeId),b=getWallNode(wall.endNodeId);if(!a||!b)return false;
       const length=Math.hypot(b.x-a.x,b.y-a.y);if(length<.001)return false;
@@ -111,8 +112,8 @@
     }
     const target=kind==='area'?v212Target('area'):findZoneById(id);if(!target||target.locked||kind==='zones'&&v213LayerLocked('zones'))return false;
     const pts=clone(target.pts),a=pts[index],j=(index+1)%pts.length,b=pts[j],length=Math.hypot(b.x-a.x,b.y-a.y);if(length<.001)return false;
-    if(anchor==='end')pts[index]={x:b.x-(b.x-a.x)/length*units,y:b.y-(b.y-a.y)/length*units};
-    else pts[j]={x:a.x+(b.x-a.x)/length*units,y:a.y+(b.y-a.y)/length*units};
+    if(anchor==='end')pts[index]={...pts[index],x:b.x-(b.x-a.x)/length*units,y:b.y-(b.y-a.y)/length*units};
+    else pts[j]={...pts[j],x:a.x+(b.x-a.x)/length*units,y:a.y+(b.y-a.y)/length*units};
     if(kind==='zones')appState.selectedZoneId=id;
     const result=v212Commit(kind,pts,{label:'longitud del lado'});if(result)v213ClosePopover();return result;
   }
@@ -166,7 +167,8 @@
       }
     }else if(kind==='area'||kind==='zones'&&appState.editor.showZones!==false){
       const target=v212Target(kind);if(!target||!appState.editor.showDims)return;
-      target.pts.forEach((a,i)=>{const b=target.pts[(i+1)%target.pts.length];v213Dimension(svg,layer,kind,target.id||'AREA-GENERAL',i,a,b,getZoneOutwardEdgeNormal(target,a,b));});
+      const selection=v213SelectedPart();
+      target.pts.forEach((a,i)=>{if(appState.layout.meta.architectureHierarchyV214&&selection&&(selection.type==='edge'?i!==selection.index:i!==selection.index&&i!==(selection.index-1+target.pts.length)%target.pts.length))return;const b=target.pts[(i+1)%target.pts.length];v213Dimension(svg,layer,kind,target.id||'AREA-GENERAL',i,a,b,getZoneOutwardEdgeNormal(target,a,b));});
     }
     v213ShowGeometryError(svg);
   }

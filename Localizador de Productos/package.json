@@ -1,18 +1,18 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "2.1.3-editor-contextual",
+  "version": "2.1.4-area-maestra",
   "private": true,
-  "description": "WMS V213: edición contextual del plano; Cloudflare D1",
+  "description": "WMS V214: Área comercial, muros vinculados, zonas virtuales e interfaz simplificada",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",
     "build:frontend": "node scripts/build-frontend.mjs",
     "build:css": "node scripts/build-css.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
-    "test:regression": "node scripts/audit-v202.mjs && node scripts/test-v205.mjs && node scripts/test-v206.mjs && node scripts/test-v208.mjs && npm run test:v209 && node scripts/test-v210-walls.mjs && node scripts/test-v211.mjs && node scripts/test-v212.mjs",
+    "test:regression": "node scripts/audit-v202.mjs && node scripts/test-v205.mjs && node scripts/test-v206.mjs && node scripts/test-v208.mjs && npm run test:v209 && node scripts/test-v210-walls.mjs && node scripts/test-v211.mjs && node scripts/test-v212.mjs && node scripts/test-v214.mjs",
     "check": "npm run build && npm run verify:frontend && npm run test:regression && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js",
     "test:v209": "node scripts/test-v209.mjs",
-    "test:ui": "node scripts/test-v212-ui.mjs && node scripts/test-v213-ui.mjs"
+    "test:ui": "node scripts/test-v214-ui.mjs"
   },
   "dependencies": {
     "three": "0.160.0"

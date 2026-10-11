@@ -493,6 +493,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       return street;
     });
     if(!appState.layout.meta.defaultStreetCornerStyle) appState.layout.meta.defaultStreetCornerStyle = 'right';
+    if(typeof v214EnsureHierarchy==='function')v214EnsureHierarchy(appState.layout);
     return appState.layout.meta;
   }
   function pathFromPts(pts=[]){ return (pts || []).map((pt,i) => `${i===0?'M':'L'} ${Number(pt?.x || 0)} ${Number(pt?.y || 0)}`).join(' ') + ' Z'; }

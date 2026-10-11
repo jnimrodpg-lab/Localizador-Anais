@@ -169,7 +169,7 @@
   }
   function v214RefreshInspector(){
     const panel=document.getElementById('layoutRightPanel');if(!panel)return;
-    appState.editor.rightPanelScrollTop=0;panel.innerHTML=renderLayoutRightPanelMarkup();bindLayoutRightPanel();v213BindUx();v214SimplifyEditor();
+    appState.editor.rightPanelScrollTop=0;panel.innerHTML=renderLayoutRightPanelMarkup();bindLayoutRightPanel();v213BindUx();v214SimplifyEditor();v215RedesignEditor();
     const svg=document.getElementById('layoutSvg');if(svg){const sel=appState.editor.geometrySelection;svg.querySelectorAll('[data-area-edge]').forEach(line=>{const active=sel?.type==='edge'&&Number(line.dataset.areaEdge)===sel.index;line.setAttribute('stroke',active?'#b87932':'transparent');});}
   }
   function v214SimplifyEditor(){

@@ -366,6 +366,7 @@
       el.textContent = msg;
       el.setAttribute('role','status');el.setAttribute('aria-live','polite');
       el.title = appState.ui?.layoutSaveAt ? `Última actualización: ${new Date(appState.ui.layoutSaveAt).toLocaleString('es-PE')}` : msg;
+      if(typeof v215CompactSaveStatus==='function') v215CompactSaveStatus(el,state,msg);
     }catch(_err){}
   }
   function markLayoutDirty(reason='layout'){

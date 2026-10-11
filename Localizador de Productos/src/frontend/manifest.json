@@ -1,5 +1,5 @@
 {
-  "version": "214",
+  "version": "215",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -12,6 +12,7 @@
     "61-polygon-editor-v212.js",
     "62-editor-ux-v213.js",
     "63-area-hierarchy-v214.js",
+    "64-editor-redesign-v215.js",
     "65-layout-pro-v117.js",
     "66-topology-v128.js",
     "70-rack-editor.js",
@@ -20,5 +21,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V214: Área comercial maestra, muros vinculados a sus vértices, zonas secundarias e interfaz simplificada"
+  "notes": "V215: lienzo amplio, dos barras, inspector contextual y cortes desplegables; conserva jerarquía V214"
 }

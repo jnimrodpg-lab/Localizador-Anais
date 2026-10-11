@@ -3150,6 +3150,9 @@
           </div>
         </div>
       </div>`
+    // Finalize toolbar geometry before calculating SVG coordinates and fitting.
+    v214SimplifyEditor();
+    v215RedesignEditor();
     const svg = $('#layoutSvg');
     const currentBox = appState.editor.viewBox || { x:0, y:0, w:900, h:620 };
     if(!appState.editor.viewBoxInitialized){
@@ -3177,6 +3180,7 @@
     bindLayoutRightPanel();
     v213BindUx();
     v214SimplifyEditor();
+    v215RedesignEditor();
     requestAnimationFrame(() => {
       const scroller = document.querySelector('#layoutRightPanel .layout-right-scroll');
       if(scroller) scroller.scrollTop = appState.editor?.rightPanelScrollTop ?? __layoutRightScrollBefore ?? 0;
@@ -3433,10 +3437,10 @@
       svg.setPointerCapture?.(evt.pointerId);
     });
     const contentBounds = getLayoutContentBounds();
-    const gridStep = Math.max(4, getSnapSize() * 2);
+    const gridStep = v215GridStep(Math.max(4, getSnapSize() * 2), svg.getScreenCTM()?.a || 1);
     if(appState.editor.showGrid !== false){
       const px=1/(svg.getScreenCTM()?.a||1),defs=svgEl('defs');
-      [[gridStep,'v213-grid-minor',.20],[gridStep*5,'v213-grid-major',.42]].forEach(([size,id,opacity])=>{
+      [[gridStep,'v213-grid-minor',.08],[gridStep*5,'v213-grid-major',.18]].forEach(([size,id,opacity])=>{
         const pattern=svgEl('pattern',{id,patternUnits:'userSpaceOnUse',width:size,height:size});
         pattern.appendChild(svgEl('path',{d:`M ${size} 0 H 0 V ${size}`,fill:'none','stroke-width':px,opacity,class:'v213-grid-line'}));defs.appendChild(pattern);
       });svg.appendChild(defs);
@@ -4594,11 +4598,11 @@
       <div class="layout-section-wrap layout-section-panel">
         <div class="layout-section-head">
           <div>
-            <div class="layout-section-title">Secciones X / Y</div>
-            <div class="layout-section-sub">Revisa cortes X e Y lado a lado sin tapar el plano principal.</div>
+            <div class="layout-section-title">Cortes X / Y</div>
+            <div class="layout-section-sub">Revisa cortes X e Y lado a lado en el panel desplegable.</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div class="section-stack-chip">${zone ? zone.id : 'Sin zona'} • ${racks.length} racks</div>
+            <div class="section-stack-chip">${escapeHtml(zone?.name || zone?.id || 'Sin zona')} · ${racks.length} racks</div><button type="button" class="seg-btn" id="v215CloseSections" aria-label="Cerrar cortes">Cerrar ×</button>
           </div>
         </div>
         <div class="layout-section-body layout-section-grid">
@@ -4618,6 +4622,12 @@
           </div>
         </div>
       </div>`;
+    const close = $('#v215CloseSections');
+    if(close) close.onclick = () => { appState.editor.sectionVisible=false; renderLayoutEditor(); };
+    if(!racks.length){
+      mount.querySelector('.layout-section-body').innerHTML='<p class="v215-section-empty">Esta zona no tiene racks. Selecciona una zona con racks para ver sus cortes.</p>';
+      return;
+    }
     renderSectionAxisSvg($('#layoutSectionSvg'), zone, racks, 'x');
     renderSectionAxisSvg($('#layoutSectionSvgY'), zone, racks, 'y');
     $('#btnFlipSectionX').onclick = () => { const cut = getSectionCut('x', zone); cut.dir *= -1; persistActiveLayout(); renderLayoutEditor(); };

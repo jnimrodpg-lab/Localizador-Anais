@@ -1,6 +1,6 @@
-# WMS Industrial V214 — Área comercial → Muros → Zonas
+# WMS Industrial V215 — Editor con más espacio
 
-Actualización sobre V213. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+Rediseño sobre V214. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
 
 ## Jerarquía y creación
 
@@ -20,25 +20,25 @@ La creación y edición avanzadas siguen disponibles. El nombre visible y el có
 - Las capas bloqueadas impiden modificar sus elementos a través del área cuando el cambio también los movería. El traslado del local con todo su contenido requiere desbloquear las capas implicadas.
 - La migración conserva muros físicos preexistentes. Retira la dependencia de zonas virtuales, sin borrar ni mover muros, racks o productos.
 
-## Interfaz simplificada
+## Interfaz rediseñada
 
-- Pestañas ordenadas **Área comercial → Muros → Zonas**.
-- Una acción principal de creación por modo; barra permanente Seleccionar / Medir.
-- Deshacer, Rehacer y Guardar permanecen en la barra superior.
-- «Más» reúne cotas, ajuste de vista, ortogonalidad, secciones, inspector, presentación y capas. En Muros también permite colocar puertas y aberturas. El menú escapa del recorte de la barra y admite teclado/Escape.
-- Propiedades básicas primero. Coordenadas, desplazamientos, giros, bloqueo y operaciones menos frecuentes quedan en Edición precisa / Opciones avanzadas.
-- El muro seleccionado conserva su icono ↔ con Adentro / Centro / Afuera y vista previa antes de aplicar.
-- Las cotas de edición muestran el lado activo o los dos lados conectados al vértice activo; sin selección geométrica se muestra el contorno seleccionado. Pulsa una medida para introducir una longitud y elegir el extremo fijo A/B.
-- Las superficies, capas, acabados, códigos, divisiones, fusión, conversión de zona en área, traslado del local y herramientas CAD siguen accesibles.
-- Conserva paleta cálida, modo claro/oscuro y editor dentro de la ventana a 1024/1280/1560 px. Superficies menores mantienen la disposición apilada.
+- **Dos barras:** espacios de trabajo, sucursal y guardado en la primera; Área comercial / Muros / Zonas, creación, historial, Ajustar e Inspector en la segunda. Las tres especialidades siguen disponibles.
+- **Plano a altura completa:** los cortes X/Y se abren desde «Cortes» junto al zoom, sobre el lienzo. Se cierran con el mismo botón o «Cerrar». Una zona sin racks muestra un mensaje breve en lugar de dos gráficos vacíos. Las vistas y la inversión de dirección se conservan cuando hay racks.
+- **Inspector más ancho:** título y selección visibles arriba; campos más legibles, espaciado uniforme y menos tarjetas anidadas. Puede ocultarse desde la barra para ampliar el plano.
+- **Edición contextual:** al elegir un lado aparecen sus medidas; al elegir un vértice aparecen X/Y. Los botones Vértice / Lado permiten cambiar el tipo de edición precisa. Coordenadas, giros, división, bloqueo y operaciones avanzadas continúan disponibles.
+- **Cuadrícula adaptativa:** la separación visual aumenta al alejar la vista. El tamaño de snap y la precisión del plano no cambian.
+- **Guardado breve:** Local · pendiente / Sincronizando / Sincronizado / Error de guardado. El mensaje completo permanece en la descripción accesible y al pasar el cursor.
+- **Más:** cotas, ortogonalidad, presentación y capas. Muros también conserva puertas y aberturas. Ajustar e Inspector quedan a mano; los cortes se encuentran junto al zoom.
+- Se mantienen el nombre editable de zonas, colores, capas y bloqueos, icono del muro con Adentro / Centro / Afuera, historial y revisión de cambios del área.
+- Paleta cálida, temas claro/oscuro y escala de interfaz del 80%. A partir de 1024 px el editor ocupa la ventana; en pantallas menores, plano e inspector se apilan y la barra admite desplazamiento horizontal.
 
 ## Guardado y validación
 
 Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y error de sincronización. Una respuesta anterior de guardado no marca los cambios nuevos como sincronizados. Se mantienen las comprobaciones del almacenamiento local.
 
-`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones V202–V214 y comprueba sintaxis del backend/frontend.
+`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V214 y la interfaz V215 y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` ejecuta la prueba de interfaz V214. Requiere Playwright/Chromium como dependencia opcional de pruebas; no forma parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Se comprueban jerarquía, creación poligonal del área, creación rectangular/irregular de zonas, vínculos de muros, esquinas nuevas, medidas, historial, independencia de zonas, menú de posición del muro, capas, Más, tres espacios de edición, recarga local y visor 3D. Capturas de QA solo temporales.
+`npm run test:ui` ejecuta la prueba de interfaz V215. Requiere Playwright/Chromium como dependencia opcional de pruebas; no forma parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Se comprueban jerarquía, creación poligonal del área, creación rectangular/irregular de zonas, vínculos de muros, esquinas nuevas, medidas, historial, independencia de zonas, menú de posición del muro, capas, Más, tres espacios de edición, recarga local y visor 3D. También se verifica la altura completa con cortes abiertos, el cambio entre vértice/lado y los controles a distintos tamaños. Capturas de QA solo temporales.
 
 ## Alcance
 

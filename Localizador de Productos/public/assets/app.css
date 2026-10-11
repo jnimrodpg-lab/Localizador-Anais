@@ -7674,4 +7674,95 @@ body.theme-light #appRoot.app .layout-type-pill{color:var(--primary)!important}
 #appRoot.app .layout-cad-v80 .layout-cad-shell-v80 .layout-right-scroll .v203-wall-card[hidden]{display:none!important}
 #appRoot.app .layout-cad-v80 .v214-more-menu .v80-tool-btn.seg-btn{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;gap:8px!important;padding:6px 9px!important;min-height:34px!important}
 #appRoot.app .v214-more-menu .v80-tool-btn b{font-size:12px!important}
+/* V215: two toolbars, a full-height canvas, and a contextual property panel. */
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80.v215-editor,
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80.v215-editor:has(.v203-wall-subtabs){grid-template-rows:auto auto minmax(0,1fr)!important;gap:10px!important}
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80.v215-editor:has(.layout-placement-prompt){grid-template-rows:auto auto auto minmax(0,1fr)!important}
+#appRoot.app .v215-editor .v215-projectbar{display:flex;align-items:center;gap:12px;min-width:0;padding:2px 2px 8px;border-bottom:1px solid var(--line)}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-v200-tabs{display:flex;gap:4px;padding:0;flex:0 0 auto}
+#appRoot.app .v215-editor .layout-v200-tab{min-height:40px;height:40px;padding:8px 15px;border:0;border-radius:8px;background:transparent;justify-content:center}
+#appRoot.app .v215-editor .layout-v200-tab b{font-size:14px;white-space:nowrap}
+#appRoot.app .v215-editor .layout-v200-tab small{display:none}
+#appRoot.app .v215-editor .layout-v200-tab.active{background:var(--accent-soft);color:var(--primary);box-shadow:inset 0 -2px var(--primary);border:0}
+#appRoot.app .v215-branch{display:flex;align-items:center;gap:8px;min-width:0;margin-left:auto;color:var(--ink-soft);font-size:12px}
+#appRoot.app .v215-branch select{width:180px;max-width:220px;min-width:110px;min-height:38px;height:38px;border-radius:8px;padding:6px 10px;font-size:13px}
+#appRoot.app .v215-projectbar #btnSaveLayoutVisible{min-height:38px;padding:7px 17px;font-size:13px;border-radius:8px;white-space:nowrap}
+#appRoot.app .layout-cad-v80 .v215-editor #layoutSaveStatus{display:flex!important;align-items:center;gap:6px;max-width:170px!important;background:transparent!important;border:0!important;border-radius:0!important;padding:0!important;font-size:12px!important;white-space:nowrap!important;line-height:1.3}
+#appRoot.app .v215-editor #layoutSaveStatus::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0}
+#appRoot.app .v215-editor #layoutSaveStatus.local::before{background:#bd8745}
+#appRoot.app .v215-editor #layoutSaveStatus.error::before{background:#bc4842}
+#appRoot.app .v215-editor #layoutSaveStatus.saving::before{background:#6b92be}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-cad-localbar-v80{padding:2px 0!important;gap:8px!important;min-height:44px!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-cad-localbar-v80 :is(button,select){font-size:13px!important;height:38px!important;min-height:38px!important;max-height:38px!important;padding:6px 12px!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-cad-localbar-v80 .v80-icon-btn{padding:0!important;width:34px!important;min-width:34px!important}
+#appRoot.app .layout-cad-v80 .v215-editor .v203-wall-subtabs{display:flex;flex-wrap:nowrap;gap:2px;padding:3px!important;background:var(--surface-2);border-radius:9px;border:1px solid var(--line);margin-right:7px}
+#appRoot.app .layout-cad-v80 .v215-editor .v203-wall-subtabs .seg-btn{border:0!important;background:transparent;color:var(--ink-soft);border-radius:7px;min-height:32px!important;height:32px!important;max-height:32px!important;padding:5px 14px!important}
+#appRoot.app .layout-cad-v80 .v215-editor .v203-wall-subtabs .seg-btn.active{background:var(--surface-1)!important;color:var(--primary)!important;box-shadow:0 1px 4px rgba(20,30,20,.1)!important}
+#appRoot.app .v215-editor .v215-history-start{margin-left:6px}
+#appRoot.app .v215-editor .v215-view-start{margin-left:auto}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr) clamp(340px,27%,390px)!important;gap:14px!important}
+#appRoot.app .layout-cad-v80 .v215-editor.right-collapsed .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr)!important}
+#appRoot.app .layout-cad-v80 .v215-editor .v80-main-stage{grid-template-rows:minmax(0,1fr)!important;gap:0!important}
+#appRoot.app .layout-cad-v80 .v215-editor .v80-canvas-card{border-radius:12px!important;box-shadow:none!important}
+#appRoot.app .layout-cad-v80 .v215-editor .v80-right-panel{background:var(--surface-1)!important;border:1px solid var(--line)!important;border-radius:12px!important;box-shadow:none!important}
+#appRoot.app .layout-cad-v80 .v215-editor .v80-right-panel .layout-right-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:10px!important;padding:16px 18px!important;background:var(--surface-1)!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-head>div>b{font-size:15px!important;text-transform:none;letter-spacing:0!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-head .layout-contextual-bar{grid-column:1/-1;display:grid!important;gap:8px!important;background:transparent!important;padding:0!important;border:0!important;border-radius:0!important;min-height:0!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-contextual-copy b{font-size:13px!important;line-height:1.4;font-weight:600!important;color:var(--ink-soft)!important}
+#appRoot.app .v215-editor .layout-contextual-actions:empty{display:none!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-scroll{padding:0 18px 18px!important;gap:0!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-scroll>.layout-prop-card{padding:18px 0!important;margin:0!important;border:0!important;border-bottom:1px solid var(--line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-scroll :is(.layout-prop-title,summary){font-size:14px!important;text-transform:none!important;letter-spacing:0!important;line-height:1.4}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-scroll :is(input,select){min-height:42px!important;font-size:14px!important;border-radius:8px!important;font-weight:500!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-scroll :is(.btn,.seg-btn){font-size:13px!important;min-height:38px!important;line-height:1.4!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-scroll label{font-size:13px!important;text-transform:none!important;letter-spacing:0!important;font-weight:500!important;gap:7px!important}
+#appRoot.app .v215-editor .v212-editor .v213-identity{gap:10px;margin:14px 0}
+#appRoot.app .v215-editor .v213-identity .v213-editing{display:none}
+#appRoot.app .v215-editor .v212-editor .tiny{font-size:13px!important;margin:14px 0!important;line-height:1.6}
+#appRoot.app .v215-editor .v212-editor .layout-template-grid:empty{display:none!important}
+#appRoot.app .v215-editor .v212-editor .v213-geometry{margin-top:18px;padding-top:16px}
+#appRoot.app .v215-geometry-tabs{display:flex;gap:4px;background:var(--surface-2);border-radius:8px;padding:3px;margin-bottom:16px}
+#appRoot.app .v215-geometry-tabs button{flex:1;border:0;background:transparent}
+#appRoot.app .v215-geometry-tabs button.active{background:var(--surface-1);color:var(--primary);box-shadow:0 1px 4px rgba(20,30,20,.1)}
+#appRoot.app .v215-editor .v213-edge-fields,#appRoot.app .v215-editor .v213-vertex-fields{display:grid;gap:12px;margin:14px 0}
+#appRoot.app .v215-editor .layout-prop-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}
+#appRoot.app .v215-editor .v214-advanced-options{border:0;border-top:1px solid var(--line);border-radius:0;padding:18px 0}
+#appRoot.app .v215-editor .layout-panel-fold{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;padding:16px 0;margin:0}
+#appRoot.app .layout-cad-v80 .v215-editor #layoutSectionWrap.v80-section-floating{position:absolute!important;left:12px!important;right:12px!important;bottom:58px!important;width:auto!important;max-width:calc(100% - 24px)!important;max-height:44%!important;overflow:auto!important;z-index:12!important;border:1px solid var(--line-2);border-radius:12px;box-shadow:0 6px 30px rgba(20,30,20,.18);background:var(--surface-1)}
+#appRoot.app .v215-editor #layoutSectionWrap .layout-section-panel{border:0!important;background:var(--surface-1)!important;padding:12px!important}
+#appRoot.app .v215-editor #layoutSectionWrap .layout-section-sub{font-size:12px!important}
+#appRoot.app .v215-editor #layoutSectionWrap .layout-section-head{position:sticky;top:-12px;background:var(--surface-1);z-index:1;padding-bottom:8px}
+#appRoot.app .v215-editor #layoutSectionWrap .layout-section-head>div:first-child>.layout-section-sub{display:none}
+#appRoot.app .v215-editor #layoutSectionWrap .layout-section-title{font-size:14px!important;text-transform:none;letter-spacing:0}
+#appRoot.app .v215-editor .v215-section-empty{font-size:13px;color:var(--ink-soft);margin:4px 0 0;grid-column:1/-1;padding:10px}
+#appRoot.app .layout-cad-v80 .v215-editor .v80-canvas-footer{left:14px!important;max-width:285px!important;height:40px!important;min-height:40px!important;gap:5px!important}
+#appRoot.app .layout-cad-v80 .v215-editor #btnToggleSections{font-size:12px!important;min-height:30px!important;max-height:30px!important;padding:4px 9px!important;min-width:80px!important;margin-left:5px!important}
+#appRoot.app .v215-editor :is(button,summary,select,input):focus-visible{outline:2px solid var(--primary)!important;outline-offset:2px}
+@media(min-width:981px) and (max-width:1200px){
+ #appRoot.app .layout-cad-v80 .v215-editor .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr) 330px!important;gap:10px!important}
+ #appRoot.app .v215-editor .v215-projectbar{gap:8px}
+ #appRoot.app .v215-editor .layout-v200-tab{padding:8px 11px}
+ #appRoot.app .v215-editor .v215-branch>span{display:none}
+ #appRoot.app .v215-branch select{width:150px}
+}
+@media(max-width:980px){
+ #appRoot.app .layout-cad-v80 .layout-cad-shell-v80.v215-editor{height:auto!important;max-height:none!important;grid-template-rows:auto auto auto!important;overflow:visible!important}
+ #appRoot.app .v215-editor .v215-projectbar{flex-wrap:wrap;gap:8px}
+ #appRoot.app .v215-editor .layout-v200-tabs{flex:1 0 100%}
+ #appRoot.app .v215-editor .layout-v200-tab{flex:1;padding:8px;font-size:12px}
+ #appRoot.app .v215-branch{margin-left:0}
+ #appRoot.app .layout-cad-v80 .v215-editor .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto auto!important;height:auto!important;overflow:visible!important}
+ #appRoot.app .layout-cad-v80 .v215-editor .v80-main-stage{height:65dvh!important;min-height:420px!important}
+ #appRoot.app .layout-cad-v80 .v215-editor #layoutRightPanel{max-height:600px!important;height:auto!important}
+}
+#appRoot.app .layout-cad-v80 .v215-editor .v203-wall-subtabs{width:auto!important;max-width:none!important;flex:0 0 auto!important}
+#appRoot.app .layout-cad-v80 .v215-editor .v203-wall-subtabs .seg-btn{width:auto!important;flex:0 0 auto!important;min-width:0!important}
+#appRoot.app .layout-cad-v80 .v215-editor .layout-right-head .layout-contextual-copy b{font-size:13px!important;text-transform:none!important;letter-spacing:0!important;color:var(--ink-soft)!important}
+#appRoot.app .layout-cad-v80 .v215-editor #btnToggleSections{display:flex!important;align-items:center!important;justify-content:center!important;white-space:nowrap!important}
+/* Percentage heights must resolve against the allocated middle row, not the
+   inspector's intrinsic content. Selection must never resize the drawing. */
+@media(min-width:981px){
+ body[data-screen=layout] #appRoot.app .content-panel,body[data-screen=distribution] #appRoot.app .content-panel{grid-template-rows:auto minmax(0,1fr) auto!important}
+ body[data-screen=layout] #appRoot.app .content-wrap,body[data-screen=distribution] #appRoot.app .content-wrap{display:block!important;align-content:normal!important}
+}
 

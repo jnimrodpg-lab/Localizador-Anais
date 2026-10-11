@@ -1,95 +1,38 @@
-# WMS Industrial V205 — Distribución libre y Snap CAD
+# WMS Industrial V208 — Giro libre y alineación paralela de racks
 
-## Cambios en Distribución
+## Novedades de Distribución
 
-- **Movimiento libre de racks** activado de forma predeterminada: al arrastrar un mueble no se lo devuelve automáticamente al interior de una zona estrecha. Se mantienen su posición X/Y y su identidad para inventario, relaciones y apilamientos. Cuando está parcial o completamente fuera de zona, el editor advierte sin desplazarlo.
-- **Alinear con vértices y bordes**: snap opcional por proximidad a vértices de zonas, nodos de muros y esquinas/centros de otros racks, además del snap general a rejilla.
-- **Ctrl al arrastrar** ignora temporalmente el snap, mientras que el control global lo activa o desactiva. **Alt+arrastrar** continúa disponible para mover conjuntos apilados.
-- **Movimiento estricto**: al desactivar Movimiento libre, las posiciones y giros fuera de zona o con superposición volumétrica son rechazados.
-- Los cambios desde los campos X/Y y los giros respetan el mismo modo. Drag individual y múltiple se guardan como una operación reversible mediante Undo/Redo.
+- **Giro libre:** selecciona un rack y ajusta el campo **Ángulo libre (0°–360°)** con precisión de 0,1°. Acepta cualquier ángulo intermedio y normaliza el resultado a 0–360°. El giro mantiene el centro del rack.
+- **Hacer paralelo a muro:** selecciona el rack, pulsa el botón y haz clic en una arista de muro, de zona o del perímetro del área general. Se calcula la orientación real de ese segmento, incluyendo diagonales.
+- **Paralelo a 2 vértices:** selecciona el rack y pulsa el botón; después haz clic en dos vértices distintos. La dirección se calcula entre esos dos puntos.
+- **Separación perpendicular:** introduce la distancia en cm en **Separación perpendicular (cm)** antes de alinear. Después de colocar el rack, cambia la cifra y usa **Aplicar nueva separación** sin seleccionar de nuevo el muro.
+- **Invertir sentido 180°:** invierte el sentido longitudinal del rack sin desplazar su centro.
+- **Movimiento libre y snap:** continúan como ajustes separados. Si el modo de movimiento libre está activado, se advierten colisiones sin bloquear la alineación. Al desactivarlo, las colisiones y restricciones de zona vuelven a impedir la operación. El snap a rejilla y a vértices permanece disponible durante el arrastre; la operación "Hacer paralelo" calcula el ángulo exacto sin redondearlo a la rejilla.
+- **Undo/Redo:** el giro o la alineación se guarda como una sola operación reversible. Usa **Ctrl+Z** y **Ctrl+Y** o **Ctrl+Shift+Z** fuera de los campos de texto.
 
-**Atención:** permitir el movimiento libre no certifica que el rack esté sustentado, libre de colisiones o apto para el entorno físico. La validación de conflictos sigue activa. Coloca los objetos definitivamente en zonas válidas antes de operar el almacén.
+## Instrucciones rápidas
+
+1. Abre **Editar layout → Distribución** y selecciona un rack en el plano o desde el inspector.
+2. Para giro exacto, escribe `37.5` en **Ángulo libre** y confirma.
+3. Para hacer paralelo, define la separación, pulsa **Hacer paralelo a muro**, y haz clic sobre la arista inclinada (o selecciona **Paralelo a 2 vértices** y haz clic en ambos puntos).
+4. Para ajustar distancia posteriormente, modifica el campo de separación y pulsa **Aplicar nueva separación**.
+5. Activa **Movimiento libre** si deseas permitir una ubicación provisional fuera de la zona. Los avisos de interferencia no equivalen a una aprobación de seguridad.
 
 ## Compatibilidad
 
-Conserva Arquitectura, Urbanismo, 3D, mobiliario paramétrico, Wrangler, binding D1 `DB` y migraciones SQL. No modifica la base de datos ni genera una nueva D1.
-
-En Cloudflare Pages: framework `None`, build `npm ci && npm run build`, directorio `public`.
-
-## Limitaciones de prueba
-
-El build frontend y las pruebas de código se ejecutan localmente. Las pruebas remotas de WebGL y persistencia contra tu Cloudflare D1 deben realizarse desde un deployment Preview.
-
----
-
-# WMS Industrial V203 — Muros contextuales y uniones arquitectónicas
-
-Basado en V202, conservando **Wrangler, binding D1 `DB`, migraciones SQL, apilamiento, biblioteca, constructor de mobiliario, CAD y cotas**. No cambia el esquema SQL.
-
-## Edición de muros
-
-1. Abre **Editar layout → Arquitectura → Muros · crear y editar**.
-2. Haz clic sobre una **arista de una zona**. Los chips permanentes `+ MURO` se eliminaron; el borde se resalta al pasar el puntero.
-3. En el inspector define la colocación del espesor: **Hacia dentro**, **Hacia fuera** o **Centrado**, además de espesor y altura en centímetros.
-4. Pulsa **Crear muro en arista**. El muro se selecciona; puedes actualizarlo o eliminarlo desde el mismo inspector.
-5. **Cerrar perímetro de zona** crea/configura los muros de todas las aristas de esa zona (un solo paso de historial).
-6. Cambia a **Geometría · áreas y zonas** para mover vértices o crear cotas sin chips obstructivos.
-
-### Empalmes y sincronización 2D/3D
-
-Los muros creados desde aristas comparten nodos y registran qué zona y arista los originó. La línea de referencia no se mueve al cambiar el espesor: se construyen caras según dentro/fuera/centro. Los cierres en nodos usan las caras físicas del muro para evitar el problema de dobles parches. El 3D coloca su espesor sobre el mismo eje geométrico y añade un volumen físico en las juntas; el inspector arquitectónico 3D permite cambiar también la orientación del espesor.
-
-Las uniones de más de dos muros, los muros con alturas distintas y las uniones con vanos adyacentes deben comprobarse en Cloudflare Preview con Three.js para verificar la estética final. Las verificaciones automáticas no certifican estabilidad estructural.
-
-### Verificación
-
-- `npm run check`: compila, valida integridad y ejecuta auditoría heredada.
-- Prueba de navegador Chromium: selección de arista, muro interior de 22 cm, edición exterior, cierre del perímetro y geometría de esquinas compartidas, sin excepciones JS.
+Conserva Arquitectura, Urbanismo, áreas, cotas, muros, zonas, biblioteca de racks, mobiliario, apilamiento, modelos 3D, Wrangler y las migraciones SQL. No modifica el esquema de Cloudflare D1.
 
 ## Despliegue en Cloudflare Pages
 
-Framework `None`, comando `npm ci && npm run build`, directorio `public`. Mantén tu binding D1 actual. No recrees la base SQL. Antes de sustituir producción, verifica el render WebGL completo y el guardado remoto en Cloudflare Preview.
+- Framework: `None`
+- Comando: `npm ci && npm run build`
+- Directorio de salida: `public`
+- Conserva el binding `DB` del archivo `wrangler.toml` y tu base D1 existente.
 
----
+## Validaciones realizadas
 
-# WMS Industrial V202 — Motor CAD de precisión
+- `npm run check` (compilación, sincronización, verificaciones V202/V205/V206/V208 y sintaxis).
+- Chromium: navegación a Distribución, 33,7°, selección de muro, dos vértices, cambio de separación, inversión y Undo/Redo, sin errores JavaScript.
+- Pruebas de geometría: 27,35° y distancias perpendiculares de 13,5 y 24,25 cm; operaciones inválidas no modifican el modelo.
 
-Versión basada en la V201 auditada. Mantiene **Wrangler, Cloudflare D1 (`DB`), las migraciones SQL, la biblioteca de racks, el constructor de mobiliario y Diseñar espacio 3D**. No se realizan cambios de esquema SQL.
-
-## Nuevo sistema de cotas (tres clics, estilo Revit)
-
-1. En **Editar layout → Arquitectura**, elige **Medir**.
-2. Haz clic en el **punto A** (vértice o arista).
-3. Haz clic en el **punto B**. Se muestra la cota alineada, todavía sin fijar.
-4. **Mueve el mouse perpendicularmente** para ajustar la distancia de la cota a la geometría.
-5. **Tercer clic** para fijar la posición. Se mantiene la herramienta para seguir creando cotas. **Esc** cancela.
-
-Las cotas creadas con V202 referencian los vértices, nodos y aristas de las zonas, del área general y de los muros cuando hay geometría de destino. Si se modifica la geometría vinculada, la distancia se actualiza. Las cotas históricas sin referencias conservan sus coordenadas anteriores, sin migraciones destructivas. Si un elemento de referencia desaparece, queda la posición de respaldo para evitar errores de renderizado.
-
-Selecciona una cota con la herramienta **Seleccionar** y arrástrala para cambiar su separación perpendicular. También puedes indicar el **desplazamiento (cm)** desde su inspector.
-
-## Herramientas de precisión
-
-- Los **círculos de vértices de zonas se centran en la posición exacta de los puntos** (sin desplazamiento hacia afuera).
-- **Orto** activable/desactivable con el botón **⊥** o tecla **F8**. Shift también restringe temporalmente el movimiento.
-- Se conserva el SNAP a rejilla y referencias geométricas.
-- **Ctrl+Z**, **Ctrl+Y** y **Ctrl+Shift+Z** ejecutan Undo/Redo fuera de campos de edición.
-- Los movimientos de vértices de zona, perímetro general, aristas y nodos principales se registran como operaciones deshacibles; las cotas admiten historial para creación, eliminación, separación por arrastre y entrada numérica.
-
-## Pruebas realizadas
-
-- `npm run check`: compilación JavaScript y CSS, sincronización del bundle, auditoría y sintaxis.
-- Chromium: creación en tres clics, cotas horizontales y diagonales, referencias que siguen a vértices movidos, ajuste mediante drag y campo numérico, Undo/Redo, Esc, F8 y cambio de modos.
-- Drag real de un vértice: la cota actualiza el punto origen y Undo restituye la geometría.
-
-## Despliegue Cloudflare Pages
-
-- Framework preset: `None`
-- Build command: `npm ci && npm run build`
-- Output directory: `public`
-
-Mantén el binding D1 preexistente de `wrangler.toml`. **No recrees la base de datos.** Si Cloudflare no instala `three`, el build se detiene para evitar publicar el visor 3D incompleto.
-
-## Límites de la validación
-
-No se probó en este entorno el render WebGL completo ni las operaciones remotas con Cloudflare D1. Antes de publicar en producción, prueba ambos en una rama Preview. Las cotas angulares y en cadena y las restricciones geométricas paramétricas avanzadas no forman parte de esta entrega; el tipo implementado es la **cota alineada, asociativa y editable**.
+**Pendiente de validar en Cloudflare Preview:** carga WebGL de Three.js y persistencia remota D1. En el entorno local de auditoría Three.js no está instalado; el build de Cloudflare utiliza `npm ci`.

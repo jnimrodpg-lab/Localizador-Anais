@@ -1,5 +1,5 @@
 {
-  "version": "205",
+  "version": "208",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V203: Muros contextuales sin chips, espesor interior/exterior/centrado y juntas físicas compartidas 2D/3D, sobre CAD asociativo V202."
+  "notes": "V208: giro libre decimal, alineación de racks a muros, perímetro y dos vértices, separación y undo/redo; conserva V207."
 }

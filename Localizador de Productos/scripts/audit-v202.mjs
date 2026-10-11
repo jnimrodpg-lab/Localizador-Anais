@@ -20,7 +20,7 @@ assert.match(layout,/function renderLayoutRightPanelMarkup\(/);
 assert.match(three,/response\.headers\.get\('content-type'\)/,'Debe comprobarse el tipo MIME antes de importar Three.js.');
 assert.match(three,/window\.__threeRuntimePromise=null/,'Si falla WebGL debe permitir reintento.');
 assert.match(read('scripts/build-frontend.mjs'),/CF_PAGES/,'Cloudflare debe bloquear builds incompletos sin Three.js.');
-assert.match(html,/WMS V205/,'Identificación de versión incorrecta.');
+assert.match(html,/WMS V208/,'Identificación de versión incorrecta.');
 assert.match(css,/V202/,'CSS de cotas V202 no compilado.');
 assert.match(layout,/function cadMeasurementEnds\(/,'Faltan referencias asociativas de cotas.');
 assert.match(layout,/function cadMeasureOffset\(/,'Falta separación perpendicular de cotas.');

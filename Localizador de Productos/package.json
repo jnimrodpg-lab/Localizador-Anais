@@ -1,15 +1,15 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "2.0.5-racks-libres",
+  "version": "2.0.8-giro-libre-paralelismo",
   "private": true,
-  "description": "WMS Industrial V203: edición de muros contextual, espesor hacia interior, exterior o centrado, uniones 2D/3D y cotas asociativas",
+  "description": "WMS Industrial V208: giro decimal y paralelismo CAD a muros o 2 vertices; ajuste perpendicular, snap y undo/redo; conserva V207",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",
     "build:frontend": "node scripts/build-frontend.mjs",
     "build:css": "node scripts/build-css.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
-    "test:regression": "node scripts/audit-v202.mjs && node scripts/test-v205.mjs",
+    "test:regression": "node scripts/audit-v202.mjs && node scripts/test-v205.mjs && node scripts/test-v206.mjs && node scripts/test-v208.mjs",
     "check": "npm run build && npm run verify:frontend && npm run test:regression && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js"
   },
   "dependencies": {

@@ -520,3 +520,82 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
 #appRoot.app .layout-v205-motion-options label{font-size:11px;font-weight:650;color:var(--ink);line-height:1.45;text-transform:none;letter-spacing:0;cursor:pointer;min-width:0}
 #appRoot.app .layout-v205-motion-options input[type="checkbox"]{width:18px!important;height:18px!important;min-height:18px!important;flex:0 0 18px;margin:0;accent-color:var(--accent,#4e8167)}
 #appRoot.app .layout-v205-motion-options .tiny{line-height:1.55;color:var(--ink-soft);overflow-wrap:anywhere}
+
+/* V206: los controles CAD esenciales nunca deben ocultarse en modo fácil. */
+#appRoot.app .layout-cad-shell-v80.beginner-ui .layout-right-scroll > .layout-v200-distribution,
+#appRoot.app .layout-cad-shell-v80.beginner-ui .layout-right-scroll > .layout-site-properties,
+#appRoot.app .layout-cad-shell-v80.beginner-ui .layout-right-scroll > .layout-prop-card:has(#v206ZoneToArea){display:block!important}
+#appRoot.app .layout-v205-motion-options .layout-template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#appRoot.app .layout-v205-motion-options .layout-template-grid button{white-space:normal;min-height:38px;line-height:1.3}
+
+/* V207 · Arquitectura clara: selector contextual y opciones por tarea. */
+#appRoot.app .layout-cad-v80 .layout-cad-shell-v80{gap:7px!important;padding:9px 12px 12px!important}
+#appRoot.app .layout-cad-v80 .layout-v200-tabs{gap:6px!important;padding:1px 0 4px!important}
+#appRoot.app .layout-v200-tab{min-height:43px!important;padding:7px 12px!important;border-radius:9px!important;gap:0!important}
+#appRoot.app .layout-v200-tab b{font-size:12px!important;line-height:1.3}
+#appRoot.app .layout-v200-tab small{font-size:9px;opacity:.75}
+#appRoot.app .layout-cad-v80 .v203-wall-subtabs{padding-bottom:2px!important}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80{gap:6px!important;padding:5px 8px!important;min-height:46px!important;border-radius:10px!important}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .v80-zone-btn{min-width:62px!important;min-height:32px!important;height:32px!important;font-size:11px!important;box-shadow:none!important;border-radius:8px!important;padding:5px 11px!important}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .v80-branch-select{height:32px!important;min-height:32px!important;border-radius:8px!important;font-size:11px!important}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .v80-icon-btn{width:32px!important;min-height:32px!important;height:32px!important;border-radius:8px!important}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .seg-btn:not(.v80-icon-btn){min-height:32px!important;height:auto!important;white-space:normal!important;border-radius:8px!important;padding:6px 9px!important;font-size:10px!important}
+#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .v90-save-layout-btn{height:32px!important;min-height:32px!important;border-radius:8px!important;white-space:nowrap}
+#appRoot.app .layout-cad-v80 .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr) minmax(288px,315px)!important;gap:8px!important}
+#appRoot.app .layout-cad-v80 .v80-right-panel{border-radius:12px!important}
+#appRoot.app .layout-cad-v80 .v80-right-panel .layout-right-head{padding:10px 13px!important}
+#appRoot.app .layout-cad-v80 .v80-right-panel .layout-right-scroll{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:9px!important;padding:10px!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll > *{min-width:0;flex-shrink:0}
+#appRoot.app .layout-cad-v80 .layout-v207-selection{display:grid;gap:3px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-1)}
+#appRoot.app .layout-cad-v80 .layout-v207-selection span{font-size:10px;color:var(--ink-soft)}
+#appRoot.app .layout-cad-v80 .layout-v207-selection strong{font-size:13px;color:var(--ink)}
+#appRoot.app .layout-cad-v80 .layout-v207-context-card{padding:12px;border:1px solid color-mix(in srgb,var(--accent,#458766) 35%,var(--line));border-radius:11px;background:color-mix(in srgb,var(--accent,#458766) 5%,var(--surface-1));display:grid;gap:10px}
+#appRoot.app .layout-cad-v80 .layout-v207-zone-title{display:flex;gap:9px;align-items:center;min-width:0}
+#appRoot.app .layout-cad-v80 .layout-v207-zone-dot{height:14px;width:14px;border-radius:4px;flex:0 0 14px;border:1px solid rgba(80,80,80,.2)}
+#appRoot.app .layout-cad-v80 .layout-v207-zone-title div{min-width:0;display:grid;gap:2px}
+#appRoot.app .layout-cad-v80 .layout-v207-zone-title strong{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+#appRoot.app .layout-cad-v80 .layout-v207-zone-title small{font-size:10px;color:var(--ink-soft)}
+#appRoot.app .layout-cad-v80 .layout-v207-context-card .layout-v207-convert{min-height:40px!important;line-height:1.3!important;white-space:normal!important;font-size:12px!important;width:100%;border-radius:9px!important}
+#appRoot.app .layout-cad-v80 .layout-v207-context-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#appRoot.app .layout-cad-v80 .layout-v207-context-actions button{font-size:11px!important;white-space:normal!important;min-width:0!important;min-height:34px!important}
+#appRoot.app .layout-cad-v80 .layout-v207-context-card p{font-size:10px;line-height:1.55;margin:0}
+#appRoot.app .layout-cad-v80 details.layout-v207-fold{border:1px solid var(--line);border-radius:11px;background:var(--surface-1);overflow:hidden;width:100%;min-width:0}
+#appRoot.app .layout-cad-v80 details.layout-v207-fold > summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:7px;cursor:pointer;padding:11px 12px;min-height:42px;color:var(--ink);user-select:none}
+#appRoot.app .layout-cad-v80 details.layout-v207-fold > summary::-webkit-details-marker{display:none}
+#appRoot.app .layout-cad-v80 details.layout-v207-fold > summary span:first-child{font-weight:760;font-size:12px}
+#appRoot.app .layout-cad-v80 details.layout-v207-fold > summary small{margin-left:auto;text-align:right;color:var(--ink-soft);font-size:9px;line-height:1.4}
+#appRoot.app .layout-cad-v80 .layout-v207-chevron{color:var(--ink-soft);font-size:15px;line-height:1;transition:transform .16s}
+#appRoot.app .layout-cad-v80 details.layout-v207-fold[open] .layout-v207-chevron{transform:rotate(180deg)}
+#appRoot.app .layout-cad-v80 .layout-v207-fold-body{padding:0 8px 9px;display:grid;gap:8px}
+#appRoot.app .layout-cad-v80 .layout-v207-fold-body > .layout-prop-card{border:0!important;box-shadow:none!important;padding:8px 4px!important;background:transparent!important;border-radius:0!important}
+#appRoot.app .layout-cad-v80 .layout-v207-fold-body .layout-prop-grid.two{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+#appRoot.app .layout-cad-v80 .layout-v207-fold-body input,#appRoot.app .layout-cad-v80 .layout-v207-fold-body select{min-width:0;max-width:100%;width:100%}
+#appRoot.app .layout-cad-v80 .layout-v207-advanced{margin-top:9px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+#appRoot.app .layout-cad-v80 .layout-v207-advanced > summary{cursor:pointer;padding:11px;display:flex;justify-content:space-between;gap:4px;font-size:11px;font-weight:760;background:var(--surface-2);color:var(--ink)}
+#appRoot.app .layout-cad-v80 .layout-v207-advanced > summary span{font-size:9px;font-weight:450;color:var(--ink-soft)}
+#appRoot.app .layout-cad-v80 .layout-v207-advanced > .layout-template-grid{padding:9px;margin-top:0!important;grid-template-columns:repeat(2,minmax(0,1fr))}
+#appRoot.app .layout-cad-v80 .layout-v207-advanced button{min-width:0;white-space:normal;line-height:1.3;min-height:35px}
+#appRoot.app .layout-cad-v80 .v80-main-stage .v80-canvas-card{border-radius:12px!important}
+@media(max-width:1150px){
+ #appRoot.app .layout-cad-v80 .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr)!important}
+ #appRoot.app .layout-cad-v80 #layoutRightPanel{width:100%!important;max-height:480px!important}
+}
+@media(max-width:700px){
+ #appRoot.app .layout-v200-tab{padding:6px!important;min-height:35px!important}
+ #appRoot.app .layout-v200-tab small{display:none}
+ #appRoot.app .layout-cad-v80 .layout-cad-localbar-v80{max-width:100%!important}
+}
+
+/* El orden del inspector prioriza lo que el usuario está editando. */
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > *{order:10}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .layout-v207-context-card,
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .layout-v207-selection{order:0}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .layout-v207-zone,
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .wall-pro-card,
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .opening-editor-card{order:1}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .layout-v207-area{order:2}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > [data-layout-fold="technical"],
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > .v203-wall-card{order:3}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > [data-layout-fold="precision"]{order:4}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > [data-layout-fold="visual"]{order:5}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll > [data-layout-fold="quick"]{order:6}

@@ -447,7 +447,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     if(!appState.layout.meta || typeof appState.layout.meta !== 'object') appState.layout.meta = {};
     if(!Number.isFinite(Number(appState.layout.meta.scaleCmPerUnit)) || Number(appState.layout.meta.scaleCmPerUnit) <= 0) appState.layout.meta.scaleCmPerUnit = 1;
     if(typeof appState.layout.meta.autoFitBoundaryToZones !== 'boolean') appState.layout.meta.autoFitBoundaryToZones = true;
-    if(!appState.layout.meta.siteBoundary || !Array.isArray(appState.layout.meta.siteBoundary.pts) || appState.layout.meta.siteBoundary.pts.length < 4){
+    if(!appState.layout.meta.siteBoundary || !Array.isArray(appState.layout.meta.siteBoundary.pts) || appState.layout.meta.siteBoundary.pts.length < 3){
       if(!fitSiteBoundaryToZones(true)){
         appState.layout.meta.siteBoundary = {
           id:'AREA-GENERAL',

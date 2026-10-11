@@ -28,6 +28,10 @@
     if(appState.editor.visibleRackLevel===undefined) appState.editor.visibleRackLevel='all';
     if(appState.editor.distributionFreeMove===undefined) appState.editor.distributionFreeMove=true;
     if(appState.editor.distributionVertexSnap===undefined) appState.editor.distributionVertexSnap=true;
+    if(!['wall','vertices'].includes(appState.editor.rackAlignMode)) appState.editor.rackAlignMode='';
+    if(appState.editor.rackAlignVertexA===undefined) appState.editor.rackAlignVertexA=null;
+    if(appState.editor.rackAlignClearanceCm===undefined) appState.editor.rackAlignClearanceCm=2;
+    if(appState.editor.areaMoveMode===undefined) appState.editor.areaMoveMode=false;
     if(appState.editor.selectedStackLevel===undefined) appState.editor.selectedStackLevel=0;
     if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
     if(appState.editor.editSiteBoundary === undefined) appState.editor.editSiteBoundary=false;
@@ -785,6 +789,7 @@
   }
   function cancelLayoutDrawing(){
     if(!appState.editor) return;
+    appState.editor.rackAlignMode='';appState.editor.rackAlignVertexA=null;appState.editor.rackAlignTargetId='';appState.editor.areaMoveMode=false;
     appState.editor.pendingWallPoint=null;
     appState.editor.wallCursor=null;
     appState.editor.wallChainNodeIds=[];
@@ -925,12 +930,12 @@
       if(e.key==='Escape'){ e.preventDefault(); cancelLayoutDrawing(); return; }
       if(editing) return;
       if((e.ctrlKey||e.metaKey) && String(e.key||'').toLowerCase()==='z'){
-        e.preventDefault();const bucket=isRackDistributionScreen()?'distribution':'structure';
+        e.preventDefault();const bucket=isRackDistributionScreen()?'distribution':(appState.editor.areaMoveMode?'layout':'structure');
         if(e.shiftKey)redoHistory(bucket);else undoHistory(bucket);
         return;
       }
       if((e.ctrlKey||e.metaKey) && String(e.key||'').toLowerCase()==='y'){
-        e.preventDefault();redoHistory(isRackDistributionScreen()?'distribution':'structure');return;
+        e.preventDefault();redoHistory(isRackDistributionScreen()?'distribution':(appState.editor.areaMoveMode?'layout':'structure'));return;
       }
       if(e.key==='F8' && !isRackDistributionScreen()){e.preventDefault();appState.editor.orthoEnabled=!appState.editor.orthoEnabled;renderLayoutEditor();return;}
       const key=String(e.key||'').toLowerCase();
@@ -1566,6 +1571,8 @@
   function switchLayoutWorkspace(next){
     if(!['architecture','urbanism','distribution'].includes(next)) return;
     if(appState.editor.pendingFurnitureModelId){appState.editor.pendingFurnitureModelId='';appState.editor.pendingFurniturePoint=null;}
+    if(next!=='architecture')appState.editor.areaMoveMode=false;
+    if(next!=='distribution'){appState.editor.rackAlignMode='';appState.editor.rackAlignVertexA=null;}
     if(next==='distribution'){
       appState.editor.mode='select'; appState.editor.layoutSubsystem='architecture';
       if(!isRackDistributionScreen())setScreen('distribution');else renderLayoutEditor();
@@ -1638,6 +1645,13 @@
       <div class="layout-v205-motion-options" style="display:grid;gap:9px;margin:10px 0 14px">
         <label style="display:flex;align-items:center;gap:8px"><input id="v205FreeMove" type="checkbox" ${appState.editor.distributionFreeMove!==false?'checked':''}><span>Movimiento libre de racks</span></label>
         <label style="display:flex;align-items:center;gap:8px"><input id="v205VertexSnap" type="checkbox" ${appState.editor.distributionVertexSnap!==false?'checked':''}><span>Alinear con vértices y bordes</span></label>
+        <div class="layout-prop-title" style="margin-top:4px">Rotación y paralelismo</div>
+        <label>Ángulo libre (0°–360°)<input id="v208RackAngle" type="number" min="0" max="360" step="0.1" inputmode="decimal" value="${findRackById(appState.selectedRackLayoutId)?Number(normalizeAngle(findRackById(appState.selectedRackLayoutId).rot||0).toFixed(2)):0}" ${!appState.selectedRackLayoutId?'disabled':''}></label>
+        <label>Separación perpendicular (cm)<input id="v206AlignClearance" type="number" min="0" max="250" step="0.1" value="${Number(appState.editor.rackAlignClearanceCm??2)}"></label>
+        <div class="layout-template-grid"><button type="button" class="seg-btn ${appState.editor.rackAlignMode==='wall'?'active':''}" id="v206AlignWall" ${!appState.selectedRackLayoutId?'disabled':''}>↗ Hacer paralelo a muro</button><button type="button" class="seg-btn ${appState.editor.rackAlignMode==='vertices'?'active':''}" id="v206AlignVertices" ${!appState.selectedRackLayoutId?'disabled':''}>↗ Paralelo a 2 vértices</button></div>
+        <div class="layout-template-grid"><button type="button" class="seg-btn" id="v208ReapplyParallel" ${!appState.editor?.rackAlignLast || appState.editor?.rackAlignLast?.rackId!==appState.selectedRackLayoutId?'disabled':''}>Aplicar nueva separación</button><button type="button" class="seg-btn" id="v208ReverseParallel" ${!appState.selectedRackLayoutId?'disabled':''}>Invertir sentido 180°</button></div>
+        ${appState.editor?.rackAlignLast?.rackId===appState.selectedRackLayoutId?`<p class="tiny muted" style="margin:0">Referencia: ${escapeHtml(appState.editor.rackAlignLast.reference)} · ajusta la separación y aplica sin volver a seleccionar la arista.</p>`:''}
+        ${appState.editor.rackAlignMode?`<p class="tiny muted" style="padding:9px;border:1px dashed #4d8d72;border-radius:9px">${appState.editor.rackAlignMode==='wall'?'Haz clic sobre el muro o arista inclinada que deseas seguir.':'Haz clic en el primer y segundo vértice para marcar la dirección.'} Esc cancela.</p>`:''}
         <p class="tiny muted" style="margin:0">Libre: puedes mover fuera de zonas pequeñas sin que el rack regrese. Se advierten las interferencias sin bloquear. Desactívalo para exigir cabida y ausencia de colisiones. El snap general se mantiene independiente. Ctrl mientras arrastras: ignorar snap.</p>
       </div>
       <div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(r.displayCode||r.id)} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
@@ -1838,6 +1852,29 @@
     </section>`;
   }
 
+  // V207: secciones del inspector con apertura estable entre redibujados.
+  function layoutPanelOpen(section, defaultOpen=false){
+    const panels=appState.editor?.layoutPanelOpen||{};
+    return Object.prototype.hasOwnProperty.call(panels,section) ? !!panels[section] : defaultOpen;
+  }
+  function layoutFold(section, label, html, defaultOpen=false, hint=''){
+    return `<details class="layout-v207-fold" data-layout-fold="${section}" ${layoutPanelOpen(section,defaultOpen)?'open':''}>
+      <summary><span>${label}</span>${hint?`<small>${hint}</small>`:''}<span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="layout-v207-fold-body">${html}</div>
+    </details>`;
+  }
+  function v207FocusZone(zone){
+    if(!zone?.pts?.length)return;
+    const bounds=zoneBounds(zone),svg=document.getElementById('layoutSvg');
+    const width=Math.max(220,svg?.clientWidth||850),height=Math.max(180,svg?.clientHeight||600);
+    const ratio=width/height;
+    const padx=Math.max(55,(bounds.maxX-bounds.minX)*.16),pady=Math.max(50,(bounds.maxY-bounds.minY)*.16);
+    let bw=Math.max(180,bounds.maxX-bounds.minX+padx*2),bh=Math.max(140,bounds.maxY-bounds.minY+pady*2);
+    if(bw/bh<ratio)bw=bh*ratio;else bh=bw/ratio;
+    appState.editor.viewBox={x:(bounds.minX+bounds.maxX-bw)/2,y:(bounds.minY+bounds.maxY-bh)/2,w:bw,h:bh};
+    appState.editor.viewBoxCustomized=true;appState.editor.viewBoxInitialized=true;
+    renderLayoutViewportOnly();
+  }
   function renderLayoutRightPanelMarkup(){
     ensureLayoutEditorState();
     const zone = findZoneById(appState.selectedZoneId);
@@ -1851,19 +1888,29 @@
     const urbanismMode = !rackMode && activeLayoutWorkspace()==='urbanism';
     const architectureMode = !rackMode && !urbanismMode;
     const structureMode = !rackMode;
+    const focusIdentity=(rackMode?'rack:':urbanismMode?'street:':'architecture:')+(appState.selectedWallId||appState.selectedOpeningId||appState.selectedZoneId||appState.selectedStreetId||appState.selectedRackLayoutId||'none');
+    if(appState.editor.layoutInspectorSelection!==focusIdentity){
+      appState.editor.layoutInspectorSelection=focusIdentity;
+      appState.editor.rightPanelScrollTop=0;
+    }
+    const zoneTools=architectureMode && zone && appState.editor.architectureTool!=='walls' && !appState.selectedWallId && !appState.selectedOpeningId;
+    const zoneRacks=zoneTools?(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length:0;
+    const quickZone=zoneTools?`<section class="layout-v207-context-card" aria-label="Acciones de zona">
+        <div class="layout-v207-zone-title"><span class="layout-v207-zone-dot" style="background:${escapeHtml(zone.color||'#4a896e')}"></span><div><strong>${escapeHtml(zone.name||zone.id)}</strong><small>${escapeHtml(zone.id)} · ${zoneRacks} racks vinculados</small></div></div>
+        <button type="button" class="btn primary layout-v207-convert" id="v206ZoneToArea" title="Usa el contorno de la zona como nueva área principal">⇧ Convertir zona en área</button>
+        <div class="layout-v207-context-actions"><button type="button" class="seg-btn" id="v207FocusZone">Centrar zona</button><button type="button" class="seg-btn" id="v207EditArea">Editar área</button></div>
+        <p class="tiny muted">La conversión conserva los racks, muros y datos de la zona. Puedes deshacerla con Ctrl+Z.</p>
+      </section>`:'';
     return `
       <div class="layout-right-head">
         <div><b>Inspector del layout</b></div>
         <span class="layout-type-pill">${summary.type === 'rack' ? 'Rack' : summary.type === 'zone' ? 'Zona' : summary.type === 'wall' ? 'Muro' : summary.type === 'opening' ? 'Opening' : summary.type === 'measure' ? 'Medida' : summary.type === 'room' ? 'Recinto' : summary.type === 'street' ? 'Calle' : 'Plano'}</span>
       </div>
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
-        <section class="layout-prop-card selected-summary layout-editor-focus-card">
-          <div class="layout-prop-title">Selección</div>
-          <div class="layout-selected-title">${escapeHtml(summary.title)}</div>
-
-        </section>
+        ${!zoneTools?`<div class="layout-v207-selection"><span>Seleccionado</span><strong>${escapeHtml(summary.title)}</strong></div>`:''}
+        ${quickZone}
         ${rackMode && rack ? modularStackCard(rack) : ''}
-        <section class="layout-prop-card">
+        ${layoutFold('visual','Visualización y capas',`        <section class="layout-prop-card">
           <div class="layout-prop-title">Capas visibles</div>
           <div class="layout-layer-grid">
             ${renderLayerToggle('lyGrid','Grilla', appState.editor.showGrid !== false)}
@@ -1875,8 +1922,8 @@
             ${renderLayerToggle('lyDims','Cotas', !!appState.editor.showDims)}
             ${renderLayerToggle('lyMini','Mini mapa', appState.editor.showMiniMap !== false)}
           </div>
-        </section>
-        <section class="layout-prop-card">
+        </section>` ,false,'Ocultar y mostrar elementos')}
+        ${layoutFold('precision','Precisión y snap',`        <section class="layout-prop-card">
           <div class="layout-prop-title">Precisión</div>
           <div class="layout-prop-grid two">
             <label>Snap<input id="rpSnapEnabled" type="checkbox" ${isSnapEnabled()?'checked':''}></label>
@@ -1886,8 +1933,9 @@
 
           </div>
 
-        </section>
-        ${rackMode ? layoutDistributionInspector() + v117RackToolsMarkup() + v117ValidationMarkup() : architectureMode ? layoutWallToolsMarkup() + (appState.editor.architectureTool==='walls'?'':v117StructureToolsMarkup()) : layoutUrbanismInspector()}
+        </section>`,false,'Orto · rejilla · cotas')}
+        ${rackMode ? layoutDistributionInspector() + v117RackToolsMarkup() + v117ValidationMarkup() : architectureMode ? layoutWallToolsMarkup() + (appState.editor.architectureTool==='walls'?'':layoutFold('technical','Herramientas CAD',v117StructureToolsMarkup(),false,'Recintos · nodos · contactos')) : layoutUrbanismInspector()}
+        <details class="layout-v207-fold layout-v207-tools" data-layout-fold="quick" ${layoutPanelOpen('quick',false)?'open':''}><summary><span>Herramientas adicionales</span><small>Acciones · referencia</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
         ${rackMode ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Acciones rápidas</div>
           <div class="layout-template-grid">
@@ -1908,15 +1956,26 @@
           </div>
 
         </section>` : ''}
+        </div></details>
+        <details class="layout-v207-fold layout-v207-area" data-layout-fold="area" ${layoutPanelOpen('area',false)?'open':''} ${architectureMode?'':'style="display:none"'}><summary><span>Área principal</span><small>Perímetro · posición · muros</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
         ${architectureMode ? `<section class="layout-prop-card layout-site-properties">
           <div class="layout-prop-title">Área general · perímetro editable</div>
           <div class="layout-template-grid">
             <button type="button" class="seg-btn ${appState.editor.editSiteBoundary?'active':''}" id="rpSiteEdit">${appState.editor.editSiteBoundary?'Ocultar puntos':'Editar vértices'}</button>
             <button type="button" class="seg-btn" id="rpSiteAddVertex">+ Vértice área</button>
             <button type="button" class="seg-btn" id="rpSiteReset">Ajustar a zonas</button>
+            <button type="button" class="seg-btn ${appState.editor.areaMoveMode?'active':''}" id="v206MoveArea">${appState.editor.areaMoveMode?'Mover área: activo':'Mover área + muros'}</button>
+          </div><div class="layout-prop-grid two" style="margin-top:10px">
+            <label>Área X (cm)<input id="v206AreaX" type="number" step="1" value="${Math.round(layoutBoundaryBounds().minX*getScaleCmPerUnit())}"></label>
+            <label>Área Y (cm)<input id="v206AreaY" type="number" step="1" value="${Math.round(layoutBoundaryBounds().minY*getScaleCmPerUnit())}"></label>
+          </div><div class="layout-template-grid" style="margin-top:6px">
+            <button type="button" class="seg-btn" id="v206AreaApplyCoordinates">Aplicar X / Y del área</button>
+            <button type="button" class="seg-btn" id="v206AreaUndo">↶ Deshacer traslado</button>
+            <button type="button" class="seg-btn" id="v206AreaRedo">↷ Rehacer traslado</button>
           </div>
-          <div class="tiny muted layout-panel-hint">Arrastra los puntos del perímetro con snap. Las zonas permanecerán dentro del área; las calles seguirán el nuevo contorno.</div>
+          <div class="tiny muted layout-panel-hint">Mover área traslada en conjunto las zonas, muros, recintos, racks, cotas y mobiliario. La edición individual de vértices permanece disponible.</div>
         </section>` : ''}
+        </div></details>
         ${architectureMode && findRoomById(appState.selectedRoomId) ? (()=>{ const rr=findRoomById(appState.selectedRoomId); const rp=roomPointsRaw(rr); const rz=getRoomLinkedZone(rr); const area=polygonAreaAbs(rp)*getScaleCmPerUnit()*getScaleCmPerUnit()/10000; const perimeter=rp.reduce((sum,p,i)=>{ const q=rp[(i+1)%rp.length]; return sum+Math.hypot(q.x-p.x,q.y-p.y); },0); return `<section class="layout-prop-card room-zone-card">
           <div class="layout-prop-title">Recinto</div>
           <div class="layout-prop-grid two">
@@ -1962,6 +2021,7 @@
           </div><button type="button" class="seg-btn" id="rpUrbanTransform">Aplicar posición y giro</button>`;})():''}
           <div class="tiny muted" style="margin-top:8px">El mobiliario urbano se trata como un solo objeto agrupado. Puedes seleccionarlo y moverlo con snap en el layout, manteniendo la misma lectura en 2D y en Diseñar espacio 3D.</div>
         </section>`;})() : ''}
+        <details class="layout-v207-fold layout-v207-zone" data-layout-fold="zone" ${layoutPanelOpen('zone',true)?'open':''} ${architectureMode&&zone?'':'style="display:none"'}><summary><span>Propiedades de zona</span><small>Nombre · tamaño · acabado</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
         ${architectureMode && zone ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Zona</div>
           <div class="layout-prop-grid two">
@@ -1980,8 +2040,11 @@
             <label>Contenido<input value="${(appState.layout.racks||[]).filter(r => r.zoneId === zone.id).length} racks vinculados" disabled></label>
             ${isRoomLinkedZone(zone)?`<label>Geometría<input value="Vinculada · arrastrable" disabled></label>`:''}
           </div>
+          <details class="layout-v207-advanced" data-layout-fold="zoneAdvanced" ${layoutPanelOpen('zoneAdvanced',false)?'open':''}><summary>Edición avanzada <span>Vértices · giros · división</span></summary>
           <div class="layout-template-grid zone-rotate-grid" style="margin-top:10px">${isRoomLinkedZone(zone)?`<button class="seg-btn active" id="rpSelectZoneRoom">Editar muros del recinto</button><button class="seg-btn" id="rpDetachRoomZone">Desvincular geometría</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><div class="tiny muted layout-panel-hint" style="grid-column:1/-1">Arrastra para mover toda la geometría vinculada.</div>`:`<button class="seg-btn" id="rpZoneMinus15">Girar -15°</button><button class="seg-btn" id="rpZone15">Girar 15°</button><button class="seg-btn" id="rpZone45">Girar 45°</button><button class="seg-btn" id="rpZone90">Girar 90°</button><button class="seg-btn" id="rpDuplicateZone">Duplicar zona</button><button class="seg-btn" id="rpLockZones">${appState.editor.zonesLocked?'Desbloquear zonas':'Bloquear zonas'}</button><button class="seg-btn" id="rpZoneAddVertex">+ Vértice zona</button><button class="seg-btn" id="rpZoneRemoveVertex">− Vértice</button><button class="seg-btn" id="rpZoneSplitVertical">Dividir vertical</button><button class="seg-btn" id="rpZoneSplitHorizontal">Dividir horizontal</button><button class="seg-btn" id="rpAllEdgesWalls">Todas aristas → muro</button><button class="seg-btn" id="rpClearEdgesWalls">Quitar muros zona</button>`}</div>
+          </details>
         </section>` : ''}
+        </div></details>
         ${rackMode && rack ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Rack</div>
           <div class="layout-prop-grid two">
@@ -1989,7 +2052,7 @@
             <label>Zona<input value="${escapeHtml(rack.zoneId)}" disabled></label>
             <label style="grid-column:1/-1">Nombre / nomenclatura<input id="rpRackDisplayCode" value="${escapeHtml(rack.displayCode||rack.id)}" placeholder="Ej. A-01-R03"></label>
             <label>Modelo<select id="rpRackModel">${modelOptions}</select></label>
-            <label>Rotación<input id="rpRackRot" type="number" step="1" value="${Math.round(Number(rack.rot||0))}"></label>
+            <label>Rotación (°)<input id="rpRackRot" type="number" min="0" max="360" step="0.1" value="${Number(normalizeAngle(rack.rot||0).toFixed(2))}"></label>
             <label>X<input id="rpRackX" type="number" value="${formatUnitNumber(rack.x)}"></label>
             <label>Y<input id="rpRackY" type="number" value="${formatUnitNumber(rack.y)}"></label>
             <label>Huella<input value="${formatUnitNumber(fp?.w||rack.w)} × ${formatUnitNumber(fp?.h||rack.h)}" disabled></label>
@@ -2130,24 +2193,139 @@
     return !(appState.layout?.racks||[]).some(r=>!ignored.has(r.id) &&
       typeof vspaceStackIntersect==='function' && vspaceStackIntersect(rack,r));
   }
+  // V206: Alineación 2D a un segmento real; la rotación y posición se calculan
+  // antes de modificar el objeto para conservar una operación Undo atómica.
+  function v206AlignRackToSegment(a,b,reference='muro'){
+    const rack=findRackById(appState.editor?.rackAlignTargetId||appState.selectedRackLayoutId);
+    if(!rack){showToast('Selecciona primero el rack que deseas alinear.','warning',2600);return false;}
+    const vx=Number(b?.x)-Number(a?.x),vy=Number(b?.y)-Number(a?.y);
+    const len=Math.hypot(vx,vy);if(!Number.isFinite(len)||len<1){showToast('Se necesitan dos puntos distintos para alinear.','warning',2200);return false;}
+    const baseAngle=normalizeAngle(Math.atan2(vy,vx)*180/Math.PI);
+    const reverseAngle=normalizeAngle(baseAngle+180);
+    const desired=Math.abs(shortestAngleDelta(rack.rot||0,baseAngle))<=Math.abs(shortestAngleDelta(rack.rot||0,reverseAngle))?baseAngle:reverseAngle;
+    const fp=getRackFootprint(rack.modelId,desired);
+    const baseH=Math.max(4,Number(fp.baseH||rack.h||40));
+    const oldCenter={x:Number(rack.x||0)+Number(rack.w||fp.w)/2,y:Number(rack.y||0)+Number(rack.h||fp.h)/2};
+    const ux=vx/len,uy=vy/len,nx=-uy,ny=ux;
+    const signed=(oldCenter.x-a.x)*nx+(oldCenter.y-a.y)*ny;
+    let side=signed>=0?1:-1;
+    if(Math.abs(signed)<.01){
+      const positive={x:a.x+nx*(baseH/2+5),y:a.y+ny*(baseH/2+5)};
+      const zone=findZoneById(rack.zoneId);
+      side=zone&&!pointInPoly(positive,zone.pts)?-1:1;
+    }
+    const along=(oldCenter.x-a.x)*ux+(oldCenter.y-a.y)*uy;
+    const clamped=Math.max(0,Math.min(len,along));
+    const cm=Math.max(0,Math.min(250,Number(appState.editor.rackAlignClearanceCm)||0));
+    const clearance=cm/Math.max(.0001,getScaleCmPerUnit());
+    const target={x:a.x+ux*clamped+nx*side*(baseH/2+clearance),y:a.y+uy*clamped+ny*side*(baseH/2+clearance)};
+    const proposal={...rack,rot:desired,w:fp.w,h:fp.h,x:target.x-fp.w/2,y:target.y-fp.h/2};
+    const host=distributionHostForRack(proposal);if(host)proposal.zoneId=host.id;
+    if(!distributionCanCommit(proposal)){
+      showToast('La alineación genera una colisión o sale de la zona. Activa Movimiento libre para permitirla.','warning',3600);return false;
+    }
+    const prior={x:rack.x,y:rack.y,w:rack.w,h:rack.h,rot:rack.rot,zoneId:rack.zoneId};
+    if(['x','y','w','h','rot','zoneId'].every(k=>Math.abs(Number(prior[k])-Number(proposal[k]))<1e-7 || prior[k]===proposal[k])){
+      appState.editor.rackAlignLast={rackId:rack.id,a:{x:Number(a.x),y:Number(a.y)},b:{x:Number(b.x),y:Number(b.y)},reference};
+      appState.editor.rackAlignMode='';appState.editor.rackAlignVertexA=null;renderLayoutEditor();return true;
+    }
+    recordHistorySnapshot('distribution');
+    Object.assign(rack,{x:proposal.x,y:proposal.y,w:proposal.w,h:proposal.h,rot:desired,zoneId:proposal.zoneId});
+    appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;
+    appState.editor.rackAlignLast={rackId:rack.id,a:{x:Number(a.x),y:Number(a.y)},b:{x:Number(b.x),y:Number(b.y)},reference};
+    appState.editor.rackAlignMode='';appState.editor.rackAlignVertexA=null;appState.editor.rackAlignTargetId='';
+    persistActiveLayout();renderLayoutEditor();
+    const collision=distributionRackInterference(rack);
+    showToast(`Rack paralelo a ${reference} · ${desired.toFixed(1)}°${collision?' · '+collision:''}`,collision?'warning':'success',3300);
+    return true;
+  }
+  function v206ChooseAlignPoint(pt){
+    if(appState.editor.rackAlignMode!=='vertices')return false;
+    const point={x:Number(pt.x),y:Number(pt.y)};
+    if(!appState.editor.rackAlignVertexA){appState.editor.rackAlignVertexA=point;renderLayoutSvg($('#layoutSvg'));renderLayoutInspector();return true;}
+    if(Math.hypot(point.x-appState.editor.rackAlignVertexA.x,point.y-appState.editor.rackAlignVertexA.y)<1){showToast('Selecciona otro vértice para definir la dirección.','warning',2200);return true;}
+    return v206AlignRackToSegment(appState.editor.rackAlignVertexA,point,'dos vértices');
+  }
+  function v206BeginRackAlign(mode){
+    if(!findRackById(appState.selectedRackLayoutId)){showToast('Primero selecciona un rack.','warning',2400);return;}
+    appState.editor.rackAlignTargetId=appState.selectedRackLayoutId;
+    appState.editor.rackAlignMode=appState.editor.rackAlignMode===mode?'':mode;
+    appState.editor.rackAlignVertexA=null;
+    appState.editor.mode='select';renderLayoutEditor();
+  }
+
+  // Traslada el sitio y TODO su contenido desde una fotografía inicial.
+  // El desplazamiento conserva ID de muros y racks, NPT, links de recintos y cotas.
+  function v206TranslateAreaSnapshot(origin,dx,dy){
+    const layout=appState.layout;if(!layout||!origin)return;
+    const indexById=items=>new Map((items||[]).map(item=>[item.id,item]));
+    const zonesById=indexById(origin.zones),nodesById=indexById(origin.wallNodes),wallsById=indexById(origin.walls);
+    const racksById=indexById(origin.racks),measuresById=indexById(origin.measurements),streetsById=indexById(origin.streets);
+    const movePoints=(dest,src)=>{if(!Array.isArray(dest)||!Array.isArray(src))return;dest.forEach((pt,i)=>{if(!src[i])return;pt.x=Number(src[i].x||0)+dx;pt.y=Number(src[i].y||0)+dy;});};
+    ensureLayoutMeta();
+    layout.meta.autoFitBoundaryToZones=false;
+    movePoints(layout.meta.siteBoundary?.pts,origin.meta?.siteBoundary?.pts);
+    (layout.zones||[]).forEach(zone=>{const old=zonesById.get(zone.id);if(old)movePoints(zone.pts,old.pts);});
+    (layout.wallNodes||[]).forEach(node=>{const old=nodesById.get(node.id);if(old){node.x=Number(old.x||0)+dx;node.y=Number(old.y||0)+dy;}});
+    (layout.walls||[]).forEach(w=>{const old=wallsById.get(w.id);if(old){w.x1=Number(old.x1||0)+dx;w.y1=Number(old.y1||0)+dy;w.x2=Number(old.x2||0)+dx;w.y2=Number(old.y2||0)+dy;}});
+    (layout.racks||[]).forEach(r=>{const old=racksById.get(r.id);if(old){r.x=Number(old.x||0)+dx;r.y=Number(old.y||0)+dy;}});
+    (layout.measurements||[]).forEach(m=>{const old=measuresById.get(m.id);if(!old)return;for(const field of ['a','b','p1','p2','start','end'])if(m[field]&&old[field]){m[field].x=Number(old[field].x||0)+dx;m[field].y=Number(old[field].y||0)+dy;}for(const field of ['x','x1','x2','y','y1','y2'])if(Number.isFinite(Number(old[field])))m[field]=Number(old[field])+((field[0]==='x')?dx:dy);});
+    (layout.streets||[]).forEach(st=>{const old=streetsById.get(st.id);if(!old)return;for(const field of ['roadPts','sidewalkPts','outerSidewalkPts'])movePoints(st[field],old[field]);(st.streetFurniture||[]).forEach(it=>{const oi=(old.streetFurniture||[]).find(n=>n.id===it.id);if(oi){it.x=Number(oi.x||0)+dx;it.y=Number(oi.y||0)+dy;}});});
+  }
+  function v206MoveAreaBy(dx,dy){
+    if(!Number.isFinite(dx)||!Number.isFinite(dy)||(!dx&&!dy))return;
+    const original=clone(appState.layout);
+    recordHistorySnapshot('layout',original);
+    v206TranslateAreaSnapshot(original,dx,dy);
+    syncManualWallsFromNodes();
+    persistActiveLayout();renderLayoutEditor();
+  }
+  function v206PromoteZoneToArea(zone){
+    if(!zone||!Array.isArray(zone.pts)||zone.pts.length<3)return;
+    const others=(appState.layout?.zones||[]).filter(z=>z.id!==zone.id);
+    const out=others.filter(z=>(z.pts||[]).some(p=>!(pointInPoly(p,zone.pts)||pointNearPolygonEdge(p,zone.pts,1))));
+    recordHistorySnapshot('structure');ensureLayoutMeta();
+    appState.layout.meta.siteBoundary={id:'AREA-GENERAL',name:zone.name||`Área de ${zone.id}`,pts:clone(zone.pts)};
+    appState.layout.meta.autoFitBoundaryToZones=false;
+    appState.layout.meta.promotedFromZoneId=zone.id;
+    rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
+    if(out.length)showToast(`Área actualizada. ${out.length} zona(s) quedan fuera del nuevo perímetro; se conservan para no perder racks ni datos.`, 'warning',5200);
+    else showToast('Zona convertida en perímetro del área. Se conservan sus racks y nomenclatura.', 'success',3500);
+  }
   function v194RotateRack(rack,angle){
-      if(!rack)return;
-      const prior={x:rack.x,y:rack.y,w:rack.w,h:rack.h,rot:rack.rot,zoneId:rack.zoneId};
-      const desired=normalizeAngle(Number(angle)||0);
-      if(desired===normalizeAngle(rack.rot||0))return;
-      applyRackRotation(rack,desired);
-      const host=distributionHostForRack(rack);
-      if(host)rack.zoneId=host.id;
-      if(!distributionCanCommit(rack)){
-        Object.assign(rack,prior);showToast('Rotación restringida por zona o colisión. Activa Movimiento libre para continuar.','warning',3000);renderLayoutEditor();return;
-      }
-      // Registrar previo al cambio persistido para garantizar Undo.
-      const updated={x:rack.x,y:rack.y,w:rack.w,h:rack.h,rot:rack.rot,zoneId:rack.zoneId};
-      Object.assign(rack,prior);recordHistorySnapshot('distribution');Object.assign(rack,updated);
-      persistActiveLayout();renderLayoutEditor();
+    if(!rack)return false;
+    const numeric=Number(angle);
+    if(!Number.isFinite(numeric)){showToast('Introduce un ángulo válido de 0° a 360°.','warning',2500);return false;}
+    const desired=normalizeAngle(numeric);
+    if(Math.abs(shortestAngleDelta(desired,Number(rack.rot||0)))<0.00001)return true;
+    const prior={x:rack.x,y:rack.y,w:rack.w,h:rack.h,rot:rack.rot,zoneId:rack.zoneId};
+    const cx=Number(rack.x||0)+Number(rack.w||0)/2;
+    const cy=Number(rack.y||0)+Number(rack.h||0)/2;
+    // No usar applyRackRotation: llamaba a keepRackSnapped y podía desplazar
+    // involuntariamente el rack incluso con "Movimiento libre" activo.
+    const fp=getRackFootprint(rack.modelId,desired);
+    const proposal={...rack,rot:desired,w:fp.w,h:fp.h,x:cx-fp.w/2,y:cy-fp.h/2};
+    const host=distributionHostForRack(proposal);
+    if(host)proposal.zoneId=host.id;
+    if(!distributionCanCommit(proposal)){
+      showToast('El giro provoca una colisión o sale de la zona. Activa Movimiento libre para permitirlo.','warning',3000);
+      renderLayoutEditor();return false;
+    }
+    recordHistorySnapshot('distribution');
+    Object.assign(rack,{rot:desired,w:fp.w,h:fp.h,x:proposal.x,y:proposal.y,zoneId:proposal.zoneId});
+    appState.selectedRackLayoutId=rack.id;
+    persistActiveLayout();renderLayoutEditor();
+    return true;
   }
 
   function bindLayoutRightPanel(){
+    document.querySelectorAll('[data-layout-fold]').forEach(el=>{
+      el.addEventListener('toggle',evt=>{
+        if(evt.target!==el)return;
+        appState.editor.layoutPanelOpen=appState.editor.layoutPanelOpen||{};
+        appState.editor.layoutPanelOpen[el.dataset.layoutFold]=!!el.open;
+      });
+    });
     const rightScroller = document.querySelector('#layoutRightPanel .layout-right-scroll');
     if(rightScroller){
       rightScroller.scrollTop = appState.editor?.rightPanelScrollTop || 0;
@@ -2246,6 +2424,17 @@
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
     if($('#rpSiteEdit')) $('#rpSiteEdit').onclick=()=>{ appState.editor.editSiteBoundary=!appState.editor.editSiteBoundary;renderLayoutEditor(); };
+    if($('#v206MoveArea'))$('#v206MoveArea').onclick=()=>{appState.editor.areaMoveMode=!appState.editor.areaMoveMode;appState.editor.mode='select';renderLayoutEditor();};
+    if($('#v206AreaApplyCoordinates'))$('#v206AreaApplyCoordinates').onclick=()=>{const cm=Math.max(.0001,getScaleCmPerUnit()),b=layoutBoundaryBounds();const x=Number($('#v206AreaX')?.value),y=Number($('#v206AreaY')?.value);if(!Number.isFinite(x)||!Number.isFinite(y))return;v206MoveAreaBy(x/cm-b.minX,y/cm-b.minY);};
+    if($('#v206AreaUndo'))$('#v206AreaUndo').onclick=()=>undoHistory('layout');
+    if($('#v206AreaRedo'))$('#v206AreaRedo').onclick=()=>redoHistory('layout');
+    if($('#v206ZoneToArea'))$('#v206ZoneToArea').onclick=()=>{const z=findZoneById(appState.selectedZoneId);if(z)v206PromoteZoneToArea(z);};
+    if($('#v207FocusZone'))$('#v207FocusZone').onclick=()=>v207FocusZone(findZoneById(appState.selectedZoneId));
+    if($('#v207EditArea'))$('#v207EditArea').onclick=()=>{
+      appState.editor.layoutPanelOpen={...(appState.editor.layoutPanelOpen||{}),area:true};
+      renderLayoutEditor();
+      const el=document.querySelector('[data-layout-fold="area"]');el?.scrollIntoView({behavior:'smooth',block:'nearest'});
+    };
     if($('#rpSiteAddVertex')) $('#rpSiteAddVertex').onclick=()=>{
       ensureLayoutMeta(); const boundary=appState.layout.meta.siteBoundary;
       const pts=boundary?.pts;if(!Array.isArray(pts)||pts.length<3)return;
@@ -3827,6 +4016,36 @@
     });
 
 
+    // V206: blancos de selección de muros/aristas y vértices, por encima de
+    // las mallas de racks solo mientras la herramienta de alineación está activa.
+    if(isRackDistributionScreen() && appState.editor.rackAlignMode){
+      const mode=appState.editor.rackAlignMode;
+      const targets=svgEl('g',{class:'v206-align-targets'});
+      const segment=(a,b,label)=>{
+        const path=svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'#2fb68b','stroke-width':'14',opacity:'.35',style:'cursor:crosshair;pointer-events:stroke'});
+        path.addEventListener('pointerdown',evt=>{evt.stopPropagation();evt.preventDefault();v206AlignRackToSegment(a,b,label);});
+        targets.appendChild(path);
+      };
+      const vertex=p=>{
+        const circ=svgEl('circle',{cx:p.x,cy:p.y,r:'10',fill:'#f0fff8',stroke:'#258b73','stroke-width':'3',style:'cursor:crosshair'});
+        circ.addEventListener('pointerdown',evt=>{evt.stopPropagation();evt.preventDefault();v206ChooseAlignPoint(p);});
+        targets.appendChild(circ);
+      };
+      if(mode==='wall'){
+        (appState.layout?.walls||[]).forEach(w=>segment({x:w.x1,y:w.y1},{x:w.x2,y:w.y2},'muro'));
+        (appState.layout?.zones||[]).forEach(z=>(z.pts||[]).forEach((a,i)=>segment(a,z.pts[(i+1)%z.pts.length],'arista de zona')));
+        const boundary=typeof layoutBoundaryPts==='function'?layoutBoundaryPts():[];
+        boundary.forEach((a,i)=>segment(a,boundary[(i+1)%boundary.length],'perímetro principal'));
+      }else if(mode==='vertices'){
+        (appState.layout?.zones||[]).forEach(z=>(z.pts||[]).forEach(vertex));
+        (typeof layoutBoundaryPts==='function'?layoutBoundaryPts():[]).forEach(vertex);
+        (appState.layout?.wallNodes||[]).forEach(vertex);
+        const first=appState.editor.rackAlignVertexA;
+        if(first)targets.appendChild(svgEl('circle',{cx:first.x,cy:first.y,r:'14',fill:'none',stroke:'#e09c33','stroke-width':'3','pointer-events':'none'}));
+      }
+      vertexLayer.appendChild(targets);
+    }
+
     // V195: resumen compacto de grupos apilados sobre la huella global.
     if(appState.editor.racksVisible!==false){
       const groups=new Map();
@@ -3892,6 +4111,18 @@
     }
 
     // Los renderizados sucesivos no deben acumular manejadores del canvas.
+    if(svg.__v206AreaCapture){svg.removeEventListener('pointerdown',svg.__v206AreaCapture,true);svg.__v206AreaCapture=null;}
+    if(isStructureLayoutScreen() && appState.editor.areaMoveMode && activeLayoutWorkspace()==='architecture'){
+      const areaCapture=evt=>{
+        if(evt.button!==0||!appState.editor.areaMoveMode)return;
+        const p=svgPoint(evt,svg);
+        if(!pointInLayoutBoundary(p))return;
+        evt.stopImmediatePropagation();evt.preventDefault();
+        appState.editor.dragging={type:'area-composite',start:p,original:clone(appState.layout),moved:false};
+      };
+      svg.__v206AreaCapture=areaCapture;
+      svg.addEventListener('pointerdown',areaCapture,true);
+    }
     svg.onpointerdown = handleLayoutCanvasDown;
     // En colocación, priorizar el clic de confirmación antes de los handlers
     // de selección de racks, zonas y otros objetos.
@@ -4136,6 +4367,18 @@
     if($('#v200ShowSections'))$('#v200ShowSections').onclick=()=>{appState.editor.sectionVisible=!appState.editor.sectionVisible;renderLayoutEditor();};
     if($('#v205FreeMove'))$('#v205FreeMove').onchange=e=>{appState.editor.distributionFreeMove=!!e.target.checked;persistActiveLayout();renderLayoutEditor();};
     if($('#v205VertexSnap'))$('#v205VertexSnap').onchange=e=>{appState.editor.distributionVertexSnap=!!e.target.checked;clearRackSnapPreview();persistActiveLayout();renderLayoutEditor();};
+    if($('#v206AlignClearance'))$('#v206AlignClearance').onchange=e=>{appState.editor.rackAlignClearanceCm=Math.max(0,Math.min(250,Number(e.target.value)||0));persistActiveLayout();};
+    if($('#v208RackAngle'))$('#v208RackAngle').onchange=e=>{const r=findRackById(appState.selectedRackLayoutId);if(r)v194RotateRack(r,e.target.value);};
+    if($('#v206AlignWall'))$('#v206AlignWall').onclick=()=>v206BeginRackAlign('wall');
+    if($('#v206AlignVertices'))$('#v206AlignVertices').onclick=()=>v206BeginRackAlign('vertices');
+    if($('#v208ReapplyParallel'))$('#v208ReapplyParallel').onclick=()=>{
+      const ref=appState.editor?.rackAlignLast;
+      if(ref?.rackId===appState.selectedRackLayoutId)v206AlignRackToSegment(ref.a,ref.b,ref.reference);
+    };
+    if($('#v208ReverseParallel'))$('#v208ReverseParallel').onclick=()=>{
+      const r=findRackById(appState.selectedRackLayoutId);
+      if(r)v194RotateRack(r,Number(r.rot||0)+180);
+    };
     const cancelPlacement=document.getElementById('btnCancelFurniturePlacement');
     if(cancelPlacement)cancelPlacement.onclick=()=>{appState.editor.pendingFurnitureModelId='';appState.editor.pendingFurniturePoint=null;renderLayoutEditor();};
     if(!window.__pendingFurnitureEscapeBound){
@@ -4739,6 +4982,13 @@
       return;
     }
     const dx = snapGrid(p.x - d.start.x), dy = snapGrid(p.y - d.start.y);
+    if(d.type === 'area-composite'){
+      const dx=isSnapEnabled()?snapGrid(p.x-d.start.x):(p.x-d.start.x);
+      const dy=isSnapEnabled()?snapGrid(p.y-d.start.y):(p.y-d.start.y);
+      v206TranslateAreaSnapshot(d.original,dx,dy);
+      d.moved=!!(Math.abs(dx)>0.01||Math.abs(dy)>0.01);
+      renderLayoutSvg(svg);renderLayoutSection();return;
+    }
     if(d.type === 'zone'){
       const zone = dragZoneFromState(d);
       if(!zone) return;
@@ -4868,6 +5118,10 @@
       recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
       members.forEach(r=>{const moved=final.find(v=>v.id===r.id);if(moved){r.x=moved.x;r.y=moved.y;r.zoneId=moved.zoneId;}});
     }
+    if(d?.type==='area-composite'){
+      if(d.moved){recordHistorySnapshot('layout',d.original);syncManualWallsFromNodes();}
+      else v206TranslateAreaSnapshot(d.original,0,0);
+    }
     if(d && (d.type==='rack-group'||d.type==='rack')){
       // En modo libre la posición aceptada durante el arrastre no se recalcula ni
       // regresa por un contorno estrecho. El ID permanece estable para stock/stack.
@@ -4960,7 +5214,7 @@
                     <div class="rack-model-mini-meta">
                       <div class="mini-field">
                         <label class="tiny muted">Rotación</label>
-                        <input id="sideRackRot" type="number" step="1" value="${Math.round(Number(rack.rot || 0))}">
+                        <input id="sideRackRot" type="number" min="0" max="360" step="0.1" value="${Number(normalizeAngle(rack.rot||0).toFixed(2))}">
                       </div>
                       <div class="mini-field">
                         <label class="tiny muted">Nivel apilado</label>

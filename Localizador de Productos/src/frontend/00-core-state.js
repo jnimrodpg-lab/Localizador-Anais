@@ -902,6 +902,9 @@
     if(type === 'layout') return clone(appState.layout || defaultLayout());
     if(type === 'structure'){
       const snapshot = clone(appState.layout || defaultLayout());
+      // V211: restaurar también la clasificación de los racks sin alterar sus
+      // IDs, SKU, modelos, posiciones ni el resto de los datos de distribución.
+      snapshot.rackZoneLinks = (snapshot.racks || []).map(r=>[r.id,r.zoneId||'']);
       delete snapshot.racks;
       return snapshot;
     }
@@ -938,16 +941,17 @@
       const currentRacks = clone(currentLayout.racks || []);
       const currentZones = Array.isArray(currentLayout.zones) ? currentLayout.zones : [];
       const nextStructure = clone(payload || {});
-      const nextZones = Array.isArray(nextStructure.zones) ? nextStructure.zones : [];
-      const zoneIdMap = new Map();
-      currentZones.forEach((zone, index) => { const nextId = nextZones[index]?.id; if(zone?.id && nextId) zoneIdMap.set(String(zone.id), String(nextId)); });
-      currentRacks.forEach(rack => {
-        const mapped = zoneIdMap.get(String(rack.zoneId || ''));
-        if(!mapped || mapped === rack.zoneId) return;
-        const seq = (String(rack.id || '').match(/-E(\d+)/i)||[])[1] || '';
-        rack.zoneId = mapped;
-        if(seq) rack.id = `${mapped}-E${seq}`;
-      });
+      const savedLinks = Array.isArray(nextStructure.rackZoneLinks) ? new Map(nextStructure.rackZoneLinks) : null;
+      delete nextStructure.rackZoneLinks;
+      if(savedLinks){
+        currentRacks.forEach(rack=>{if(savedLinks.has(rack.id))rack.zoneId=savedLinks.get(rack.id)||'';});
+      }else{
+        // Compatibilidad con snapshots anteriores de la misma sesión.
+        const nextZones = Array.isArray(nextStructure.zones) ? nextStructure.zones : [];
+        const zoneIdMap = new Map();
+        currentZones.forEach((zone,index)=>{const nextId=nextZones[index]?.id;if(zone?.id&&nextId)zoneIdMap.set(String(zone.id),String(nextId));});
+        currentRacks.forEach(rack=>{const mapped=zoneIdMap.get(String(rack.zoneId||''));if(mapped)rack.zoneId=mapped;});
+      }
       appState.layout = { ...currentLayout, ...nextStructure, racks:currentRacks };
       ensureLayoutMeta();
       normalizeLayoutSectionState();

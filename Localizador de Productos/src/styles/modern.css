@@ -618,3 +618,30 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
 #appRoot.app .layout-v209-stats small {display:block;font-size:9px;line-height:1.25;margin-top:4px;color:var(--ink-soft)}
 #appRoot.app .layout-v209-area-summary p {margin:8px 0 0;line-height:1.5}
 #appRoot.app .layout-v209-warning {color:#b95636!important;font-weight:700}
+
+/* V211 · Zonas virtuales: gestor compacto, perímetros y clasificación */
+.layout-right-scroll .v211-zone-manager{
+  margin:8px 10px 12px;padding:12px;background:var(--wms-subcard,var(--surface-2,#f7f2e9));
+  border:1px solid var(--line,rgba(110,90,60,.16));border-radius:12px;
+}
+.v211-zone-manager .layout-prop-title{margin-bottom:5px}
+.v211-zone-manager p{margin:0 0 10px}
+.v211-zone-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:190px;overflow-y:auto;padding:1px}
+.v211-zone-item{display:flex;align-items:center;gap:7px;min-width:0;text-align:left;padding:8px;
+  border:1px solid var(--line,#dcd3c7);border-radius:9px;background:var(--wms-card,#fffaf5);color:var(--ink,#343029);cursor:pointer;transition:border-color .15s,background .15s}
+.v211-zone-item:hover,.v211-zone-item.active{border-color:#41856b;background:rgba(66,135,102,.10)}
+.v211-zone-item b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.v211-zone-item small{font-size:9px;opacity:.68;flex-shrink:0}
+.v211-zone-chip{width:14px;height:14px;flex-shrink:0;border:1px solid rgba(30,30,30,.17);border-radius:4px}
+.v211-orphans{margin-top:11px;padding:10px;background:rgba(211,154,57,.10);border:1px solid rgba(194,133,49,.26);border-radius:10px;display:grid;gap:7px}
+.v211-orphans b{font-size:11px}
+.v211-orphans .layout-prop-grid{margin:0}
+.v211-palette{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 2px}
+.v211-palette button{width:27px;height:27px;background:var(--swatch);border:2px solid rgba(0,0,0,.12);border-radius:8px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.09)}
+.v211-palette button.chosen,.v211-palette button:focus-visible{outline:2px solid #38795d;outline-offset:2px}
+.v211-zone-merge{border:1px solid var(--line,rgba(110,90,60,.18));border-radius:10px;padding:10px;margin:12px 0;display:grid;gap:9px}
+.v211-zone-merge label{font-size:11px;display:grid;gap:5px}
+.v211-zone-merge select{max-width:100%;min-width:0}
+.v211-zone-merge small{color:var(--ink-soft,#766e65);font-size:10px;line-height:1.45}
+.layout-v207-context-actions .danger{background:rgba(170,65,54,.08);color:#a74c3e;border-color:rgba(170,65,54,.3)}
+@media(max-width:1050px){.v211-zone-list{grid-template-columns:minmax(0,1fr)}}

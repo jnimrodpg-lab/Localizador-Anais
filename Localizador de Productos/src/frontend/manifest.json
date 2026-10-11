@@ -1,5 +1,5 @@
 {
-  "version": 210,
+  "version": "211",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -17,5 +17,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V210: codos de muros L en mitra usando el mismo polígono físico en layout y visores 3D; preserva geometría CAD, racks, D1 y V209."
+  "notes": "V211: zonas virtuales editables, colores únicos, fusión, eliminación no destructiva, límites compartidos, Undo/Redo con referencias de racks y muros independientes"
 }

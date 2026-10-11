@@ -1,3 +1,27 @@
+# WMS Industrial V205 — Distribución libre y Snap CAD
+
+## Cambios en Distribución
+
+- **Movimiento libre de racks** activado de forma predeterminada: al arrastrar un mueble no se lo devuelve automáticamente al interior de una zona estrecha. Se mantienen su posición X/Y y su identidad para inventario, relaciones y apilamientos. Cuando está parcial o completamente fuera de zona, el editor advierte sin desplazarlo.
+- **Alinear con vértices y bordes**: snap opcional por proximidad a vértices de zonas, nodos de muros y esquinas/centros de otros racks, además del snap general a rejilla.
+- **Ctrl al arrastrar** ignora temporalmente el snap, mientras que el control global lo activa o desactiva. **Alt+arrastrar** continúa disponible para mover conjuntos apilados.
+- **Movimiento estricto**: al desactivar Movimiento libre, las posiciones y giros fuera de zona o con superposición volumétrica son rechazados.
+- Los cambios desde los campos X/Y y los giros respetan el mismo modo. Drag individual y múltiple se guardan como una operación reversible mediante Undo/Redo.
+
+**Atención:** permitir el movimiento libre no certifica que el rack esté sustentado, libre de colisiones o apto para el entorno físico. La validación de conflictos sigue activa. Coloca los objetos definitivamente en zonas válidas antes de operar el almacén.
+
+## Compatibilidad
+
+Conserva Arquitectura, Urbanismo, 3D, mobiliario paramétrico, Wrangler, binding D1 `DB` y migraciones SQL. No modifica la base de datos ni genera una nueva D1.
+
+En Cloudflare Pages: framework `None`, build `npm ci && npm run build`, directorio `public`.
+
+## Limitaciones de prueba
+
+El build frontend y las pruebas de código se ejecutan localmente. Las pruebas remotas de WebGL y persistencia contra tu Cloudflare D1 deben realizarse desde un deployment Preview.
+
+---
+
 # WMS Industrial V203 — Muros contextuales y uniones arquitectónicas
 
 Basado en V202, conservando **Wrangler, binding D1 `DB`, migraciones SQL, apilamiento, biblioteca, constructor de mobiliario, CAD y cotas**. No cambia el esquema SQL.

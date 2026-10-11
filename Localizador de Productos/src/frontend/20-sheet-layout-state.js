@@ -747,7 +747,7 @@
   function normalizeZoneAndRackIds(){
     const zones = appState.layout.zones || [];
     const zoneRemap = new Map();
-    const preserveRackPlacement = isStructureLayoutScreen();
+    const preserveRackPlacement = isStructureLayoutScreen() || (typeof distributionIsFreeMove==='function' && distributionIsFreeMove());
     zones.forEach((z, zi)=>{
       const previousId = String(z?.id || '').toUpperCase();
       let nextId = previousId;
@@ -813,7 +813,7 @@
     copy.id = nextRackId(zone.id);
     copy.x = snapGrid(rack.x + rack.w + 12);
     copy.y = snapGrid(rack.y);
-    keepRackSnapped(copy, zone);
+    if(!(typeof distributionIsFreeMove==='function' && distributionIsFreeMove())) keepRackSnapped(copy, zone);
     appState.layout.racks.push(copy);
     appState.selectedRackLayoutId = copy.id;
     persistActiveLayout();

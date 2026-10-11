@@ -1,5 +1,5 @@
 {
-  "version": "203",
+  "version": "205",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",

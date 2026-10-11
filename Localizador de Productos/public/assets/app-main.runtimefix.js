@@ -4416,7 +4416,7 @@ const DEFAULT_GRID_SIZE = 2;
   function normalizeZoneAndRackIds(){
     const zones = appState.layout.zones || [];
     const zoneRemap = new Map();
-    const preserveRackPlacement = isStructureLayoutScreen();
+    const preserveRackPlacement = isStructureLayoutScreen() || (typeof distributionIsFreeMove==='function' && distributionIsFreeMove());
     zones.forEach((z, zi)=>{
       const previousId = String(z?.id || '').toUpperCase();
       let nextId = previousId;
@@ -4482,7 +4482,7 @@ const DEFAULT_GRID_SIZE = 2;
     copy.id = nextRackId(zone.id);
     copy.x = snapGrid(rack.x + rack.w + 12);
     copy.y = snapGrid(rack.y);
-    keepRackSnapped(copy, zone);
+    if(!(typeof distributionIsFreeMove==='function' && distributionIsFreeMove())) keepRackSnapped(copy, zone);
     appState.layout.racks.push(copy);
     appState.selectedRackLayoutId = copy.id;
     persistActiveLayout();
@@ -9960,6 +9960,8 @@ function getSheetBranchOpenMap(){
     if(!appState.editor.stackViewMode) appState.editor.stackViewMode='compact';
     if(!['architecture','urbanism'].includes(appState.editor.layoutSubsystem)) appState.editor.layoutSubsystem='architecture';
     if(appState.editor.visibleRackLevel===undefined) appState.editor.visibleRackLevel='all';
+    if(appState.editor.distributionFreeMove===undefined) appState.editor.distributionFreeMove=true;
+    if(appState.editor.distributionVertexSnap===undefined) appState.editor.distributionVertexSnap=true;
     if(appState.editor.selectedStackLevel===undefined) appState.editor.selectedStackLevel=0;
     if(appState.selectedStreetFurnitureId === undefined) appState.selectedStreetFurnitureId = '';
     if(appState.editor.editSiteBoundary === undefined) appState.editor.editSiteBoundary=false;
@@ -10979,6 +10981,16 @@ function getSheetBranchOpenMap(){
     return Number.isFinite(px) && Number.isFinite(py) ? { x:px, y:py } : null;
   }
 
+  function getZoneEdgeWallPlacementOffsets(zone, edgeIndex, wall){
+    const thickness = Math.max(8, Number(wall?.thickness || getZoneWallThickness(zone) || 14));
+    const placement = normalizeWallPlacement(wall?.placement || 'inside');
+    if(placement === 'outside') return { near:0, far:thickness, thickness, placement };
+    if(placement === 'center') return { near:-thickness/2, far:thickness/2, thickness, placement };
+    return { near:-thickness, far:0, thickness, placement };
+  }
+  function offsetPoint(pt, n, amount){
+    return { x:Number(pt?.x || 0) + Number(n?.x || 0) * Number(amount || 0), y:Number(pt?.y || 0) + Number(n?.y || 0) * Number(amount || 0) };
+  }
   function getZoneEdgeWallPolygon(zone, edgeIndex, wallData = null){
     if(!zone || !Array.isArray(zone.pts) || zone.pts.length < 2 || edgeIndex < 0) return null;
     const count = zone.pts.length;
@@ -10986,56 +10998,47 @@ function getSheetBranchOpenMap(){
     const b = zone.pts[(edgeIndex + 1) % count];
     const wall = wallData || getZoneEdgeWall(zone, edgeIndex);
     if(!a || !b || !wall || wall.enabled === false) return null;
-    const thickness = Math.max(8, Number(wall.thickness || getZoneWallThickness(zone) || 14));
-    const side = getWallSideSign(wall.side);
     const baseN = getZoneOutwardEdgeNormal(zone, a, b);
+    const side = getWallSideSign(wall.side);
     const n = { x:baseN.x * side, y:baseN.y * side };
-    const innerA = { x:Number(a.x || 0), y:Number(a.y || 0) };
-    const innerB = { x:Number(b.x || 0), y:Number(b.y || 0) };
-    let outerA = { x:innerA.x + n.x * thickness, y:innerA.y + n.y * thickness };
-    let outerB = { x:innerB.x + n.x * thickness, y:innerB.y + n.y * thickness };
+    const offsets = getZoneEdgeWallPlacementOffsets(zone, edgeIndex, wall);
+    let startNear = offsetPoint(a, n, offsets.near);
+    let endNear = offsetPoint(b, n, offsets.near);
+    let startFar = offsetPoint(a, n, offsets.far);
+    let endFar = offsetPoint(b, n, offsets.far);
 
-    const safeMiter = (hit, vertex, fallback) => {
+    const safeMiter = (hit, vertex, fallback, thicknessHint) => {
       if(!hit) return fallback;
-      const maxLen = Math.max(thickness * 3.2, 42);
+      const maxLen = Math.max(Number(thicknessHint || offsets.thickness) * 3.4, 52);
       return pointDist2D(hit, vertex) <= maxLen ? hit : fallback;
     };
+    const joinEdge = (neighborIdx, atStart) => {
+      const neighbor = getZoneEdgeWall(zone, neighborIdx);
+      if(!neighbor?.enabled) return;
+      const na = zone.pts[neighborIdx];
+      const nb = zone.pts[(neighborIdx + 1) % count];
+      if(!na || !nb) return;
+      const neighborBase = getZoneOutwardEdgeNormal(zone, na, nb);
+      const neighborSide = getWallSideSign(neighbor.side);
+      const nn = { x:neighborBase.x * neighborSide, y:neighborBase.y * neighborSide };
+      const no = getZoneEdgeWallPlacementOffsets(zone, neighborIdx, neighbor);
+      const neighborNearA = offsetPoint(na, nn, no.near);
+      const neighborNearB = offsetPoint(nb, nn, no.near);
+      const neighborFarA = offsetPoint(na, nn, no.far);
+      const neighborFarB = offsetPoint(nb, nn, no.far);
+      const vertex = atStart ? a : b;
+      if(atStart){
+        startNear = safeMiter(lineIntersection2D(neighborNearA, neighborNearB, startNear, endNear), vertex, startNear, Math.max(offsets.thickness, no.thickness));
+        startFar = safeMiter(lineIntersection2D(neighborFarA, neighborFarB, startFar, endFar), vertex, startFar, Math.max(offsets.thickness, no.thickness));
+      } else {
+        endNear = safeMiter(lineIntersection2D(startNear, endNear, neighborNearA, neighborNearB), vertex, endNear, Math.max(offsets.thickness, no.thickness));
+        endFar = safeMiter(lineIntersection2D(startFar, endFar, neighborFarA, neighborFarB), vertex, endFar, Math.max(offsets.thickness, no.thickness));
+      }
+    };
 
-    const prevIdx = (edgeIndex - 1 + count) % count;
-    const prevWall = getZoneEdgeWall(zone, prevIdx);
-    if(prevWall?.enabled && getWallSideSign(prevWall.side) === side){
-      const pa = zone.pts[prevIdx];
-      const pb = zone.pts[edgeIndex];
-      const prevNBase = getZoneOutwardEdgeNormal(zone, pa, pb);
-      const prevN = { x:prevNBase.x * side, y:prevNBase.y * side };
-      const prevTh = Math.max(8, Number(prevWall.thickness || getZoneWallThickness(zone) || 14));
-      const hit = lineIntersection2D(
-        { x:Number(pa.x||0) + prevN.x * prevTh, y:Number(pa.y||0) + prevN.y * prevTh },
-        { x:Number(pb.x||0) + prevN.x * prevTh, y:Number(pb.y||0) + prevN.y * prevTh },
-        outerA,
-        outerB
-      );
-      outerA = safeMiter(hit, innerA, outerA);
-    }
-
-    const nextIdx = (edgeIndex + 1) % count;
-    const nextWall = getZoneEdgeWall(zone, nextIdx);
-    if(nextWall?.enabled && getWallSideSign(nextWall.side) === side){
-      const na = zone.pts[nextIdx];
-      const nb = zone.pts[(nextIdx + 1) % count];
-      const nextNBase = getZoneOutwardEdgeNormal(zone, na, nb);
-      const nextN = { x:nextNBase.x * side, y:nextNBase.y * side };
-      const nextTh = Math.max(8, Number(nextWall.thickness || getZoneWallThickness(zone) || 14));
-      const hit = lineIntersection2D(
-        outerA,
-        outerB,
-        { x:Number(na.x||0) + nextN.x * nextTh, y:Number(na.y||0) + nextN.y * nextTh },
-        { x:Number(nb.x||0) + nextN.x * nextTh, y:Number(nb.y||0) + nextN.y * nextTh }
-      );
-      outerB = safeMiter(hit, innerB, outerB);
-    }
-
-    return [innerA, innerB, outerB, outerA];
+    joinEdge((edgeIndex - 1 + count) % count, true);
+    joinEdge((edgeIndex + 1) % count, false);
+    return [startNear, endNear, endFar, startFar];
   }
 
 
@@ -11043,65 +11046,10 @@ function getSheetBranchOpenMap(){
     return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0));
   }
   function getZoneWallCornerClosurePolygons(zone){
-    if(!zone || !Array.isArray(zone.pts) || zone.pts.length < 3) return [];
-    const out = [];
-    const count = zone.pts.length;
-    for(let idx=0; idx<count; idx+=1){
-      const prevIdx = (idx - 1 + count) % count;
-      const currIdx = idx;
-      const prevWall = getZoneEdgeWall(zone, prevIdx);
-      const currWall = getZoneEdgeWall(zone, currIdx);
-      if(!prevWall?.enabled || !currWall?.enabled || (!prevWall.autoZoneEdge && !currWall.autoZoneEdge)) continue;
-      const prevSide = getWallSideSign(prevWall.side);
-      const currSide = getWallSideSign(currWall.side);
-      if(prevSide !== currSide) continue;
-
-      const prevA = zone.pts[prevIdx];
-      const prevB = zone.pts[idx];
-      const currA = zone.pts[idx];
-      const currB = zone.pts[(idx + 1) % count];
-      const vertex = currA;
-      if(!prevA || !prevB || !currB || !vertex) continue;
-
-      const prevBaseN = getZoneOutwardEdgeNormal(zone, prevA, prevB);
-      const currBaseN = getZoneOutwardEdgeNormal(zone, currA, currB);
-      const prevN = { x:prevBaseN.x * prevSide, y:prevBaseN.y * prevSide };
-      const currN = { x:currBaseN.x * currSide, y:currBaseN.y * currSide };
-      const prevTh = Math.max(8, Number(prevWall.thickness || getZoneWallThickness(zone) || 14));
-      const currTh = Math.max(8, Number(currWall.thickness || getZoneWallThickness(zone) || 14));
-
-      const vPrev = { x:Number(vertex.x || 0) + prevN.x * prevTh, y:Number(vertex.y || 0) + prevN.y * prevTh };
-      const vCurr = { x:Number(vertex.x || 0) + currN.x * currTh, y:Number(vertex.y || 0) + currN.y * currTh };
-
-      const hit = lineIntersection2D(
-        { x:Number(prevA.x || 0) + prevN.x * prevTh, y:Number(prevA.y || 0) + prevN.y * prevTh },
-        vPrev,
-        vCurr,
-        { x:Number(currB.x || 0) + currN.x * currTh, y:Number(currB.y || 0) + currN.y * currTh }
-      );
-
-      let outerCorner = hit;
-      const fallback = { x:vPrev.x + currN.x * currTh, y:vPrev.y + currN.y * currTh };
-      const maxLen = Math.max(prevTh, currTh) * 3.2 + 24;
-      if(!outerCorner || pointDist2D(outerCorner, vertex) > maxLen){
-        outerCorner = fallback;
-      }
-
-      out.push({
-        zoneId: zone.id,
-        prevWallId: zoneEdgeWallId(zone.id, prevIdx),
-        currWallId: zoneEdgeWallId(zone.id, currIdx),
-        selected: appState.selectedWallId === zoneEdgeWallId(zone.id, prevIdx) || appState.selectedWallId === zoneEdgeWallId(zone.id, currIdx),
-        height: Math.max(120, Number(prevWall.height || currWall.height || appState.layout?.meta?.defaultWallHeight || 290)),
-        poly: [
-          { x:Number(vertex.x || 0), y:Number(vertex.y || 0) },
-          vCurr,
-          outerCorner,
-          vPrev
-        ]
-      });
-    }
-    return out;
+    // V204: las uniones de muros perimetrales ya se resuelven con mitras en la
+    // geometría principal del muro. Evitamos parches extra que generaban
+    // solapes, picos y cierres incorrectos en modos hacia dentro / fuera.
+    return [];
   }
   function getAllWallCornerClosurePolygons(){
     ensureLayoutDecorations();
@@ -11591,8 +11539,8 @@ function getSheetBranchOpenMap(){
     const height=appState.editor.wallDraftHeight ?? Math.round((Number(wall?.height||appState.layout?.meta?.defaultWallHeight||290))*getScaleCmPerUnit());
     return `<section class="layout-prop-card v203-wall-card">
        <div class="layout-prop-title">Muros · creación contextual</div>
-       <p class="tiny muted">Haz clic en una arista resaltada del plano. No hay etiquetas permanentes. El espesor se orienta con respecto a la zona elegida.</p>
-       <div class="layout-selected-title">${ctx?`Arista ${ctx.edgeIndex+1} · ${escapeHtml(ctx.zone.name||ctx.zone.id)}`:wall?`Muro ${escapeHtml(wall.name||wall.id)}`:'Selecciona una arista'}</div>
+       <p class="tiny muted">Haz clic en una arista para editarla o en un vértice para abrir los atajos + Dentro / Centro / Fuera. El espesor se orienta con respecto a la zona elegida.</p>
+       <div class="layout-selected-title">${ctx?`Arista ${ctx.edgeIndex+1} · ${escapeHtml(ctx.zone.name||ctx.zone.id)}`:wall?`Muro ${escapeHtml(wall.name||wall.id)}`:'Selecciona una arista o un vértice'}</div>
        <div class="layout-prop-grid two">
          <label style="grid-column:1/-1">Espesor respecto al eje<select id="v203WallPlacement">
            <option value="inside" ${defaultPlacement==='inside'?'selected':''}>Hacia dentro</option>
@@ -11620,7 +11568,13 @@ function getSheetBranchOpenMap(){
     return `<section class="layout-prop-card layout-v200-urban"><div class="layout-prop-title">Calles y veredas</div><p class="tiny muted">Selecciona una calle del plano para editar su geometría y materiales. La arquitectura se mantiene visible como referencia.</p><label class="layout-v200-street-select">Calle activa<select id="v200StreetSelect"><option value="">Seleccionar calle</option>${streets.map(st=>`<option value="${escapeHtml(st.id)}" ${st.id===appState.selectedStreetId?'selected':''}>${escapeHtml(st.name||st.id)}</option>`).join('')}</select></label><div class="layout-template-grid"><button type="button" class="seg-btn" id="v200DrawStreet">+ Crear calle</button><button type="button" class="seg-btn" id="v200ShowStreetHandles">Editar vértices</button></div></section>`;
   }
   function layoutDistributionInspector(){
-    return `<section class="layout-prop-card layout-v200-distribution"><div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(r.displayCode||r.id)} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
+    return `<section class="layout-prop-card layout-v200-distribution"><div class="layout-prop-title">Precisión y movimiento</div>
+      <div class="layout-v205-motion-options" style="display:grid;gap:9px;margin:10px 0 14px">
+        <label style="display:flex;align-items:center;gap:8px"><input id="v205FreeMove" type="checkbox" ${appState.editor.distributionFreeMove!==false?'checked':''}><span>Movimiento libre de racks</span></label>
+        <label style="display:flex;align-items:center;gap:8px"><input id="v205VertexSnap" type="checkbox" ${appState.editor.distributionVertexSnap!==false?'checked':''}><span>Alinear con vértices y bordes</span></label>
+        <p class="tiny muted" style="margin:0">Libre: puedes mover fuera de zonas pequeñas sin que el rack regrese. Se advierten las interferencias sin bloquear. Desactívalo para exigir cabida y ausencia de colisiones. El snap general se mantiene independiente. Ctrl mientras arrastras: ignorar snap.</p>
+      </div>
+      <div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(r.displayCode||r.id)} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
   }
 
   function layoutSelectedSummary(){
@@ -12028,15 +11982,98 @@ function getSheetBranchOpenMap(){
       </div>`;
   }
 
+  // V205 — el usuario dirige el movimiento; la zona es una referencia lógica,
+  // no una pinza que recoloca el mueble durante cada frame del arrastre.
+  function distributionIsFreeMove(){return appState.editor?.distributionFreeMove!==false;}
+  function distributionHostForRack(rack){
+    const c={x:Number(rack.x||0)+Number(rack.w||0)/2,y:Number(rack.y||0)+Number(rack.h||0)/2};
+    return (appState.layout?.zones||[]).find(z=>pointInPoly(c,z.pts)) || findZoneById(rack.zoneId) || nearestZoneForPoint(c);
+  }
+  function distributionRackPlacement(rack, x, y, opts={}){
+    const n={...rack,x:Number(x)||0,y:Number(y)||0};
+    const snapping=isSnapEnabled()&&!opts.ignoreSnap;
+    if(snapping){n.x=snapGrid(n.x);n.y=snapGrid(n.y);}
+    clearRackSnapPreview();
+    if(snapping && appState.editor?.distributionVertexSnap!==false){
+      const points=[],segments=[],vertexPoints=[];
+      const addEdges=pts=>{(pts||[]).forEach((pt,i)=>{const q=pts[(i+1)%pts.length];points.push(pt);vertexPoints.push(pt);if(q && pts.length>1){segments.push([pt,q]);points.push({x:(pt.x+q.x)/2,y:(pt.y+q.y)/2});}});};
+      (appState.layout?.zones||[]).forEach(zone=>addEdges(zone.pts||[]));
+      (appState.layout?.wallNodes||[]).forEach(pt=>{points.push(pt);vertexPoints.push(pt);});
+      (appState.layout?.racks||[]).filter(r=>r.id!==rack.id&&!opts.ignoreRackIds?.includes(r.id)).forEach(other=>{
+        addEdges(rackCorners(other));
+        points.push({x:other.x+other.w/2,y:other.y+other.h/2});
+      });
+      const moving=[...rackCorners(n),{x:n.x+n.w/2,y:n.y+n.h/2}];
+      // Tolerancia pequeña en unidades del plano; no hay atracción a distancia.
+      const threshold=Math.max(3,Math.min(14,getSnapSize()*3));
+      let bestPoint=null,best2=threshold*threshold*2.0;
+      let bestX=null,bestY=null,distX=threshold,distY=threshold;
+      for(const anchor of moving){
+        for(const target of points){
+          const dx=Number(target.x)-anchor.x,dy=Number(target.y)-anchor.y;
+          const d2=dx*dx+dy*dy;
+          if(d2<best2){best2=d2;bestPoint={dx,dy,anchor,target};}
+          if(Math.abs(dx)<distX){distX=Math.abs(dx);bestX={dx,anchor,target};}
+          if(Math.abs(dy)<distY){distY=Math.abs(dy);bestY={dy,anchor,target};}
+        }
+        // Extensiones/aristas: proyección del vértice del rack al tramo real.
+        for(const [a,b] of segments){
+          const vx=b.x-a.x,vy=b.y-a.y,den=vx*vx+vy*vy;
+          if(den<=1e-9)continue;
+          const t=Math.max(0,Math.min(1,((anchor.x-a.x)*vx+(anchor.y-a.y)*vy)/den));
+          const target={x:a.x+t*vx,y:a.y+t*vy};
+          const dx=target.x-anchor.x,dy=target.y-anchor.y,d2=dx*dx+dy*dy;
+          if(d2<best2){best2=d2;bestPoint={dx,dy,anchor,target};}
+        }
+      }
+      // Un vértice real tiene prioridad sobre un punto proyectado de arista,
+      // siempre que el cursor haya entrado en su radio de captura.
+      let vertexHit=null,vertexDist=threshold*threshold*2;
+      for(const anchor of moving){for(const target of vertexPoints){
+        const dx=target.x-anchor.x,dy=target.y-anchor.y,d2=dx*dx+dy*dy;
+        if(d2<vertexDist){vertexDist=d2;vertexHit={dx,dy,anchor,target};}
+      }}
+      if(vertexHit)bestPoint=vertexHit;
+      if(bestPoint){
+        n.x+=bestPoint.dx;n.y+=bestPoint.dy;
+        setRackSnapPreview({type:'vertex',strength:'hard',line:[bestPoint.anchor,bestPoint.target]});
+      }else{
+        if(bestX)n.x+=bestX.dx;
+        if(bestY)n.y+=bestY.dy;
+        const match=bestX||bestY;
+        if(match)setRackSnapPreview({type:'vertex',strength:'medium',line:[match.anchor,match.target]});
+      }
+    }
+    const host=distributionHostForRack(n);
+    if(host)n.zoneId=host.id;
+    return n;
+  }
+  function distributionRackInterference(rack,ignoreIds=[]){
+    const host=distributionHostForRack(rack);
+    if(!host||!rackFullyInsideZone(rack,host))return 'El rack queda parcial o totalmente fuera de la zona; puedes ajustarlo después.';
+    const ignored=new Set([rack.id,...ignoreIds]);
+    const other=(appState.layout?.racks||[]).find(r=>!ignored.has(r.id) &&
+      typeof vspaceStackIntersect==='function' && vspaceStackIntersect(rack,r));
+    return other ? `Posible colisión con ${other.displayCode||other.id}.` : '';
+  }
+  function distributionCanCommit(rack,ignoreIds=[]){
+    if(distributionIsFreeMove())return true;
+    const host=distributionHostForRack(rack);
+    if(!host||!rackFullyInsideZone(rack,host))return false;
+    const ignored=new Set([rack.id,...ignoreIds]);
+    return !(appState.layout?.racks||[]).some(r=>!ignored.has(r.id) &&
+      typeof vspaceStackIntersect==='function' && vspaceStackIntersect(rack,r));
+  }
   function v194RotateRack(rack,angle){
       if(!rack)return;
       const prior={x:rack.x,y:rack.y,w:rack.w,h:rack.h,rot:rack.rot,zoneId:rack.zoneId};
       const desired=normalizeAngle(Number(angle)||0);
       if(desired===normalizeAngle(rack.rot||0))return;
       applyRackRotation(rack,desired);
-      const host=findZoneById(rack.zoneId);
-      if(!host || !rackFullyInsideZone(rack,host) || (typeof vspaceFits==='function' && !vspaceFits(rack,rack.id).ok)){
-        Object.assign(rack,prior);showToast('Rotación bloqueada por límites o colisión.','warning',2600);renderLayoutEditor();return;
+      const host=distributionHostForRack(rack);
+      if(host)rack.zoneId=host.id;
+      if(!distributionCanCommit(rack)){
+        Object.assign(rack,prior);showToast('Rotación restringida por zona o colisión. Activa Movimiento libre para continuar.','warning',3000);renderLayoutEditor();return;
       }
       // Registrar previo al cambio persistido para garantizar Undo.
       const updated={x:rack.x,y:rack.y,w:rack.w,h:rack.h,rot:rack.rot,zoneId:rack.zoneId};
@@ -12231,19 +12268,15 @@ function getSheetBranchOpenMap(){
       const prior={x:rack.x,y:rack.y,zoneId:rack.zoneId};
       const x=Number($('#rpRackX')?.value), y=Number($('#rpRackY')?.value);
       if(!Number.isFinite(x)||!Number.isFinite(y))return;
-      const candidate={...rack,x:snapGrid(x),y:snapGrid(y)};
-      const center={x:candidate.x+candidate.w/2,y:candidate.y+candidate.h/2};
-      const zone=(appState.layout.zones||[]).find(z=>pointInPoly(center,z.pts));
-      if(zone)candidate.zoneId=zone.id;
-      const valid=zone && rackFullyInsideZone(candidate,zone) && (typeof vspaceFits!=='function'||vspaceFits(candidate,rack.id).ok);
-      if(!valid){showToast('Ubicación bloqueada: fuera de zona o colisión con otro mueble.','warning',2600);renderLayoutEditor();return;}
+      const candidate=distributionRackPlacement(rack,x,y);
+      if(!distributionCanCommit(candidate)){showToast('Ubicación restringida por zona o colisión. Activa Movimiento libre para continuar.','warning',2800);renderLayoutEditor();return;}
       if(Math.abs(prior.x-candidate.x)<.001&&Math.abs(prior.y-candidate.y)<.001&&prior.zoneId===candidate.zoneId)return;
       recordHistorySnapshot('distribution');
       Object.assign(rack,{x:candidate.x,y:candidate.y,zoneId:candidate.zoneId});
       persistActiveLayout();renderLayoutEditor();
     };
     if($('#rpRackDisplayCode')) $('#rpRackDisplayCode').onchange=e=>{if(!rack)return;const label=String(e.target.value||'').trim().slice(0,80);if(!label||label===(rack.displayCode||rack.id))return;recordHistorySnapshot('distribution');rack.displayCode=label;persistActiveLayout();renderLayoutEditor();};
-    if($('#rpRackModel')) $('#rpRackModel').onchange = e => { if(!rack) return; rack.modelId=e.target.value; syncRackFootprint(rack,true); const host=findZoneById(rack.zoneId); if(host) keepRackSnapped(rack, host); persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpRackModel')) $('#rpRackModel').onchange = e => { if(!rack) return; rack.modelId=e.target.value; syncRackFootprint(rack,true); const host=findZoneById(rack.zoneId); if(host && !distributionIsFreeMove()) keepRackSnapped(rack, host); persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpRackRot')) $('#rpRackRot').onchange = e => v194RotateRack(rack,e.target.value);
     if($('#rpRackX')) $('#rpRackX').onchange = applyRackPosition;
     if($('#rpRackY')) $('#rpRackY').onchange = applyRackPosition;
@@ -13221,14 +13254,14 @@ function getSheetBranchOpenMap(){
           drawSectionGuide(zone, 'y');
         }
         const handleOffsetUnits = 15 / Math.max(.01, getScaleCmPerUnit());
-        if(appState.editor.architectureTool!=='walls') zone.pts.forEach((p, idx) => {
+        zone.pts.forEach((p, idx) => {
           // El centro del controlador coincide con el vértice real, incluso en esquinas diagonales.
           const hx = p.x;
           const hy = p.y;
           const selectedVertex = appState.selectedVertex.zoneId===zone.id && appState.selectedVertex.idx===idx;
           const hit = svgEl('circle',{cx:hx,cy:hy,r:'14',class:'vertex-hit'});
           const v = svgEl('circle',{cx:hx,cy:hy,r:selectedVertex?'8':'7',class:'vertex' + (selectedVertex ? ' selected' : '')});
-          [hit, v].forEach(el => { el.addEventListener('pointerdown', e => startVertexDrag(e, zone.id, idx)); if(appState.editor.mode!=='select'||appState.editor.zonesLocked || isRackDistributionScreen() || isRoomLinkedZone(zone)) el.style.pointerEvents='none'; });
+          [hit, v].forEach(el => { el.addEventListener('pointerdown', e => startVertexDrag(e, zone.id, idx)); if(appState.editor.mode!=='select'||appState.editor.zonesLocked || isRackDistributionScreen() || (isRoomLinkedZone(zone) && appState.editor.architectureTool!=='walls')) el.style.pointerEvents='none'; });
           vertexLayer.appendChild(hit);
           vertexLayer.appendChild(v);
         });
@@ -13276,6 +13309,9 @@ function getSheetBranchOpenMap(){
         if(appState.selectedEdge.zoneId===zone.id && appState.selectedEdge.a>=0){
           const a = zone.pts[appState.selectedEdge.a], b = zone.pts[appState.selectedEdge.b];
           edgeLayer.appendChild(svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,class:'edge-guide'}));
+        }
+        if(appState.editor.architectureTool==='walls' && appState.selectedVertex?.zoneId===zone.id && appState.selectedVertex?.idx>=0){
+          drawWallVertexPlacementMenu(vertexLayer, zone, appState.selectedVertex.idx);
         }
       }
     });
@@ -14032,6 +14068,8 @@ function getSheetBranchOpenMap(){
     if($('#v200StreetHandlesRail'))$('#v200StreetHandlesRail').onclick=streetHandles;
     if($('#v200RackSelect'))$('#v200RackSelect').onchange=e=>{const rack=findRackById(e.target.value);if(!rack)return;appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;renderLayoutEditor();};
     if($('#v200ShowSections'))$('#v200ShowSections').onclick=()=>{appState.editor.sectionVisible=!appState.editor.sectionVisible;renderLayoutEditor();};
+    if($('#v205FreeMove'))$('#v205FreeMove').onchange=e=>{appState.editor.distributionFreeMove=!!e.target.checked;persistActiveLayout();renderLayoutEditor();};
+    if($('#v205VertexSnap'))$('#v205VertexSnap').onchange=e=>{appState.editor.distributionVertexSnap=!!e.target.checked;clearRackSnapPreview();persistActiveLayout();renderLayoutEditor();};
     const cancelPlacement=document.getElementById('btnCancelFurniturePlacement');
     if(cancelPlacement)cancelPlacement.onclick=()=>{appState.editor.pendingFurnitureModelId='';appState.editor.pendingFurniturePoint=null;renderLayoutEditor();};
     if(!window.__pendingFurnitureEscapeBound){
@@ -14441,8 +14479,72 @@ function getSheetBranchOpenMap(){
     appState.editor.dragging = { type:'zone', zoneId, zoneIndex, start:p, original: clone(zone.pts), lastValid:clone(zone.pts), blockedByZoneCollision:false,historyBefore:snapshotForType('structure') };
     renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
   }
+  function selectWallVertex(e, zoneId, idx){
+    if(!isStructureLayoutScreen() || appState.editor.mode !== 'select' || appState.editor.zonesLocked) return;
+    e.stopPropagation();
+    const zone = findZoneById(zoneId); if(!zone) return;
+    appState.selectedZoneId = zoneId;
+    appState.selectedVertex = { zoneId, idx };
+    appState.selectedEdge = { zoneId:'', a:-1, b:-1 };
+    appState.selectedWallId = '';
+    appState.selectedOpeningId = '';
+    appState.selectedRackLayoutId = '';
+    appState.selectedRoomId = zone.linkedRoomId || '';
+    renderLayoutEditor();
+  }
+  function applyWallsAtVertex(zoneId, idx, placement){
+    const zone = findZoneById(zoneId);
+    if(!zone || !Array.isArray(zone.pts) || zone.pts.length < 2) return;
+    const scale = Math.max(.001, getScaleCmPerUnit());
+    const thickness = Math.max(4, Math.min(80, Number(appState.editor.wallDraftThickness ?? 12))) / scale;
+    const height = Math.max(100, Math.min(800, Number(appState.editor.wallDraftHeight ?? (appState.layout?.meta?.defaultWallHeight || 290)))) / scale;
+    const prevIdx = (idx - 1 + zone.pts.length) % zone.pts.length;
+    const currIdx = idx;
+    recordHistorySnapshot('structure');
+    setZoneEdgeWall(zone, prevIdx, { thickness, height, placement });
+    setZoneEdgeWall(zone, currIdx, { thickness, height, placement });
+    appState.editor.wallDefaultPlacement = placement;
+    appState.selectedZoneId = zoneId;
+    appState.selectedVertex = { zoneId, idx };
+    appState.selectedEdge = { zoneId, a:currIdx, b:(currIdx + 1) % zone.pts.length };
+    appState.selectedWallId = zoneEdgeWallId(zone.id, currIdx) || zoneEdgeWallId(zone.id, prevIdx) || '';
+    syncZonePerimeterWalls();
+    persistActiveLayout();
+    renderLayoutEditor();
+  }
+  function drawWallVertexPlacementMenu(layer, zone, idx){
+    if(!layer || !zone || !Array.isArray(zone.pts) || !zone.pts[idx]) return;
+    const p = zone.pts[idx];
+    const outward = typeof getZoneOutwardVertexNormal === 'function' ? getZoneOutwardVertexNormal(zone, idx) : { x:0, y:-1 };
+    const scale = Math.max(.001, getScaleCmPerUnit());
+    const gap = 18 / scale;
+    const pillH = 18 / scale;
+    const base = { x:p.x + outward.x * (26/scale), y:p.y + outward.y * (26/scale) };
+    const items = [
+      { key:'inside', label:'+ Dentro', dx:0, dy:0 },
+      { key:'center', label:'+ Centro', dx:0, dy:(pillH + gap) },
+      { key:'outside', label:'+ Fuera', dx:0, dy:(pillH + gap) * 2 }
+    ];
+    items.forEach(item => {
+      const x = base.x + item.dx;
+      const y = base.y + item.dy;
+      const w = 58 / scale;
+      const h = 18 / scale;
+      const g = svgEl('g', { class:'v204-wall-vertex-action', style:'cursor:pointer' });
+      const bg = svgEl('rect', { x:x - w/2, y:y - h/2, width:w, height:h, rx:8/scale, ry:8/scale, fill:'#0f2438', stroke:'#5fe3b1', 'stroke-width':'1.2', opacity:'0.98' });
+      const fg = svgEl('text', { x, y:y + 1.8/scale, 'text-anchor':'middle', fill:'#ffffff', 'font-size': 7.5/scale, 'font-weight':'700', style:'pointer-events:none' });
+      fg.textContent = item.label;
+      [bg, fg].forEach(el => el.addEventListener('pointerdown', evt => { evt.preventDefault(); evt.stopPropagation(); applyWallsAtVertex(zone.id, idx, item.key); }));
+      g.appendChild(bg); g.appendChild(fg);
+      layer.appendChild(g);
+    });
+  }
   function startVertexDrag(e, zoneId, idx){
     if(!isStructureLayoutScreen() || appState.editor.mode !== 'select' || appState.editor.zonesLocked) return;
+    if(appState.editor.architectureTool==='walls'){
+      selectWallVertex(e, zoneId, idx);
+      return;
+    }
     e.stopPropagation();
     const svg = $('#layoutSvg'); const p = svgPoint(e, svg);
     const zone = findZoneById(zoneId);
@@ -14501,7 +14603,7 @@ function getSheetBranchOpenMap(){
       const members=modularStackMembers(rack);
       const svg=$('#layoutSvg'),p=svgPoint(e,svg);
       appState.selectedRackLayoutId=rack.id;
-      appState.editor.dragging={type:'modular-stack',groupId:rack.stackGroupId,start:p,originals:members.map(m=>({id:m.id,x:m.x,y:m.y}))};
+      appState.editor.dragging={type:'modular-stack',groupId:rack.stackGroupId,start:p,originals:members.map(m=>({id:m.id,x:m.x,y:m.y,zoneId:m.zoneId})),historyBefore:snapshotForType('distribution')};
       renderLayoutSvg(svg);renderLayoutSection();renderLayoutInspector();return;
     }
     if(e.shiftKey){
@@ -14521,8 +14623,8 @@ function getSheetBranchOpenMap(){
     appState.selectedOpeningId = '';
     if(dragIds.length>1){
       const originals={}; dragIds.forEach(id=>{const rr=findRackById(id);if(rr)originals[id]={x:rr.x,y:rr.y,zoneId:rr.zoneId};});
-      appState.editor.dragging={type:'rack-group',rackIds:dragIds,start:p,originals};
-    }else appState.editor.dragging = { type:'rack', rackId, start:p, original: { x:rack.x, y:rack.y, cx, cy, zoneId:rack.zoneId } };
+      appState.editor.dragging={type:'rack-group',rackIds:dragIds,start:p,originals,historyBefore:snapshotForType('distribution')};
+    }else appState.editor.dragging = { type:'rack', rackId, start:p, original: { x:rack.x, y:rack.y, cx, cy, zoneId:rack.zoneId },historyBefore:snapshotForType('distribution') };
     renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
   }
 
@@ -14645,30 +14747,34 @@ function getSheetBranchOpenMap(){
       renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
     } else if(d.type === 'modular-stack'){
       const members=modularStackMembers(d.groupId);
-      const dx=snapGrid(p.x-d.start.x),dy=snapGrid(p.y-d.start.y);
-      const trial=members.map(r=>{const old=d.originals.find(x=>x.id===r.id)||r;return {...r,x:old.x+dx,y:old.y+dy};});
-      const check=modularStackIsValid(trial,d.groupId);
-      if(check.ok){members.forEach((r,i)=>{r.x=trial[i].x;r.y=trial[i].y;});d.lastValid={dx,dy};}
+      const dx=(isSnapEnabled()&&!e.ctrlKey)?snapGrid(p.x-d.start.x):(p.x-d.start.x);
+      const dy=(isSnapEnabled()&&!e.ctrlKey)?snapGrid(p.y-d.start.y):(p.y-d.start.y);
+      const trial=members.map(r=>{const old=d.originals.find(x=>x.id===r.id)||r;return distributionRackPlacement(r,old.x+dx,old.y+dy,{ignoreSnap:true});});
+      const check=distributionIsFreeMove()?{ok:true}:modularStackIsValid(trial,d.groupId);
+      if(check.ok){members.forEach((r,i)=>{r.x=trial[i].x;r.y=trial[i].y;r.zoneId=trial[i].zoneId;});d.lastValid={dx,dy};}
       d.blocked=!check.ok;
       renderLayoutSvg(svg);renderLayoutSection();
     } else if(d.type === 'rack-group'){
       const rawDX=p.x-d.start.x, rawDY=p.y-d.start.y;
-      (d.rackIds||[]).forEach(id=>{ const rack=findRackById(id), orig=d.originals?.[id]; if(!rack||!orig)return; rack.x=snapGrid(orig.x+rawDX); rack.y=snapGrid(orig.y+rawDY); const host=findZoneById(orig.zoneId)||findZoneById(rack.zoneId); if(host){rack.zoneId=host.id; if(!rackFullyInsideZone(rack,host)){rack.x=orig.x;rack.y=orig.y;rack.zoneId=orig.zoneId;}} });
-      clearRackSnapPreview(); renderLayoutSvg(svg); renderLayoutSection();
+      const leader=findRackById(d.rackIds?.[0]);const leaderOrig=leader&&d.originals?.[leader.id];
+      const snappedLead=leaderOrig?distributionRackPlacement(leader,leaderOrig.x+rawDX,leaderOrig.y+rawDY,{ignoreSnap:!!e.ctrlKey,ignoreRackIds:d.rackIds||[]}):null;
+      // Trasladar el grupo como un cuerpo rígido: nunca hacer snap independiente
+      // de cada rack, pues se perderían separaciones y alineaciones preexistentes.
+      const dx=snappedLead?snappedLead.x-leaderOrig.x:rawDX;
+      const dy=snappedLead?snappedLead.y-leaderOrig.y:rawDY;
+      const candidates=(d.rackIds||[]).map(id=>{const rack=findRackById(id),orig=d.originals?.[id];if(!rack||!orig)return null;const proposal={...rack,x:orig.x+dx,y:orig.y+dy};const host=distributionHostForRack(proposal);if(host)proposal.zoneId=host.id;return {rack,proposal};}).filter(Boolean);
+      if(distributionIsFreeMove()||candidates.every(c=>distributionCanCommit(c.proposal,d.rackIds))){candidates.forEach(({rack,proposal})=>{rack.x=proposal.x;rack.y=proposal.y;rack.zoneId=proposal.zoneId;});d.blocked=false;}
+      else d.blocked=true;
+      renderLayoutSvg(svg); renderLayoutSection();
     } else if(d.type === 'rack'){
       const rack = findRackById(d.rackId);
       const rawDX = p.x - d.start.x;
       const rawDY = p.y - d.start.y;
       const ncx = d.original.cx + rawDX;
       const ncy = d.original.cy + rawDY;
-      rack.x = ncx - rack.w/2;
-      rack.y = ncy - rack.h/2;
-      const center = { x:ncx, y:ncy };
-      const currentZone = findZoneById((d.original && d.original.zoneId) || rack.zoneId);
-      const targetZone = (appState.layout.zones||[]).find(z => pointInPoly(center, z.pts) && rackCorners(rack).every(pt => pointInPoly(pt, z.pts) || pointNearPolygonEdge(pt, z.pts, 1)));
-      const host = targetZone || currentZone || nearestZoneForPoint(center);
-      if(host){ keepRackSnapped(rack, host); rack.zoneId = host.id; }
-      if(host && !rackFullyInsideZone(rack, host) && d.original){ rack.x = d.original.x; rack.y = d.original.y; rack.zoneId = d.original.zoneId; }
+      const proposed=distributionRackPlacement(rack,ncx-rack.w/2,ncy-rack.h/2,{ignoreSnap:!!e.ctrlKey});
+      if(distributionCanCommit(proposed)){rack.x=proposed.x;rack.y=proposed.y;rack.zoneId=proposed.zoneId;d.blocked=false;}
+      else d.blocked=true;
       renderLayoutSvg(svg); renderLayoutSection();
     }
   }
@@ -14691,30 +14797,23 @@ function getSheetBranchOpenMap(){
     }
     if(d && d.type==='modular-stack' && d.lastValid && (d.lastValid.dx||d.lastValid.dy)){
       const members=modularStackMembers(d.groupId);
-      const final=members.map(r=>({id:r.id,x:r.x,y:r.y}));
-      members.forEach(r=>{const old=d.originals.find(v=>v.id===r.id);if(old){r.x=old.x;r.y=old.y;}});
+      const final=members.map(r=>({id:r.id,x:r.x,y:r.y,zoneId:r.zoneId}));
+      members.forEach(r=>{const old=d.originals.find(v=>v.id===r.id);if(old){r.x=old.x;r.y=old.y;r.zoneId=old.zoneId;}});
       recordHistorySnapshot(isRackDistributionScreen()?'distribution':'structure');
-      members.forEach(r=>{const moved=final.find(v=>v.id===r.id);if(moved){r.x=moved.x;r.y=moved.y;}});
+      members.forEach(r=>{const moved=final.find(v=>v.id===r.id);if(moved){r.x=moved.x;r.y=moved.y;r.zoneId=moved.zoneId;}});
     }
-    if(d && d.type==='rack-group'){
-      normalizeZoneAndRackIds(); v117RunValidation({quiet:true});
-    }
-    if(d && d.type==='rack'){
-      const rack = findRackById(d.rackId);
-      if(rack){
-        const center = { x:rack.x + rack.w/2, y:rack.y + rack.h/2 };
-        const originalZone = findZoneById((d.original && d.original.zoneId) || rack.zoneId) || findZoneById(rack.zoneId);
-        const targetZone = (appState.layout.zones||[]).find(z=>pointInPoly(center, z.pts));
-        const host = targetZone || originalZone || nearestZoneForPoint(center) || findZoneById(rack.zoneId);
-        if(host){
-          const previousZoneId = (d.original && d.original.zoneId) || rack.zoneId;
-          if(targetZone && previousZoneId !== host.id) assignRackToZone(rack, host.id);
-          else rack.zoneId = host.id;
-          keepRackSnapped(rack, host);
-          if(!rackFullyInsideZone(rack, host) && d.original){ rack.x = d.original.x; rack.y = d.original.y; rack.zoneId = previousZoneId; }
-        }
-      }
-      normalizeZoneAndRackIds(); v117RunValidation({quiet:true});
+    if(d && (d.type==='rack-group'||d.type==='rack')){
+      // En modo libre la posición aceptada durante el arrastre no se recalcula ni
+      // regresa por un contorno estrecho. El ID permanece estable para stock/stack.
+      const moved=d.type==='rack'?[findRackById(d.rackId)].filter(Boolean):(d.rackIds||[]).map(findRackById).filter(Boolean);
+      const changed=d.historyBefore && JSON.stringify(snapshotForType('distribution'))!==JSON.stringify(d.historyBefore);
+      if(changed)recordHistorySnapshot('distribution',d.historyBefore);
+      normalizeZoneAndRackIds();
+      if(distributionIsFreeMove()){
+        const problems=moved.map(r=>distributionRackInterference(r,moved.map(x=>x.id))).filter(Boolean);
+        if(problems.length)showToast(problems[0]+' Posición conservada en modo libre.','warning',3400);
+      }else if(d.blocked){showToast('Movimiento limitado por zona o colisión.','warning',2400);}
+      v117RunValidation({quiet:true});
     }
     if(d && (d.type==='vertex'||d.type==='edge'||d.type==='zone'||d.type==='wall-node'||d.type==='wall-body'||d.type==='wall-group') && d.historyBefore && JSON.stringify(snapshotForType('structure'))!==JSON.stringify(d.historyBefore)) recordHistorySnapshot('structure',d.historyBefore);
     if(d && d.type==='zone'){ normalizeZoneAndRackIds(); }
@@ -14868,7 +14967,7 @@ function getSheetBranchOpenMap(){
             <button class="seg-btn" id="btnEdgeAddDoor">${edgeWallCtx.isWall ? 'Agregar puerta' : 'Crear muro + puerta'}</button>
             <button class="seg-btn" id="btnEdgeAddWindow">${edgeWallCtx.isWall ? 'Agregar ventana' : 'Crear muro + ventana'}</button>
           </div>
-          <div class="tiny muted">Selecciona una arista y agrega el vano directamente. Si todavía no es muro, se convierte automáticamente.</div>
+          <div class="tiny muted">Selecciona una arista o un vértice y agrega el vano directamente. Si todavía no es muro, se convierte automáticamente.</div>
         </div>
       </div>` : ''}
       ${stackOpen ? `
@@ -14974,7 +15073,7 @@ function getSheetBranchOpenMap(){
     if($('#insZoneColor')) $('#insZoneColor').oninput = e => { zone.color = e.target.value; persistActiveLayout(); renderLayoutEditor(); };
     $$('[data-zone-swatch]').forEach(btn => btn.onclick = () => { zone.color = btn.getAttribute('data-zone-swatch') || zone.color; persistActiveLayout(); renderLayoutEditor(); });
     if($('#insScaleCm')) $('#insScaleCm').onchange = e => { ensureLayoutMeta(); appState.layout.meta.scaleCmPerUnit = Math.max(0.1, Number(e.target.value || 1) || 1); persistActiveLayout(); renderLayoutEditor(); };
-    if($('#sideRackModel')) $('#sideRackModel').onchange = e => { if(!rack) return; const oldDefault = rackModel(rack.modelId).height || 238; const prevHeight = Number(rack.rackHeight || oldDefault); rack.modelId = e.target.value; const newDefault = rackModel(rack.modelId).height || 238; if(!Number.isFinite(prevHeight) || Math.abs(prevHeight - oldDefault) < 1) rack.rackHeight = newDefault; syncRackFootprint(rack, true); const host=findZoneById(rack.zoneId); if(host){ keepRackSnapped(rack, host); } persistActiveLayout(); renderLayoutEditor(); };
+    if($('#sideRackModel')) $('#sideRackModel').onchange = e => { if(!rack) return; const oldDefault = rackModel(rack.modelId).height || 238; const prevHeight = Number(rack.rackHeight || oldDefault); rack.modelId = e.target.value; const newDefault = rackModel(rack.modelId).height || 238; if(!Number.isFinite(prevHeight) || Math.abs(prevHeight - oldDefault) < 1) rack.rackHeight = newDefault; syncRackFootprint(rack, true); const host=findZoneById(rack.zoneId); if(host && !distributionIsFreeMove()){ keepRackSnapped(rack, host); } persistActiveLayout(); renderLayoutEditor(); };
     initSideRackModelPicker(rack);
     if($('#sideRackRot')) {
       $('#sideRackRot').onchange = e => v194RotateRack(rack,e.target.value);
@@ -15015,9 +15114,9 @@ function getSheetBranchOpenMap(){
     if($('#sideRackTopLength')) { $('#sideRackTopLength').oninput = syncSelectedUnderStairsModel; $('#sideRackTopLength').onchange = syncSelectedUnderStairsModel; }
     if($('#insSectionRangeX')) $('#insSectionRangeX').onchange = e => { setSectionCutDepth('x', Math.max(10, Number(e.target.value||10)||10)); persistActiveLayout(); renderLayoutEditor(); };
     if($('#insSectionRangeY')) $('#insSectionRangeY').onchange = e => { setSectionCutDepth('y', Math.max(10, Number(e.target.value||10)||10)); persistActiveLayout(); renderLayoutEditor(); };
-    $$('.quick-angle').forEach(btn => btn.onclick = () => { if(!rack) return; rack.rot = normalizeAngle((Number(rack.rot || 0) || 0) + (Number(btn.dataset.angle||0)||0)); syncRackFootprint(rack, true); const host=findZoneById(rack.zoneId); if(host){ keepRackSnapped(rack, host); } persistActiveLayout(); renderLayoutEditor(); });
+    $$('.quick-angle').forEach(btn => btn.onclick = () => { if(!rack) return; v194RotateRack(rack,(Number(rack.rot||0)||0)+(Number(btn.dataset.angle||0)||0)); });
     $$('.quick-zone-angle').forEach(btn => btn.onclick = () => { const zoneId = appState.selectedZoneId; if(!zoneId) return; rotateZoneWithContents(zoneId, Number(btn.dataset.angle || 0) || 0); });
-    $$('.rotate-step').forEach(btn => btn.onclick = () => { if(!rack) return; rack.rot = normalizeAngle((Number(rack.rot || 0) || 0) + (Number(btn.dataset.step || 0) || 0)); syncRackFootprint(rack, true); const host=findZoneById(rack.zoneId); if(host){ keepRackSnapped(rack, host); } persistActiveLayout(); renderLayoutEditor(); });
+    $$('.rotate-step').forEach(btn => btn.onclick = () => { if(!rack) return; v194RotateRack(rack,(Number(rack.rot||0)||0)+(Number(btn.dataset.step||0)||0)); });
     if($('#insDupRack')) $('#insDupRack').onclick = () => { if(!rack) return; duplicateRackLayout(rack.id); };
     if($('#insDupZone')) $('#insDupZone').onclick = () => { if(zone) duplicateZone(zone.id); else if(rack) duplicateZone(rack.zoneId); };
     document.querySelectorAll('[data-stack-ins-rack]').forEach(btn => btn.onclick = () => {

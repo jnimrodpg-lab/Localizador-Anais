@@ -484,6 +484,7 @@
     });
   }
   function v211DeleteZone(zoneId){
+    if(typeof v213LayerLocked==='function'&&v213LayerLocked('zones'))return false;
     if(findZoneById(zoneId)?.locked){showToast('Desbloquea la zona antes de eliminarla.','warning');return false;}
     const zone=findZoneById(zoneId);if(!zone)return false;
     const related=(appState.layout?.racks||[]).filter(r=>r.zoneId===zoneId);
@@ -1090,6 +1091,7 @@
     return wall;
   }
   function startWallNodeDrag(e,nodeId){
+    if(typeof v213LayerLocked==='function' && v213LayerLocked('walls'))return;
     if(!isStructureLayoutScreen() || appState.editor.mode!=='select') return;
     e.stopPropagation();
     ensureWallTopology();
@@ -1100,6 +1102,7 @@
     renderLayoutSvg(svg); renderLayoutInspector();
   }
   function startWallBodyDrag(e,wallId){
+    if(typeof v213LayerLocked==='function' && v213LayerLocked('walls'))return;
     if(!isStructureLayoutScreen() || appState.editor.mode!=='select') return;
     e.stopPropagation(); ensureWallTopology();
     const wall=findWallById(wallId); if(!wall) return;
@@ -1114,6 +1117,7 @@
     appState.editor.wallMergePreview=null; renderLayoutSvg(svg); renderLayoutInspector();
   }
   function deleteLayoutSelection(){
+    if(typeof v213SelectionLocked==='function'&&v213SelectionLocked()){showToast('Desbloquea la capa para eliminar el elemento.','warning');return;}
     const selectedIds=getSelectedRackIds(); const rid=appState.selectedRackLayoutId; const zid=appState.selectedZoneId;
     const oid=appState.selectedOpeningId; const wid=appState.selectedWallId; const mid=appState.editor?.selectedMeasurementId;
     if(isRackDistributionScreen()){
@@ -1148,6 +1152,7 @@
   function pasteStructureClipboard(){
     if(!isStructureLayoutScreen()) return false;
     const clip=appState.editor.structureClipboard; if(!clip) return false;
+    const layer=clip.type==='zone'?'zones':clip.type==='opening'?'openings':'walls';if(typeof v213LayerLocked==='function'&&v213LayerLocked(layer))return false;
     const off=Math.max(20,getSnapSize()*6);
     if(clip.type==='opening'){
       const src=clip.data, wall=findWallById(src.wallId); if(!wall) return false;
@@ -1171,7 +1176,7 @@
     document.addEventListener('keydown', e=>{
       if(!isLayoutWorkspaceScreen()) return;
       const tag=String(e.target?.tagName||'').toLowerCase(); const editing=['input','textarea','select'].includes(tag) || e.target?.isContentEditable;
-      if(e.key==='Escape'){ e.preventDefault(); cancelLayoutDrawing(); return; }
+      if(e.key==='Escape'){ e.preventDefault(); if(document.getElementById('v213CanvasPopover')){v213ClosePopover();return;} cancelLayoutDrawing(); return; }
       if(editing) return;
       if(e.key==='Enter'&&appState.editor.polygonDraft){e.preventDefault();v212FinishPolygon();return;}
       if((e.ctrlKey||e.metaKey) && String(e.key||'').toLowerCase()==='z'){
@@ -1728,6 +1733,7 @@
     return next;
   }
   function startOpeningDrag(e, openingId, mode='move'){
+    if(typeof v213LayerLocked==='function' && v213LayerLocked('openings'))return;
     if(!isStructureLayoutScreen() || appState.editor.mode !== 'select') return;
     e.stopPropagation();
     const opening = findOpeningById(openingId);
@@ -1834,6 +1840,7 @@
   }
 
   function createOpeningAtPoint(point, type='door'){
+    if(typeof v213LayerLocked==='function'&&v213LayerLocked('openings'))return null;
     ensureLayoutDecorations();
     const nearest = findNearestWallProjection(point, 28);
     if(!nearest || !nearest.wall) return null;
@@ -1849,6 +1856,7 @@
   }
 
   function createOpeningOnWall(wallId, type='door'){
+    if(typeof v213LayerLocked==='function'&&v213LayerLocked('openings')){showToast('Desbloquea la capa Aberturas para agregar una.','warning');return null;}
     ensureLayoutDecorations();
     const wall = findWallById(wallId);
     if(!wall) return null;
@@ -2215,24 +2223,12 @@
       </div>
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
         ${!zoneTools?`<div class="layout-v207-selection"><span>Seleccionado</span><strong>${escapeHtml(summary.title)}</strong></div>`:''}
-        ${areaDashboard}
         ${architectureMode?v212GeometryMarkup():''}
+        ${areaDashboard?layoutFold('metrics','Superficie del local',areaDashboard,false,'Total · zonificada · libre'):''}
         ${zoneList}
-        ${quickZone}
+        ${quickZone?layoutFold('zoneActions','Acciones de zona',quickZone,false,'Convertir · centrar · eliminar'):''}
         ${rackMode && rack ? modularStackCard(rack) : ''}
-        ${layoutFold('visual','Visualización y capas',`        <section class="layout-prop-card">
-          <div class="layout-prop-title">Capas visibles</div>
-          <div class="layout-layer-grid">
-            ${renderLayerToggle('lyGrid','Grilla', appState.editor.showGrid !== false)}
-            ${renderLayerToggle('lyZones','Zonas', appState.editor.showZones !== false)}
-            ${renderLayerToggle('lyWalls','Muros', appState.editor.wallsVisible !== false)}
-            ${renderLayerToggle('lyOpenings','Aberturas', appState.editor.openingsVisible !== false)}
-            ${renderLayerToggle('lyRacks','Racks', appState.editor.racksVisible !== false)}
-            ${renderLayerToggle('lyLabels','Etiquetas', appState.editor.showLabels !== false)}
-            ${renderLayerToggle('lyDims','Cotas', !!appState.editor.showDims)}
-            ${renderLayerToggle('lyMini','Mini mapa', appState.editor.showMiniMap !== false)}
-          </div>
-        </section>` ,false,'Ocultar y mostrar elementos')}
+        ${layoutFold('visual','Capas y visibilidad',v213LayersMarkup(),false,'Mostrar · ocultar · bloquear')}
         ${layoutFold('precision','Precisión y snap',`        <section class="layout-prop-card">
           <div class="layout-prop-title">Precisión</div>
           <div class="layout-prop-grid two">
@@ -2331,7 +2327,7 @@
           </div><button type="button" class="seg-btn" id="rpUrbanTransform">Aplicar posición y giro</button>`;})():''}
           <div class="tiny muted" style="margin-top:8px">El mobiliario urbano se trata como un solo objeto agrupado. Puedes seleccionarlo y moverlo con snap en el layout, manteniendo la misma lectura en 2D y en Diseñar espacio 3D.</div>
         </section>`;})() : ''}
-        <details class="layout-v207-fold layout-v207-zone" data-layout-fold="zone" ${layoutPanelOpen('zone',true)?'open':''} ${architectureMode&&zone&&appState.editor.architectureTool==='zones'?'':'style="display:none"'}><summary><span>Propiedades de zona</span><small>Nombre · tamaño · acabado</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
+        <details class="layout-v207-fold layout-v207-zone" data-layout-fold="zone" ${layoutPanelOpen('zone',false)?'open':''} ${architectureMode&&zone&&appState.editor.architectureTool==='zones'?'':'style="display:none"'}><summary><span>Propiedades de zona</span><small>Nombre · tamaño · acabado</small><span class="layout-v207-chevron" aria-hidden="true">⌄</span></summary><div class="layout-v207-fold-body">
         ${architectureMode && zone ? `<section class="layout-prop-card">
           <div class="layout-prop-title">Zona</div>
           <div class="layout-prop-grid two">
@@ -2382,11 +2378,11 @@
             <label>Espesor (cm)<input id="rpWallThickness" type="number" min="4" max="80" step="1" value="${Math.round(unitsToCm(sw.thickness||12))}"></label>
             <label>Altura 3D (cm)<input id="rpWallHeight" type="number" min="120" max="600" step="5" value="${Math.round(unitsToCm(sw.height||290))}"></label>
             <label>Posición del espesor<select id="rpWallPlacement"><option value="inside" ${normalizeWallPlacement(sw.placement)==='inside'?'selected':''}>Hacia dentro de zona</option><option value="outside" ${normalizeWallPlacement(sw.placement)==='outside'?'selected':''}>Hacia fuera de zona</option><option value="center" ${normalizeWallPlacement(sw.placement)==='center'?'selected':''}>Centrado al eje</option></select></label>
-            <label>Conexiones<input value="A:${linkedA} · B:${linkedB}" disabled></label>
+            </div><details class="v213-geometry" data-layout-fold="wallEndpoints" ${layoutPanelOpen('wallEndpoints',false)?'open':''}><summary>Extremos y traslado exacto</summary><div class="layout-prop-grid two"><label>Conexiones<input value="A:${linkedA} · B:${linkedB}" disabled></label>
             ${!sw.autoZoneEdge && na ? `<label>Inicio X (cm)<input id="rpWallAX" type="number" step="1" value="${Math.round(unitsToCm(na.x))}"></label><label>Inicio Y (cm)<input id="rpWallAY" type="number" step="1" value="${Math.round(unitsToCm(na.y))}"></label>` : ''}
             ${!sw.autoZoneEdge && nb ? `<label>Final X (cm)<input id="rpWallBX" type="number" step="1" value="${Math.round(unitsToCm(nb.x))}"></label><label>Final Y (cm)<input id="rpWallBY" type="number" step="1" value="${Math.round(unitsToCm(nb.y))}"></label>` : ''}
           </div>
-          ${!sw.autoZoneEdge?`<div class="layout-prop-grid two" style="margin-top:10px"><label>Mover ΔX (cm)<input id="rpWallMoveX" type="number" step="1" value="0"></label><label>Mover ΔY (cm)<input id="rpWallMoveY" type="number" step="1" value="0"></label></div>`:''}
+          ${!sw.autoZoneEdge?`<div class="layout-prop-grid two" style="margin-top:10px"><label>Mover ΔX (cm)<input id="rpWallMoveX" type="number" step="1" value="0"></label><label>Mover ΔY (cm)<input id="rpWallMoveY" type="number" step="1" value="0"></label></div>`:''}</details>
           <div class="layout-template-grid" style="margin-top:10px">
             <button class="seg-btn" id="rpWallDuplicate">Duplicar muro</button><button class="seg-btn" id="rpWallMoveExact">Mover exacto</button>
             <button class="seg-btn" id="rpWallAddFree">Agregar abertura</button>
@@ -2759,7 +2755,7 @@
     if($('#rpSelectLinkedZone')) $('#rpSelectLinkedZone').onclick = () => { const linked=room?getRoomLinkedZone(room):null; if(!linked) return; appState.selectedZoneId=linked.id; appState.selectedRoomId=room.id; renderLayoutEditor(); };
     if($('#rpSelectZoneRoom')) $('#rpSelectZoneRoom').onclick = () => { const rr=zone?getRoomForZone(zone):null; if(!rr) return; appState.selectedRoomId=rr.id; appState.selectedWallId=''; appState.selectedOpeningId=''; renderLayoutEditor(); };
     if($('#rpDetachRoomZone')) $('#rpDetachRoomZone').onclick = () => { if(zone && detachRoomZone(zone)){ renderLayoutEditor(); } };
-    document.querySelectorAll('[data-v211-zone]').forEach(btn=>btn.onclick=()=>{appState.editor.architectureTool='zones';appState.editor.editSiteBoundary=false;appState.selectedZoneId=btn.dataset.v211Zone;appState.selectedWallId='';appState.selectedOpeningId='';appState.selectedVertex={zoneId:'',idx:-1};appState.editor.mode='select';renderLayoutEditor();});
+    document.querySelectorAll('[data-v211-zone]').forEach(btn=>btn.onclick=()=>{appState.editor.architectureTool='zones';appState.editor.editSiteBoundary=false;appState.selectedZoneId=btn.dataset.v211Zone;appState.editor.focusInspectorTop=true;appState.selectedWallId='';appState.selectedOpeningId='';appState.selectedVertex={zoneId:'',idx:-1};appState.editor.mode='select';renderLayoutEditor();});
     if($('#v211DeleteZone')) $('#v211DeleteZone').onclick=()=>v211DeleteZone(zone?.id);
     if($('#v211EditZone')) $('#v211EditZone').onclick=()=>{
       appState.editor.architectureTool='zones';appState.editor.editSiteBoundary=false;
@@ -2905,11 +2901,11 @@
       recordHistorySnapshot('structure');selectedWall.placement=placement;
       syncZonePerimeterWalls();persistActiveLayout();renderLayoutEditor();
     };
-    if($('#rpWallName')) $('#rpWallName').onchange = e => { if(!selectedWall) return; selectedWall.name = e.target.value || 'Muro'; persistActiveLayout(); renderLayoutEditor(); };
-    if($('#rpWallLength')) $('#rpWallLength').onchange = e => { if(!selectedWall || selectedWall.autoZoneEdge) return; const units=Math.max(10,Number(e.target.value||0))/Math.max(.0001,getScaleCmPerUnit()); if(setManualWallLength(selectedWall,units)){ v117ResolveWallIntersections(); v117RefreshRooms(); persistActiveLayout(); renderLayoutEditor(); } };
+    if($('#rpWallName')) $('#rpWallName').onchange = e => { if(!selectedWall||v213LayerLocked('walls')) return; const name=String(e.target.value||'').trim().slice(0,80)||'Muro';if(name===selectedWall.name)return;recordHistorySnapshot('structure');selectedWall.name=name;persistActiveLayout('nombre del muro');renderLayoutEditor(); };
+    if($('#rpWallLength')) $('#rpWallLength').onchange = e => v213ApplyLength('wall',selectedWall?.id,0,Number(e.target.value)/100,'start');
     if($('#rpWallAngle')) $('#rpWallAngle').onchange = e => { if(v117SetWallAngle(selectedWall,Number(e.target.value||0))){ persistActiveLayout(); renderLayoutEditor(); } };
     if($('#rpWallMoveExact')) $('#rpWallMoveExact').onclick = () => { if(v117TranslateWallCm(selectedWall,$('#rpWallMoveX')?.value,$('#rpWallMoveY')?.value)){ persistActiveLayout(); renderLayoutEditor(); } };
-    if($('#rpWallHeight')) $('#rpWallHeight').onchange = e => { if(!selectedWall) return; const sc=Math.max(.0001,getScaleCmPerUnit()); selectedWall.height=Math.max(120/sc,Math.min(600/sc,Number(e.target.value||290)/sc)); if(selectedWall.autoZoneEdge){ const z=findZoneById(selectedWall.zoneId); if(z) setZoneEdgeWall(z,Number(selectedWall.edgeIndex||0),{height:selectedWall.height}); } persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpWallHeight')) $('#rpWallHeight').onchange = e => { if(!selectedWall||v213LayerLocked('walls')) return; recordHistorySnapshot('structure');const sc=Math.max(.0001,getScaleCmPerUnit()); selectedWall.height=Math.max(120/sc,Math.min(600/sc,Number(e.target.value||290)/sc)); if(selectedWall.autoZoneEdge){ const z=findZoneById(selectedWall.zoneId); if(z) setZoneEdgeWall(z,Number(selectedWall.edgeIndex||0),{height:selectedWall.height}); } persistActiveLayout(); renderLayoutEditor(); };
     const wallNodeCoord=(nodeId,axis,value)=>{ const node=getWallNode(nodeId); if(!node) return; const units=Number(value||0)/Math.max(.0001,getScaleCmPerUnit()); const moved=setWallNodePosition(nodeId,axis==='x'?units:node.x,axis==='y'?units:node.y); if(!moved)showToast('Coordenada bloqueada: provocaría superposición entre zonas.','warning',2200); persistActiveLayout(); renderLayoutEditor(); };
     if(selectedWall && !selectedWall.autoZoneEdge){
       if($('#rpWallAX')) $('#rpWallAX').onchange=e=>wallNodeCoord(selectedWall.startNodeId,'x',e.target.value);
@@ -2920,7 +2916,8 @@
     }
     if($('#rpWallDelete')) $('#rpWallDelete').onclick=()=>deleteLayoutSelection();
     if($('#rpWallThickness')) $('#rpWallThickness').onchange = e => {
-      if(!selectedWall) return;
+      if(!selectedWall||v213LayerLocked('walls')) return;
+      recordHistorySnapshot('structure');
       const sc=Math.max(.0001,getScaleCmPerUnit()); const nextThickness = Math.max(4/sc, Math.min(80/sc, (Number(e.target.value || 14) || 14)/sc));
       selectedWall.thickness = nextThickness;
       if(selectedWall.autoZoneEdge){
@@ -3004,7 +3001,8 @@
     const pendingFurnitureModel = isRackDistributionScreen() && appState.editor?.pendingFurnitureModelId ? rackModel(appState.editor.pendingFurnitureModelId) : null;
     document.body.dataset.wmsLayoutVersion = 'v165-clear-workflow';
     document.body.dataset.wmsLayoutWorkspace = isRackDistributionScreen() ? 'racks' : 'structure';
-    const __layoutRightScrollBefore = document.querySelector('#layoutRightPanel .layout-right-scroll')?.scrollTop ?? appState.editor?.rightPanelScrollTop ?? 0;
+    const __layoutRightScrollBefore = appState.editor?.focusInspectorTop?0:(document.querySelector('#layoutRightPanel .layout-right-scroll')?.scrollTop ?? appState.editor?.rightPanelScrollTop ?? 0);
+    appState.editor.focusInspectorTop=false;
     ensureLayoutEditorState();
     appState.editor.rightPanelScrollTop = __layoutRightScrollBefore;
     // Los tres modos comparten un lienzo, pero deben decidirse antes de construir
@@ -3082,6 +3080,8 @@
             <button class="seg-btn v172-sections-switch ${appState.editor.sectionVisible ? 'is-active' : ''}" id="btnToggleSections" type="button" aria-pressed="${!!appState.editor.sectionVisible}" title="Mostrar u ocultar cortes X e Y">${appState.editor.sectionVisible ? '◉ Ocultar secciones' : '◫ Mostrar secciones'}</button>
             <button class="seg-btn v165-inspector-toggle" data-layout-tag-action="toggle-right-props" type="button">${appState.editor.rightPanelOpen === false ? 'Mostrar inspector' : 'Ocultar inspector'}</button>
             <button class="seg-btn v165-presentation-toggle" id="btnPresentationMode" type="button">${appState.editor.presentationMode ? 'Salir de solo espacio' : 'Solo espacio'}</button>
+            <button class="seg-btn v80-icon-btn" id="v213UndoGlobal" type="button" aria-label="Deshacer">↶</button><button class="seg-btn v80-icon-btn" id="v213RedoGlobal" type="button" aria-label="Rehacer">↷</button>
+            <button class="seg-btn" id="v213OpenLayers" type="button" title="Mostrar, ocultar y bloquear capas">Capas</button>
             <button class="btn primary v90-save-layout-btn" id="btnSaveLayoutVisible" type="button">${rackMode ? 'Guardar racks' : 'Guardar layout'}</button>
             <span id="layoutSaveStatus" class="v99-save-status local">Local</span>
             <span id="layoutQualityBadge" class="v99-quality-badge ok">OK</span>
@@ -3164,9 +3164,10 @@
       btn.onclick = () => { const target = document.getElementById(btn.getAttribute('data-tool-proxy')); if(target) target.click(); };
     });
     bindLayoutRightPanel();
+    v213BindUx();
     requestAnimationFrame(() => {
       const scroller = document.querySelector('#layoutRightPanel .layout-right-scroll');
-      if(scroller) scroller.scrollTop = appState.editor?.rightPanelScrollTop || __layoutRightScrollBefore || 0;
+      if(scroller) scroller.scrollTop = appState.editor?.rightPanelScrollTop ?? __layoutRightScrollBefore ?? 0;
     });
     bindLayoutAutoFit();
     const undoBtn = document.querySelector('[data-history-undo="layout"]'); if(undoBtn) undoBtn.onclick = () => undoHistory(isRackDistributionScreen()?'distribution':appState.editor.areaMoveMode?'layout':'structure');
@@ -3421,16 +3422,13 @@
     });
     const contentBounds = getLayoutContentBounds();
     const gridStep = Math.max(4, getSnapSize() * 2);
-    const gridPad = 2400;
-    const gridMinX = Math.floor(Math.min(renderVb.x, contentBounds.x) - gridPad);
-    const gridMaxX = Math.ceil(Math.max(renderVb.x + renderVb.w, contentBounds.x + contentBounds.w) + gridPad);
-    const gridMinY = Math.floor(Math.min(renderVb.y, contentBounds.y) - gridPad);
-    const gridMaxY = Math.ceil(Math.max(renderVb.y + renderVb.h, contentBounds.y + contentBounds.h) + gridPad);
     if(appState.editor.showGrid !== false){
-      const grid = svgEl('g',{class:'ortho-grid'});
-      for(let x=Math.floor(gridMinX / gridStep) * gridStep; x<=gridMaxX; x+=gridStep) grid.appendChild(svgEl('line',{x1:x,y1:gridMinY,x2:x,y2:gridMaxY}));
-      for(let y=Math.floor(gridMinY / gridStep) * gridStep; y<=gridMaxY; y+=gridStep) grid.appendChild(svgEl('line',{x1:gridMinX,y1:y,x2:gridMaxX,y2:y}));
-      svg.appendChild(grid);
+      const px=1/(svg.getScreenCTM()?.a||1),defs=svgEl('defs');
+      [[gridStep,'v213-grid-minor',.20],[gridStep*5,'v213-grid-major',.42]].forEach(([size,id,opacity])=>{
+        const pattern=svgEl('pattern',{id,patternUnits:'userSpaceOnUse',width:size,height:size});
+        pattern.appendChild(svgEl('path',{d:`M ${size} 0 H 0 V ${size}`,fill:'none','stroke-width':px,opacity,class:'v213-grid-line'}));defs.appendChild(pattern);
+      });svg.appendChild(defs);
+      ['v213-grid-minor','v213-grid-major'].forEach(id=>svg.appendChild(svgEl('rect',{x:renderVb.x,y:renderVb.y,width:renderVb.w,height:renderVb.h,fill:`url(#${id})`,'pointer-events':'none'})));
     }
     const bgImage = appState.layout?.meta?.backgroundImage;
     if(bgImage){
@@ -3455,6 +3453,7 @@
     if(appState.editor.showZones === false){ zoneLayer.setAttribute('style','display:none'); vertexLayer.setAttribute('style','display:none'); edgeLayer.setAttribute('style','display:none'); }
     if(appState.editor.wallsVisible === false) wallLayer.setAttribute('style','display:none');
     if(appState.editor.openingsVisible === false) openingLayer.setAttribute('style','display:none');
+    [[zoneLayer,'zones'],[edgeLayer,'zones'],[vertexLayer,'zones'],[wallLayer,'walls'],[openingLayer,'openings'],[rackLayer,'racks']].forEach(([layer,key])=>layer.dataset.v213Layer=key);
     svg.append(streetsLayer, areaLayer, roomLayer, edgeLayer, zoneLayer, wallLayer, openingLayer, rackLayer, guideLayer, measureLayer, vertexLayer, overlayLayer, streetHandleLayer);
     // Capas visibles, pero solo el modo activo captura los clics.
     const editArea = activeLayoutWorkspace()==='architecture';
@@ -3781,7 +3780,12 @@
       const badgePos = findZoneBadgePlacement(zone, badgeW, badgeH);
       const badgeX = badgePos.x;
       const badgeY = badgePos.y;
-      const badge = svgEl('g',{transform:`translate(${badgeX} ${badgeY})`,style: appState.editor.showLabels === false ? 'display:none;pointer-events:none' : 'pointer-events:none'});
+      const badge = svgEl('g',{transform:`translate(${badgeX} ${badgeY})`,'data-v213-zone-name':zone.id,'data-v213-ui':'1',role:'button',tabindex:'0','aria-label':`Renombrar zona ${zoneTitle}`,style: appState.editor.showLabels === false ? 'display:none' : 'cursor:text;pointer-events:all'});
+      const badgeTitle=svgEl('title');badgeTitle.textContent='Doble clic para renombrar';badge.appendChild(badgeTitle);
+      badge.addEventListener('pointerdown',e=>{if(appState.editor.mode==='select'){e.stopPropagation();}});
+      badge.addEventListener('mousedown',e=>{if(e.detail>=2 && appState.editor.architectureTool==='zones'){e.preventDefault();e.stopPropagation();v213OpenRename(svg,zone.id);}});
+      badge.addEventListener('dblclick',e=>{if(appState.editor.architectureTool==='zones'){e.preventDefault();e.stopPropagation();v213OpenRename(svg,zone.id);}});
+      badge.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key==='F2')&&appState.editor.architectureTool==='zones'){e.preventDefault();v213OpenRename(svg,zone.id);}});
       badge.appendChild(svgEl('rect',{x:0,y:0,width:badgeW,height:badgeH,rx:'10',fill:'rgba(5,16,28,.86)',stroke:hexToRgba(zone.color || '#B0E4CC', .95),'stroke-width':'1.4'}));
       const badgeText = svgEl('text',{x:padX,y:hasSub ? 16 : 18,class:'zone-badge-text','text-anchor':'start'});
       badgeText.textContent = zoneTitle;
@@ -3792,7 +3796,7 @@
         badge.appendChild(badgeSub);
       }
       zoneLayer.appendChild(badge);
-      if(appState.editor.showDims) drawZoneEdgeDimensions(edgeLayer, zone);
+      if(appState.editor.showDims && activeLayoutWorkspace()!=='architecture') drawZoneEdgeDimensions(edgeLayer, zone);
 
       if(appState.selectedZoneId===zone.id && activeLayoutWorkspace()==='architecture' && appState.editor.architectureTool!=='area'){
         if(appState.editor.sectionVisible){
@@ -3808,10 +3812,10 @@
           const px=appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width);
           const hit = svgEl('circle',{cx:hx,cy:hy,r:12*px,class:'vertex-hit'});
           const v = svgEl('circle',{cx:hx,cy:hy,r:(selectedVertex?7:5)*px,class:'vertex' + (selectedVertex ? ' selected' : '')});
+          const vertexTitle=svgEl('title');vertexTitle.textContent=`Mover vértice ${idx+1}`;v.appendChild(vertexTitle);
           [hit, v].forEach(el => { el.addEventListener('pointerdown', e => startVertexDrag(e, zone.id, idx)); if(appState.editor.mode!=='select'||zone.locked||appState.editor.zonesLocked || isRackDistributionScreen() || (isRoomLinkedZone(zone) && appState.editor.architectureTool!=='walls')) el.style.pointerEvents='none'; });
           [hit,v].forEach(el=>el.addEventListener('contextmenu',e=>{if(appState.editor.architectureTool!=='zones')return;e.preventDefault();e.stopPropagation();appState.selectedZoneId=zone.id;v212Remove('zones',idx);}));
-          vertexLayer.appendChild(hit);
-          vertexLayer.appendChild(v);
+          if(appState.editor.architectureTool==='zones'){vertexLayer.appendChild(hit);vertexLayer.appendChild(v);}
         });
         zone.pts.forEach((p, idx) => {
           const q = zone.pts[(idx+1)%zone.pts.length];
@@ -3824,8 +3828,10 @@
           edgeLineHit.addEventListener('pointerdown', e => {if(appState.editor.architectureTool!=='walls')startEdgeDrag(e, zone.id, idx, (idx+1)%zone.pts.length);}); if(appState.editor.architectureTool==='walls')edgeLineHit.style.pointerEvents='none'; if(zone.locked||appState.editor.zonesLocked || isRackDistributionScreen() || isRoomLinkedZone(zone)) edgeLineHit.style.pointerEvents='none';
           edgeLayer.appendChild(edgeLineHit);
           if(activeEdge) edgeLayer.appendChild(svgEl('line',{x1:p.x,y1:p.y,x2:q.x,y2:q.y,class:'edge-guide'}));
-          const hitBox = svgEl('circle',{cx:hx,cy:hy,r:14,class:'edge-hit'});
-          const handle = svgEl('circle',{cx:hx,cy:hy,r:8,class:'edge-handle' + (activeEdge ? ' active' : '')});
+          const edgePx=1/(svg.getScreenCTM()?.a||1);
+          const hitBox = svgEl('circle',{cx:hx,cy:hy,r:12*edgePx,class:'edge-hit'});
+          const handle = svgEl('rect',{x:hx-5*edgePx,y:hy-5*edgePx,width:10*edgePx,height:10*edgePx,rx:2*edgePx,class:'edge-handle' + (activeEdge ? ' active' : '')});
+          const edgeTitle=svgEl('title');edgeTitle.textContent=`Mover lado ${idx+1}`;handle.appendChild(edgeTitle);
           [hitBox, handle].forEach(el => { el.addEventListener('pointerdown', e => startEdgeDrag(e, zone.id, idx, (idx+1)%zone.pts.length)); if(zone.locked||appState.editor.zonesLocked || isRackDistributionScreen() || isRoomLinkedZone(zone)) el.style.pointerEvents='none'; });
           if(appState.editor.architectureTool!=='walls'){
             edgeLayer.appendChild(hitBox);
@@ -3837,7 +3843,7 @@
           // se resalta al pasar el cursor; clic = seleccionar, inspector = actuar.
           if(appState.editor.architectureTool==='walls'){
             const segment=svgEl('line',{x1:p.x,y1:p.y,x2:q.x,y2:q.y,
-              class:'v203-wall-edge-target'+(activeEdge?' active':''),
+              class:'v203-wall-edge-target'+(activeEdge?' active':''),'data-v213-layer':'walls',
               'stroke-width':'18',stroke:'transparent',style:'cursor:pointer;pointer-events:stroke'});
             segment.addEventListener('pointerdown',e=>{
               if(appState.editor.mode!=='select')return;
@@ -3973,7 +3979,7 @@
     if(isStructureLayoutScreen() && appState.editor.mode==='select'){
       const sw=findWallById(appState.selectedWallId);
       if(sw && !sw.autoZoneEdge){
-        [sw.startNodeId,sw.endNodeId].forEach((nodeId,idx)=>{ const node=getWallNode(nodeId); if(!node) return; const connected=wallsForNode(nodeId).length; const g=svgEl('g',{class:'wall-node-handle',style:'cursor:move'}); g.appendChild(svgEl('circle',{cx:node.x,cy:node.y,r:'10',fill:'rgba(5,21,32,.94)',stroke:idx===0?'#58c5ff':'#65f0a8','stroke-width':'2.4'})); g.appendChild(svgEl('circle',{cx:node.x,cy:node.y,r:'3.5',fill:idx===0?'#58c5ff':'#65f0a8'})); const tx=svgEl('text',{x:node.x+13,y:node.y-11,class:'wall-node-label'}); tx.textContent=`${node.id} · ${connected}`; g.appendChild(tx); g.addEventListener('pointerdown',e=>startWallNodeDrag(e,node.id)); guideLayer.appendChild(g); });
+        [sw.startNodeId,sw.endNodeId].forEach((nodeId,idx)=>{ const node=getWallNode(nodeId); if(!node) return; const connected=wallsForNode(nodeId).length; const g=svgEl('g',{class:'wall-node-handle','data-v213-layer':'walls',style:'cursor:move'}); g.appendChild(svgEl('circle',{cx:node.x,cy:node.y,r:'10',fill:'rgba(5,21,32,.94)',stroke:idx===0?'#58c5ff':'#65f0a8','stroke-width':'2.4'})); g.appendChild(svgEl('circle',{cx:node.x,cy:node.y,r:'3.5',fill:idx===0?'#58c5ff':'#65f0a8'})); const tx=svgEl('text',{x:node.x+13,y:node.y-11,class:'wall-node-label'}); tx.textContent=idx===0?'A':'B'; g.appendChild(tx); g.addEventListener('pointerdown',e=>startWallNodeDrag(e,node.id)); guideLayer.appendChild(g); });
       }
     }
 
@@ -4396,7 +4402,7 @@
     }
     const selectedRack = findRackById(appState.selectedRackLayoutId);
     const selectedZone = selectedRack ? (findZoneById(selectedRack.zoneId) || findZoneById(appState.selectedZoneId)) : findZoneById(appState.selectedZoneId);
-    if(selectedZone){
+    if(selectedZone && activeLayoutWorkspace()!=='architecture'){
       drawSelectedZoneMeasurements(measureLayer, selectedZone);
     }
     if(selectedRack && selectedZone){
@@ -4427,6 +4433,7 @@
     svg.onpointermove = handleLayoutMove;
     svg.onpointerup = stopEditorDrag;
     svg.onpointerleave = stopEditorDrag;
+    v213RenderCanvas(svg);
   }
 
 
@@ -4838,6 +4845,7 @@
   }
 
   function confirmPendingFurniturePlacement(point){
+    if(v213LayerLocked('racks')){showToast('Desbloquea la capa Racks para colocar el mueble.','warning');return false;}
     const modelId=appState.editor?.pendingFurnitureModelId;
     const model=modelId?rackModel(modelId):null;
     if(!model){appState.editor.pendingFurnitureModelId='';renderLayoutEditor();return false;}
@@ -4864,6 +4872,8 @@
   }
 
   function handleLayoutCanvasDown(e){
+    const lockKey=appState.editor.mode==='rack'?'racks':['wall','door','window','opening'].includes(appState.editor.mode)?appState.editor.mode==='wall'?'walls':'openings':appState.editor.mode==='zone'?'zones':null;
+    if(lockKey&&v213LayerLocked(lockKey)){showToast('Desbloquea la capa antes de dibujar.','warning');return;}
     const svg = e.currentTarget; if(v212CanvasDown(e,svg))return; const raw = svgPoint(e, svg); const p = { x:snapGrid(raw.x), y:snapGrid(raw.y) };
     if(isRackDistributionScreen() && ['zone','area','street','wall','opening','door','measure'].includes(appState.editor.mode)) appState.editor.mode = 'select';
     if(isStructureLayoutScreen() && appState.editor.mode === 'rack') appState.editor.mode = 'select';
@@ -5092,6 +5102,7 @@
   }
 
   function startZoneDrag(e, zoneId){
+    if(typeof v213LayerLocked==='function' && v213LayerLocked('zones'))return;
     if(appState.editor.architectureTool==='area')return;
     if(!isStructureLayoutScreen() || appState.editor.mode !== 'select') return;
     e.stopPropagation();
@@ -5176,6 +5187,7 @@
     });
   }
   function startVertexDrag(e, zoneId, idx){
+    if(typeof v213LayerLocked==='function' && v213LayerLocked('zones'))return;
     if(appState.editor.architectureTool==='area'||findZoneById(zoneId)?.locked)return;
     if(!isStructureLayoutScreen() || appState.editor.mode !== 'select' || appState.editor.zonesLocked) return;
     if(appState.editor.architectureTool==='walls'){
@@ -5194,6 +5206,7 @@
     renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
   }
   function startEdgeDrag(e, zoneId, a, b){
+    if(typeof v213LayerLocked==='function' && v213LayerLocked('zones'))return;
     if(appState.editor.architectureTool==='area'||findZoneById(zoneId)?.locked)return;
     if(!isStructureLayoutScreen() || appState.editor.mode !== 'select' || appState.editor.zonesLocked) return;
     e.stopPropagation();
@@ -5232,6 +5245,7 @@
   }
 
   function startRackDrag(e, rackId){
+    if(typeof v213LayerLocked==='function' && v213LayerLocked('racks'))return;
     if(!isLayoutWorkspaceScreen() || appState.editor.mode !== 'select') return;
     e.preventDefault();e.stopPropagation();
     const rack = findRackById(rackId);
@@ -5481,7 +5495,7 @@
     clearZoneCollisionPreview();
     if(appState.editor) appState.editor.geometrySnapPreview=null;
     appState.editor.dragging = null;
-    persistActiveLayout();
+    persistActiveLayout(d?.type==='vertex'?'movimiento de vértice':d?.type==='edge'?'movimiento de lado':d?.type==='zone'?'movimiento de zona':d?.type?.startsWith('wall')?'movimiento de muro':'movimiento');
     if(isLayoutWorkspaceScreen()) renderLayoutEditor();
   }
 

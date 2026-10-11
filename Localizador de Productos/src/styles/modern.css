@@ -668,3 +668,95 @@ body[data-screen="rack-builder"] #appRoot.app .fb-parts-details .fb-parts-list{m
  #appRoot.app.editor-workspace {grid-template-rows:minmax(0,1fr)!important}
  #appRoot.app.editor-workspace > .sidebar,#appRoot.app.editor-workspace > .content-panel {grid-row:1!important;height:100%!important;min-height:0!important}
 }
+/* V213: contextual editing, theme tokens and readable controls. */
+#appRoot.app .v213-identity{display:grid;gap:10px;margin:10px 0 14px}
+#appRoot.app .v213-editing{margin:0;color:var(--primary);font-weight:750;font-size:12px;line-height:1.4}
+#appRoot.app .v213-identity label{font-size:12px}
+#appRoot.app .v213-zone-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--ink-soft)}
+#appRoot.app .v213-zone-meta label{display:flex;align-items:center;gap:10px}
+#appRoot.app .v213-zone-meta input[type=color]{width:44px;min-height:32px;padding:3px}
+#appRoot.app .v213-help{margin:8px 0 12px;font-size:12px;color:var(--ink-soft)}
+#appRoot.app .v213-help summary{cursor:pointer}
+#appRoot.app .v213-geometry{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+#appRoot.app .v213-geometry summary{cursor:pointer;font-size:12px;font-weight:700;margin-bottom:12px}
+#appRoot.app .v213-geometry summary span{display:block;font-size:11px;font-weight:400;color:var(--ink-soft);margin-top:4px}
+#appRoot.app .v213-layers{display:grid;gap:8px}
+#appRoot.app .v213-layer-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;font-size:12px}
+#appRoot.app .v213-layer-row .seg-btn{padding:6px!important;min-height:32px!important;font-size:11px!important}
+#appRoot.app .v213-layer-row [aria-pressed=true]{border-color:var(--primary)!important}
+#appRoot.app .v213-popover{position:absolute;z-index:25;width:246px;max-width:calc(100% - 16px);padding:14px;display:grid;gap:12px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface-1);color:var(--ink);box-shadow:0 10px 30px rgba(0,0,0,.23);font-size:13px}
+#appRoot.app .v213-popover-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#appRoot.app .v213-popover-head button{width:30px;min-height:30px;padding:0}
+#appRoot.app .v213-popover form{display:grid;gap:12px}
+#appRoot.app .v213-popover label{display:grid;gap:6px;color:var(--ink);font-size:12px}
+#appRoot.app .v213-popover :is(input,select){width:100%;min-height:36px;font-size:13px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--ink);border-radius:7px;padding:7px}
+#appRoot.app .v213-popover small{font-size:11px;line-height:1.5;color:var(--ink-soft)}
+#appRoot.app .v213-placement-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+#appRoot.app .v213-placement-options .seg-btn{padding:8px 4px;min-height:36px;font-size:12px}
+#appRoot.app .v213-popover-actions{display:flex;gap:8px;justify-content:flex-end}
+#appRoot.app .v213-svg-card{fill:var(--surface-1);stroke:var(--primary);stroke-width:1;vector-effect:non-scaling-stroke}
+#appRoot.app .v213-svg-text{fill:var(--ink);font-weight:700;font-family:inherit}
+#appRoot.app [data-v213-ui]:focus .v213-svg-card{stroke:var(--ink);stroke-width:2}
+#appRoot.app .v213-grid-line{stroke:var(--ink-soft)}
+#appRoot.app .ortho-zone.selected{stroke-width:2.5!important;stroke-dasharray:6 3!important;vector-effect:non-scaling-stroke}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>.v212-editor{order:-10!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>.wall-pro-card{order:-10!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>.opening-editor-card{order:-11!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>.v203-wall-card{order:-5!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>.v211-zone-manager{order:-4!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>[data-layout-fold=metrics]{order:0!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>[data-layout-fold=visual]{order:-3!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>[data-layout-fold=zoneActions]{order:2!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll>[data-layout-fold=zone]{order:1!important}
+#appRoot.app .layout-cad-v80 .layout-contextual-copy b{font-size:12px!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll :is(.seg-btn,.btn){min-height:34px!important;font-size:12px!important}
+#appRoot.app .layout-cad-v80 .layout-right-scroll :is(input,select){min-height:36px!important;font-size:12px!important}
+#appRoot.app .layout-cad-v80 .layout-prop-title{font-size:12px!important}
+#appRoot.app .layout-cad-v80 .v99-save-status{display:block!important;font-size:11px!important;max-width:260px;white-space:normal!important;line-height:1.35}
+#appRoot.app .layout-cad-v80 .v99-quality-badge{display:none!important}
+#appRoot.app .layout-cad-v80 .v80-tool-rail{bottom:auto!important;max-height:calc(100% - 80px)!important}
+@media(max-width:1400px){#appRoot.app .layout-cad-v80 .v99-save-status{max-width:170px}#appRoot.app .layout-cad-v80 .layout-cad-localbar-v80 .v80-branch-select{min-width:125px!important}}
+#appRoot.app .v213-popover :is(button,input,select):focus-visible,#appRoot.app .v213-identity input:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll>.v212-editor{order:-10!important}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll>.wall-pro-card{order:-10!important}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll>.opening-editor-card{order:-11!important}
+#appRoot.app .layout-cad-shell-v80[data-subsystem="architecture"] .layout-right-scroll>.v211-zone-manager{order:-4!important}
+#appRoot.app .v212-editor[data-focus=edge] .v213-vertex-fields{display:none}
+#appRoot.app .v212-editor[data-focus=vertex] .v213-edge-fields{display:none}
+#appRoot.app .v80-minimap-title{color:var(--ink-soft)!important}
+body.theme-light #appRoot.app .layout-type-pill{color:var(--primary)!important}
+/* Keep laptop editing in the viewport; only smaller surfaces stack panels. */
+@media(min-width:981px){
+ body[data-screen="layout"] #appRoot.app .content-wrap,body[data-screen="distribution"] #appRoot.app .content-wrap{overflow:hidden!important;height:100%!important;min-height:0!important}
+ #appRoot.app .layout-cad-v80{height:100%!important;max-height:100%!important;overflow:hidden!important}
+ #appRoot.app .layout-cad-v80 .layout-cad-shell-v80{height:100%!important;max-height:100%!important;overflow:hidden!important;grid-template-rows:auto auto auto minmax(0,1fr)!important}
+ #appRoot.app .layout-cad-v80 .layout-cad-shell-v80:has(.v203-wall-subtabs){height:100%!important;max-height:100%!important;overflow:hidden!important;grid-template-rows:auto auto auto auto minmax(0,1fr)!important}
+ #appRoot.app .layout-cad-v80 .layout-cad-shell-v80:has(.layout-placement-prompt){grid-template-rows:auto auto auto auto minmax(0,1fr)!important}
+ #appRoot.app .layout-cad-v80 .layout-cad-shell-v80:has(.v203-wall-subtabs):has(.layout-placement-prompt){grid-template-rows:auto auto auto auto auto minmax(0,1fr)!important}
+ #appRoot.app .layout-cad-v80 .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr) minmax(250px,285px)!important;grid-template-rows:minmax(0,1fr)!important;height:100%!important;max-height:100%!important;overflow:hidden!important}
+ #appRoot.app .layout-cad-v80 .v80-main-stage{height:100%!important;min-height:0!important;grid-template-rows:minmax(0,1fr) auto!important;overflow:hidden!important}
+ #appRoot.app .layout-cad-v80 .v80-canvas-wrap{height:100%!important;min-height:0!important}
+ #appRoot.app .layout-cad-v80 .v80-right-panel{height:100%!important;min-height:0!important;max-height:100%!important}
+ #appRoot.app .layout-cad-v80 .layout-cad-shell-v80.right-collapsed .layout-cad-workspace-v80{grid-template-columns:minmax(0,1fr)!important}
+}
+@media(min-width:981px) and (max-width:1180px){
+ body:has(#appRoot.editor-workspace){height:100dvh!important;overflow:hidden!important}
+ #appRoot.app.editor-workspace{display:grid!important;grid-template-columns:190px minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important;height:125dvh!important;min-height:0!important;overflow:hidden!important;padding:14px!important;gap:14px!important}
+ #appRoot.app.editor-workspace.sidebar-collapsed{grid-template-columns:var(--sidebar-w-collapsed) minmax(0,1fr)!important}
+ #appRoot.app.editor-workspace>.sidebar{grid-column:1!important;grid-row:1!important;display:flex!important;flex-direction:column!important;height:100%!important;max-height:100%!important;min-height:0!important}
+ #appRoot.app.editor-workspace>.content-panel{grid-column:2!important;grid-row:1!important;height:100%!important;min-height:0!important;max-height:100%!important}
+ #appRoot.app.editor-workspace .sidebar-body{flex:1;overflow-x:hidden!important;overflow-y:auto!important;min-height:0!important;padding:12px!important}
+ #appRoot.app.editor-workspace .sidebar-body .menu-section{display:block!important;margin:0 0 12px!important}
+ #appRoot.app.editor-workspace .sidebar-body .menu-items,#appRoot.app.editor-workspace #viewerBranchMenu{display:grid!important;gap:4px!important}
+ #appRoot.app.editor-workspace .sidebar-body .menu-item{white-space:normal!important;margin:0!important;padding:10px!important;min-height:42px!important}
+ #appRoot.app.editor-workspace .sidebar-body .menu-item span{white-space:normal!important}
+ #appRoot.app.editor-workspace .sidebar-foot{display:grid!important;justify-content:stretch!important;padding:12px!important}
+ #appRoot.app.editor-workspace .collapse-btn{display:block!important}
+}
+@media(min-width:981px){#appRoot.app .layout-cad-v80 .layout-canvas-card.detail-stage.v80-canvas-card{min-height:0!important;max-height:100%!important}}
+@media(min-width:981px){
+ #appRoot.app .layout-cad-v80 #layoutSvg{min-height:0!important;max-height:100%!important}
+ #appRoot.app .layout-cad-v80 #layoutRightPanel{width:auto!important;min-height:0!important;max-height:100%!important}
+}
+#appRoot.app .layout-cad-localbar-v80 .layout-v200-levels{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important;width:auto!important;height:33px!important;min-height:33px!important;max-height:33px!important}
+#appRoot.app .layout-cad-localbar-v80 .layout-v200-levels>*{flex:0 0 auto;white-space:nowrap!important}

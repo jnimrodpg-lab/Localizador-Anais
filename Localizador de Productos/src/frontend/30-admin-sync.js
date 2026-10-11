@@ -471,22 +471,25 @@
   }
   async function saveRemoteAppState(reason=''){
     try{
-      setLayoutSaveState('saving', reason ? `Guardando ${reason}…` : 'Guardando…');
       persistActiveLayout();
+      const sent=JSON.stringify({ admin:sanitizedAdminState(),models:appState.models,branchLayouts:appState.branchLayouts });
+      setLayoutSaveState('saving','Sincronizando con el servidor…');
       await httpJson('/api/app-state', {
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ admin: sanitizedAdminState(), models: appState.models, branchLayouts: appState.branchLayouts })
+        body: sent
       });
       appState.ui = appState.ui || {};
-      appState.ui.layoutDirty = false;
-      setLayoutSaveState('remote', reason ? `Guardado remoto · ${reason}` : 'Guardado remoto');
-      contentStatus.textContent = reason ? `Guardado: ${reason}` : 'Cambios guardados en el servidor.';
+      const current=JSON.stringify({ admin:sanitizedAdminState(),models:appState.models,branchLayouts:appState.branchLayouts });
+      const changed=current!==sent;appState.ui.layoutDirty=changed;
+      if(changed)setLayoutSaveState('local','Guardado en este dispositivo · pendiente de sincronizar');
+      else setLayoutSaveState('remote','Guardado en servidor');
+      contentStatus.textContent = changed?'Hay cambios nuevos pendientes de sincronizar.':'Cambios guardados en el servidor.';
       if(window.__wmsDiagPush) window.__wmsDiagPush('save', `Guardado remoto correcto: ${reason || 'app-state'}`);
       return true;
     }catch(err){
       console.error(err);
-      setLayoutSaveState('error', err.message || 'No se pudo guardar en el servidor');
+      setLayoutSaveState('error',appState.ui?.layoutLocalSaveFailed?'No se pudo guardar. Reintenta.':'Guardado en este dispositivo · sincronización fallida');
       if(window.__wmsDiagPush) window.__wmsDiagPush('save-error', err.message || 'No se pudo guardar en el servidor');
       return false;
     }

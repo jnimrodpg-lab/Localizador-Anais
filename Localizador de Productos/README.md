@@ -1,42 +1,43 @@
-# WMS Industrial V212 — Editor poligonal de Arquitectura
+# WMS Industrial V213 — Edición contextual del plano
 
-Continúa sobre V211 y conserva Arquitectura, Urbanismo, Distribución, biblioteca, constructor de mobiliario y visor 3D. Mantiene `wrangler.toml`, funciones Pages y migraciones D1.
+Actualización sobre V212. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, constructor de mobiliario y visor 3D. Las funciones Pages, configuración Cloudflare y migraciones D1 se conservan.
 
-## Uso
+## Novedades
 
-1. Abre **Editar layout → Arquitectura**. Selecciona **Área comercial**, **Zonas** o **Muros**. Cada modo tiene herramientas propias; editar una zona no mueve sus muros.
-2. En **Zonas**, selecciona el polígono desde el plano o desde la lista de colores. Usa **Dibujar zona irregular** o **+ Zona virtual** para crear una forma en L, U u otro contorno sencillo. Haz clic en cada esquina; termina con **Cerrar polígono**, Enter o clic en el primer punto. Escape cancela y Backspace quita el último punto.
-3. Para editar, arrastra los puntos o los lados. **Doble clic en un borde** agrega un vértice en esa posición. **+ Vértice en lado** agrega el punto medio del lado elegido. Clic derecho en un punto o **Eliminar vértice** lo elimina, manteniendo un mínimo de tres puntos.
-4. En el inspector puedes elegir el vértice o el lado por su número e introducir **X/Y en metros**, **longitud**, **ángulo de 0° a 360°** y **desplazamiento perpendicular**. El ángulo parte de +X; +Y apunta hacia abajo en el plano. Los lados diagonales conservan su orientación al desplazarse.
-5. **Dividir con dos puntos del borde** permite una división oblicua. Las nuevas zonas conservan el total de superficie. Una división que atraviesa un rack se rechaza. También se mantienen división horizontal/vertical y fusión por arista colindante.
-6. Usa los colores, nombres, códigos y acabados en **Propiedades de zona**. **Eliminar zona** conserva racks, productos, IDs y posiciones; el gestor permite reasignar los racks que quedaron sin clasificación. **Duplicar zona** busca espacio libre sin traslapes.
-7. **Bloquear área/zona** protege su geometría. Un límite compartido con una zona bloqueada no puede desplazarse. Las operaciones geométricas admiten **Deshacer/Rehacer**, incluidos puntos, división, bloqueo y clasificación de racks.
-8. En **Área comercial**, selecciona y edita sus puntos y lados con las mismas herramientas. Si un cambio deja zonas fuera, aparece un contorno propuesto y una revisión: **Ajustar límites compartidos**, **Conservar zonas para corregir** o **Cancelar cambio**. Nunca se eliminan zonas silenciosamente.
-9. **Guardar layout** utiliza el mecanismo existente de guardado remoto. Las modificaciones locales también se conservan al recargar el layout de la sucursal.
+- **Renombrado visible**: selecciona la zona y edita «Nombre de zona» al inicio del inspector. También puedes hacer doble clic en la etiqueta del plano o enfocarla y pulsar Enter/F2. El nombre se valida y limita a 80 caracteres. Cambiar el nombre conserva el código, referencias de racks, productos y geometría; admite deshacer/rehacer.
+- **Icono sobre el muro seleccionado**: en Muros, pulsa ↔ sobre el eje para abrir Adentro / Centro / Afuera. Seleccionar una opción muestra una previsualización y flechas que indican la dirección real del espesor. Pulsa Aplicar o Cancelar. Cambiar la posición conserva eje, nodos, IDs y aberturas; las uniones usan la geometría compartida de V210 en 2D/3D. El icono aparece solo en el muro activo.
+- **Cotas editables**: activa Cotas y pulsa una medida del área, zona o muro manual seleccionado. Introduce la longitud en metros y elige el extremo fijo A/B. Se conserva el ángulo y se valida la geometría conectada. En zonas se propagan los límites compartidos. Los muros automáticos heredados se editan desde sus propiedades, sin una cota directa independiente.
+- **Inspector contextual**: identidad y color de la zona primero; coordenadas de vértice o medidas de lado según la selección. La edición precisa, superficies, propiedades adicionales y herramientas de conversión siguen disponibles en secciones desplegables. Los extremos y desplazamientos exactos del muro están agrupados. Seleccionar una zona desde la lista devuelve el inspector al inicio.
+- **Selección clara**: «Editando…» indica el elemento activo. Vértices circulares y controles de lado cuadrados; extremos del muro marcados A/B. Deshacer/Rehacer visibles en todos los espacios de edición, con nombres de operaciones en sus ayudas.
+- **Capas accesibles**: botón Capas en la barra principal. Zonas, muros, aberturas y racks se muestran/ocultan y bloquean por separado. Cuadrícula y cotas tienen controles propios. Una capa bloqueada evita selección accidental, edición, creación, duplicado y eliminación desde los controles habituales. Estos ajustes de visualización pertenecen a la sesión del editor; los bloqueos geométricos individuales se guardan con el plano.
+- **Feedback de precisión**: guías de alineación y marcador al ajustar a vértices/aristas. Los cambios numéricos rechazados muestran el contorno propuesto y el motivo sobre el plano. El inspector conserva el valor editado para corregirlo.
+- **Guardado inequívoco**: distingue guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y sincronización fallida. Si se edita durante una petición de guardado, la respuesta anterior no marca los cambios nuevos como sincronizados. Los errores del almacenamiento local tampoco se anuncian como guardado correcto.
+- **Interfaz y rendimiento**: cuadrícula de dos patrones SVG en lugar de miles de líneas DOM, textos y controles más legibles, paleta cálida coherente en ambos temas. A 1024/1280/1560 px el plano y el inspector se mantienen dentro de la ventana. En superficies menores se conserva la disposición apilada.
 
-## Reglas y alcance
+## Editor de polígonos conservado
 
-- Las zonas son subdivisiones imaginarias del área útil. Pueden compartir puntos y lados y dejar superficie sin clasificar; no pueden superponerse ni salir del perímetro comercial.
-- Se rechazan cruces, contacto de aristas no adyacentes, vértices repetidos, retrocesos sobre un lado y superficies degeneradas.
-- Insertar/eliminar un punto compartido y moverlo sincroniza las zonas vecinas tras validar el conjunto. Los controles numéricos también propagan puntos intermedios que coinciden con una arista vecina.
-- El snap de dibujo permite reutilizar vértices y aristas del área y las zonas. El usuario debe trazar el contorno completo; no se genera automáticamente una zona a partir de un único límite nuevo.
-- El ajuste automático de zonas afectadas por un cambio de área se limita a vértices coincidentes con su perímetro y se aplica solo cuando todo el resultado es válido. Para modificaciones complejas se ofrece conservar las zonas y corregirlas manualmente.
-- Los nodos y extremos físicos coincidentes con vértices del área acompañan su movimiento cuando se conserva la correspondencia del perímetro. Redibujar por completo el área o cambiar la cantidad de lados conserva los muros existentes; revisa sus alineaciones en **Muros**.
-- Solo se admiten polígonos simples, sin huecos interiores ni múltiples contornos desconectados. La unión por un único vértice y una división que produciría más de dos polígonos se rechazan.
-- Las zonas virtuales conservan su código al arrastrarse. Se corrigió la renumeración heredada basada en el nombre «Almacén» y el historial del panel usa el ámbito correcto.
-- Se corrigió el colapso del plano a 1280 px por una regla responsive antigua de cuatro paneles.
+Área comercial, zonas y muros tienen modos independientes. Dibuja un contorno completo con clics y cierra con Enter, el primer punto o «Cerrar polígono». Escape cancela; Backspace quita el último punto. Doble clic en un borde agrega un vértice; clic derecho en un vértice lo elimina. Se mantienen edición numérica de X/Y, ángulo, longitud y desplazamiento perpendicular, división oblicua, división horizontal/vertical, fusión, colores, acabados, bloqueos y revisión de cambios del área.
+
+Las zonas no se superponen ni salen del área útil. Los límites compartidos se validan en conjunto. Eliminar una zona conserva racks y productos, con reasignación posterior. La división rechaza atravesar racks.
+
+## Alcance y límites
+
+- Polígonos simples sin huecos ni contornos desconectados. Hay que dibujar el contorno completo; no se genera una zona automáticamente a partir de una sola línea.
+- El ajuste automático tras modificar el área se limita a vértices coincidentes con su perímetro cuando se mantiene la correspondencia. Si el ajuste no es válido se ofrece revisar o conservar las zonas para corregirlas.
+- Redibujar el área o cambiar su cantidad de lados conserva los muros; revisa su alineación. Mover vértices correspondientes sí acompaña nodos y extremos físicos coincidentes.
+- «Adentro» y «Afuera» siguen la referencia geométrica del muro; en muros interiores, utiliza las flechas de previsualización para comprobar el lado.
+- El nombre visible de una zona y su código interno son independientes. El código sigue disponible en Propiedades de zona y su modificación usa el mecanismo de referencias existente.
+- La sincronización real con la instancia Cloudflare/D1 del usuario requiere validar el despliegue. Las pruebas locales de guardado usan respuestas HTTP controladas.
 
 ## Cloudflare Pages
 
-- Framework: `None`
-- Compilación: `npm ci && npm run build`
-- Salida: `public`
-- Conserva el binding D1 **DB** y los datos de `wrangler.toml`. No se requiere una base nueva ni una migración adicional para estas mejoras.
+- Framework: None.
+- Comando: `npm ci && npm run build`.
+- Directorio de salida: `public`.
+- Conserva `wrangler.toml`, binding D1 **DB** y migraciones actuales; no requiere crear otra base ni ejecutar una migración nueva.
 
-## Validación
+## Verificación
 
-`npm run check` compila frontend/CSS, verifica que el bundle corresponda con las fuentes, ejecuta las pruebas V202–V212 y verifica la sintaxis del backend.
+`npm run check` compila las fuentes y CSS, comprueba el bundle, ejecuta las regresiones V202–V212 y revisa sintaxis de backend/frontend.
 
-V212 incorpora pruebas de polígonos estrictos, puntos compartidos, edición numérica, bloqueos, propuestas de área, muros vinculados, lados diagonales y división oblicua. La interfaz se comprueba adicionalmente en Chromium con inserción por doble clic, coordenadas, Undo/Redo, modos separados, creación irregular, recarga local y superficies de zonas en el visor 3D. El guardado remoto en una instancia real de Cloudflare D1 no se prueba desde este entorno.
-
-La prueba de interfaz reproducible está en `scripts/test-v212-ui.mjs`. Requiere Playwright con Chromium instalado (dependencia de pruebas opcional). Puede usarse `WMS_TEST_BROWSER` para indicar un ejecutable Chromium existente.
+`npm run test:ui` ejecuta las pruebas de interfaz V212 y V213. Requiere Playwright/Chromium como dependencia opcional de pruebas; no se incluye en el despliegue. Puede definirse `WMS_TEST_BROWSER` para usar un Chromium existente. Las pruebas verifican polígonos, renombrado directo, IDs, cotas con extremo fijo, límites compartidos, vista previa de muros, uniones, aberturas, historial, capas, respuestas de guardado, recarga local, modo claro/oscuro y visor 3D. Las capturas de QA son temporales y no forman parte del ZIP.

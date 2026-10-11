@@ -9,11 +9,12 @@
     appState.selectedWallId='';appState.selectedOpeningId='';appState.selectedRoomId='';appState.selectedRackLayoutId='';
     appState.editor.selectedWallIds=[];appState.selectedVertex={zoneId:'',idx:-1};appState.selectedEdge={zoneId:'',a:-1,b:-1};
     if(mode==='area')appState.selectedZoneId='';
-    appState.editor.layoutPanelOpen={...(appState.editor.layoutPanelOpen||{}),area:mode==='area',zone:mode==='zones'};
+    appState.editor.layoutPanelOpen={...(appState.editor.layoutPanelOpen||{}),area:false,zone:false,geometry:false};appState.editor.geometryError=null;
     renderLayoutEditor();
   }
   function v212BeginDraw(kind){
     if(!isStructureLayoutScreen())return;
+    if(kind==='zones'&&typeof v213LayerLocked==='function'&&v213LayerLocked('zones')){showToast('Desbloquea la capa Zonas antes de dibujar.','warning');return;}
     if(kind==='area'&&v212Target('area')?.locked){showToast('Desbloquea el área antes de dibujar su perímetro.','warning');return;}
     v212SetMode(kind);appState.editor.mode='polygon';appState.editor.polygonDraft={kind,pts:[]};renderLayoutEditor();
   }
@@ -22,21 +23,24 @@
     const target=v212Target(mode),pts=target?.pts||[],area=mode==='area';
     const sel=area?appState.editor.geometrySelection:appState.selectedVertex?.zoneId===target?.id&&appState.selectedVertex.idx>=0?{type:'vertex',index:appState.selectedVertex.idx}:appState.selectedEdge?.zoneId===target?.id&&appState.selectedEdge.a>=0?{type:'edge',index:appState.selectedEdge.a}:null;
     const i=Math.max(0,Math.min(pts.length-1,sel?.index||0)),a=pts[i],b=pts[(i+1)%pts.length],u=getScaleCmPerUnit()/100;
-    const locked=!!target?.locked;
+    const locked=!!target?.locked||(!area&&typeof v213LayerLocked==='function'&&v213LayerLocked('zones'));
     const pending=appState.editor.pendingAreaEdit;
-    return `<section class="layout-prop-card v212-editor" aria-label="Editor ${area?'del área comercial':'de zonas'}"><div class="layout-prop-title">${area?'Área comercial · perímetro útil':'Zonas · polígonos virtuales'}</div>
-      <p class="tiny muted">${area?'Selecciona el área o uno de sus bordes.':'Selecciona una zona en el plano o en la lista.'} Doble clic en un borde agrega un vértice; clic derecho en un punto lo elimina. Arrastra puntos y lados para modificar el contorno.</p>
+    return `<section class="layout-prop-card v212-editor" data-focus="${sel?.type||'zone'}" aria-label="Editor ${area?'del área comercial':'de zonas'}"><div class="layout-prop-title">${area?'Área comercial · perímetro útil':'Zonas · polígonos virtuales'}</div>
+      ${typeof v213IdentityMarkup==='function'?v213IdentityMarkup(target,area):''}
+      <details class="v213-help"><summary>Cómo editar el contorno</summary><p class="tiny muted">Arrastra puntos y lados. Doble clic en un borde agrega un vértice; clic derecho en un punto lo elimina. Pulsa una cota para editar la longitud.</p></details>
       <div class="layout-template-grid"><button type="button" class="seg-btn" id="v212Draw">${area?'Dibujar nuevo perímetro':'Dibujar zona irregular'}</button><button type="button" class="seg-btn" id="v212Lock" ${!target?'disabled':''}>${locked?'Desbloquear':'Bloquear'} ${area?'área':'zona'}</button><button type="button" class="seg-btn" id="v212Undo">↶ Deshacer</button><button type="button" class="seg-btn" id="v212Redo">↷ Rehacer</button></div>
       ${appState.editor.polygonDraft?`<div class="v212-draft"><b>${appState.editor.polygonDraft.pts.length} puntos</b><p>Clic para agregar puntos con snap a límites existentes. Cierra con el botón o haciendo clic en el primer punto.</p><div class="layout-template-grid"><button type="button" class="btn primary" id="v212Finish">Cerrar polígono</button><button type="button" class="seg-btn" id="v212Back">Quitar último</button><button type="button" class="seg-btn" id="v212Cancel">Cancelar</button></div></div>`:''}
       ${pts.length?`<p class="tiny"><b>${escapeHtml(target.name||target.id||'Área comercial')}</b> · ${pts.length} vértices · ${(polygonAreaAbs(pts)*u*u).toFixed(2)} m² ${locked?'· Bloqueada':''}</p>
       <div class="layout-template-grid"><button type="button" class="seg-btn" id="v212AddPoint" ${locked?'disabled':''}>+ Vértice en lado</button><button type="button" class="seg-btn danger" id="v212RemovePoint" ${locked||pts.length<=3?'disabled':''}>Eliminar vértice</button>${!area?`<button type="button" class="seg-btn" id="v212Duplicate">Duplicar zona</button><button type="button" class="seg-btn danger" id="v212DeleteZone" ${locked?'disabled':''}>Eliminar zona</button>`:''}</div>
+      <p class="tiny muted" id="v213HistoryHint"></p>
+      <details class="v213-geometry" data-layout-fold="geometry" ${sel||layoutPanelOpen('geometry',false)?'open':''}><summary id="v213GeometryToggle">${sel?.type==='vertex'?'Coordenadas del vértice':sel?.type==='edge'?'Medidas del lado':'Edición precisa'} <span>Coordenadas · medidas · giro</span></summary>
       <label>Vértice<select id="v212VertexIndex">${pts.map((p,j)=>`<option value="${j}" ${i===j?'selected':''}>V${j+1} · ${(p.x*u).toFixed(2)}, ${(p.y*u).toFixed(2)} m</option>`).join('')}</select></label>
-      <div class="layout-prop-grid two"><label>X (m)<input type="number" step="0.01" id="v212X" value="${(a.x*u).toFixed(3)}"></label><label>Y (m)<input type="number" step="0.01" id="v212Y" value="${(a.y*u).toFixed(3)}"></label></div><button type="button" class="seg-btn" id="v212ApplyPoint" ${locked?'disabled':''}>Aplicar coordenadas del vértice</button>
+      <div class="v213-vertex-fields"><div class="layout-prop-grid two"><label>X (m)<input type="number" step="0.01" id="v212X" value="${(a.x*u).toFixed(3)}"></label><label>Y (m)<input type="number" step="0.01" id="v212Y" value="${(a.y*u).toFixed(3)}"></label></div><button type="button" class="seg-btn" id="v212ApplyPoint" ${locked?'disabled':''}>Aplicar coordenadas del vértice</button></div>
       <label style="margin-top:12px">Lado<select id="v212EdgeIndex">${pts.map((p,j)=>`<option value="${j}" ${i===j?'selected':''}>L${j+1} · V${j+1} → V${(j+1)%pts.length+1}</option>`).join('')}</select></label>
-      <div class="layout-prop-grid two"><label>Longitud (m)<input type="number" min="0.01" step="0.01" id="v212Length" value="${(Math.hypot(b.x-a.x,b.y-a.y)*u).toFixed(3)}"></label><label>Ángulo (°)<input type="number" min="0" max="360" step="0.1" id="v212Angle" value="${((Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI+360)%360).toFixed(2)}"></label><label>Desplazar lado (m)<input type="number" step="0.01" id="v212Offset" value="0"></label></div>
-      <div class="layout-template-grid"><button type="button" class="seg-btn" id="v212ApplyEdge" ${locked?'disabled':''}>Aplicar medida y ángulo</button><button type="button" class="seg-btn" id="v212MoveEdge" ${locked?'disabled':''}>Desplazar lado</button></div>
+      <div class="v213-edge-fields"><div class="layout-prop-grid two"><label>Longitud (m)<input type="number" min="0.01" step="0.01" id="v212Length" value="${(Math.hypot(b.x-a.x,b.y-a.y)*u).toFixed(3)}"></label><label>Ángulo (°)<input type="number" min="0" max="360" step="0.1" id="v212Angle" value="${((Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI+360)%360).toFixed(2)}"></label><label>Desplazar lado (m)<input type="number" step="0.01" id="v212Offset" value="0"></label></div>
+      <div class="layout-template-grid"><button type="button" class="seg-btn" id="v212ApplyEdge" ${locked?'disabled':''}>Aplicar medida y ángulo</button><button type="button" class="seg-btn" id="v212MoveEdge" ${locked?'disabled':''}>Desplazar lado</button></div></div>
       ${!area?`<div class="layout-prop-grid two"><label>Giro de zona (°)<input id="v212Rotation" type="number" min="0" max="360" step="0.1" value="0"></label><button type="button" class="seg-btn" id="v212Rotate" ${locked?'disabled':''}>Girar zona</button></div><button type="button" class="seg-btn" id="v212Split" ${locked?'disabled':''}>Dividir con dos puntos del borde</button>`:''}
-      <small class="muted">Ángulo medido desde +X; +Y apunta hacia abajo en el plano. Los límites compartidos se editan juntos. Las zonas pueden ser colindantes; no superponerse.</small>`:'<p class="tiny muted">Selecciona una zona o dibuja un polígono nuevo.</p>'}
+      <small class="muted">Ángulo medido desde +X; +Y apunta hacia abajo en el plano. Los límites compartidos se editan juntos. Las zonas pueden ser colindantes; no superponerse.</small></details>`:'<p class="tiny muted">Selecciona una zona o dibuja un polígono nuevo.</p>'}
       ${pending?`<div class="v212-review" role="status"><b>Revisar cambio del área</b><p>El nuevo perímetro afecta: ${pending.affected.map(id=>escapeHtml(findZoneById(id)?.name||id)).join(', ')}. El contorno propuesto aparece en naranja.</p><div class="layout-template-grid"><button class="seg-btn" id="v212AdjustArea">Ajustar límites compartidos</button><button class="seg-btn" id="v212KeepArea">Conservar zonas para corregir</button><button class="seg-btn" id="v212CancelArea">Cancelar cambio</button></div><small>El ajuste solo se aplica si mantiene polígonos válidos y sin traslapes. Ninguna zona se elimina.</small></div>`:''}
     </section>`;
   }
@@ -76,8 +80,8 @@
     const result=clone(pts),a=pts[index],b=pts[(index+1)%pts.length],len=Math.hypot(b.x-a.x,b.y-a.y)||1,nx=-(b.y-a.y)/len,ny=(b.x-a.x)/len;
     result[index]={x:a.x+nx*distance,y:a.y+ny*distance};result[(index+1)%pts.length]={x:b.x+nx*distance,y:b.y+ny*distance};return result;
   }
-  function v212Commit(kind,next,{preview=false}={}){
-    const target=v212Target(kind);if(!target||target.locked||!v209SimplePolygon(next)){showToast('Geometría bloqueada o inválida: revisa cruces, vértices y longitudes.','warning',2600);return false;}
+  function v212Commit(kind,next,{preview=false,label='geometría'}={}){
+    const target=v212Target(kind);if(!target||target.locked||kind==='zones'&&typeof v213LayerLocked==='function'&&v213LayerLocked('zones')||!v209SimplePolygon(next)){if(target)appState.editor.geometryError={pts:clone(next),message:'Geometría inválida o bloqueada'};showToast('Geometría bloqueada o inválida: revisa cruces, vértices y longitudes.','warning',2600);if(!preview&&typeof v213ShowGeometryError==='function')v213ShowGeometryError(document.getElementById('layoutSvg'));return false;}
     if(kind==='area'){
       const affected=appState.layout.zones.filter(z=>!v209ZoneInsideArea(z.pts,next)).map(z=>z.id);
       if(affected.length){if(!preview){appState.editor.pendingAreaEdit={pts:clone(next),affected};renderLayoutEditor();}return false;}
@@ -86,10 +90,10 @@
     } else {
       const changes=v212ZoneChanges(target,next),blocked=[...changes.keys()].find(id=>findZoneById(id)?.locked);
       const problem=v211ValidateZoneEdits(changes);
-      if(blocked||problem){showToast(blocked?'Un límite compartido pertenece a una zona bloqueada.':`Cambio rechazado: ${problem.name||problem.reason}.`,'warning',2800);return false;}
+      if(blocked||problem){const message=blocked?`El límite pertenece a ${findZoneById(blocked)?.name||blocked}, que está bloqueada.`:problem.reason==='outside'?'El contorno sale del área comercial.':`El contorno se superpone con ${problem.name||problem.id||'otra zona'}.`;appState.editor.geometryError={pts:clone(next),message};showToast(message,'warning',3200);if(!preview&&typeof v213ShowGeometryError==='function')v213ShowGeometryError(document.getElementById('layoutSvg'));return false;}
       if(!preview)recordHistorySnapshot('structure');v211ApplyZoneEdits(changes);
     }
-    if(!preview){persistActiveLayout();renderLayoutEditor();}return true;
+    appState.editor.geometryError=null;if(!preview){persistActiveLayout(label);renderLayoutEditor();}return true;
   }
   function v212ZoneChanges(target,next,zones=appState.layout.zones){
     const changes=new Map([[target.id,clone(next)]]);
@@ -144,17 +148,18 @@
     if(ok){appState.editor.geometrySelection=null;appState.selectedVertex={zoneId:'',idx:-1};appState.selectedEdge={zoneId:'',a:-1,b:-1};renderLayoutEditor();}return ok;
   }
   function v212Snap(raw,origin=null){
-    if(!isSnapEnabled())return{x:raw.x,y:raw.y};
+    if(!isSnapEnabled()){appState.editor.geometrySnapPreview=null;return{x:raw.x,y:raw.y};}
     const points=[...layoutBoundaryPts(),...appState.layout.zones.flatMap(z=>z.pts),...(appState.layout.wallNodes||[])];
     const svg=$('#layoutSvg'),threshold=svg?appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width)*10:10;
-    const nearest=points.map(p=>({p,d:Math.hypot(raw.x-p.x,raw.y-p.y)})).sort((a,b)=>a.d-b.d)[0];if(nearest?.d<threshold)return{x:nearest.p.x,y:nearest.p.y};
+    const nearest=points.map(p=>({p,d:Math.hypot(raw.x-p.x,raw.y-p.y)})).sort((a,b)=>a.d-b.d)[0];if(nearest?.d<threshold){appState.editor.geometrySnapPreview={point:nearest.p,label:'Vértice',kind:'vertex'};return{x:nearest.p.x,y:nearest.p.y};}
     const edges=[layoutBoundaryPts(),...appState.layout.zones.map(z=>z.pts)];let best={d:threshold,p:null};
     edges.forEach(poly=>poly.forEach((a,i)=>{const p=projectPointToSegment(raw,a,poly[(i+1)%poly.length]),d=Math.hypot(p.x-raw.x,p.y-raw.y);if(d<best.d)best={p,d};}));
-    const p=best.p?{x:best.p.x,y:best.p.y}:{x:snapGrid(raw.x),y:snapGrid(raw.y)};
+    const p=best.p?{x:best.p.x,y:best.p.y}:{x:snapGrid(raw.x),y:snapGrid(raw.y)};appState.editor.geometrySnapPreview=best.p?{point:p,label:'Arista',kind:'edge'}:null;
     if(origin&&appState.editor.orthoEnabled){if(Math.abs(p.x-origin.x)>Math.abs(p.y-origin.y))p.y=origin.y;else p.x=origin.x;}return p;
   }
   function v212FinishPolygon(){
     const draft=appState.editor.polygonDraft;if(!draft)return false;
+    if(draft.kind!=='area'&&typeof v213LayerLocked==='function'&&v213LayerLocked('zones'))return false;
     if(draft.kind==='split')return v212SplitZone(draft.zoneId,draft.pts);
     if(!v209SimplePolygon(draft.pts)){showToast('Dibuja al menos tres puntos, sin cruces ni lados repetidos.','warning');return false;}
     if(draft.kind==='area'){
@@ -211,14 +216,14 @@
     pts.forEach((p,i)=>{const q=pts[(i+1)%pts.length],selected=appState.editor.geometrySelection?.type==='edge'&&appState.editor.geometrySelection.index===i;
       const line=svgEl('line',{x1:p.x,y1:p.y,x2:q.x,y2:q.y,stroke:selected?'#b87932':'transparent','stroke-width':selected?4*px:14*px,'pointer-events':'stroke',style:'cursor:move','data-area-edge':i});
       line.addEventListener('pointerdown',e=>v212AreaDrag(e,svg,'edge',i));layer.appendChild(line);
-      const u=getScaleCmPerUnit()/100,label=svgEl('text',{x:(p.x+q.x)/2,y:(p.y+q.y)/2-8*px,'text-anchor':'middle',style:`font-size:${11*px}px;fill:#805b30;pointer-events:none`});label.textContent=`L${i+1} · ${(Math.hypot(q.x-p.x,q.y-p.y)*u).toFixed(2)} m`;layer.appendChild(label);
+      const u=getScaleCmPerUnit()/100,label=svgEl('text',{x:(p.x+q.x)/2,y:(p.y+q.y)/2-8*px,'text-anchor':'middle',style:`font-size:${11*px}px;fill:#805b30;pointer-events:none`});label.textContent=`L${i+1}`;if(!appState.editor.showDims)layer.appendChild(label);
     });
     pts.forEach((p,i)=>{const circle=svgEl('circle',{cx:p.x,cy:p.y,r:6*px,fill:'#fff8e9',stroke:'#b87932','stroke-width':2*px,'data-site-vertex':i,style:'cursor:move;touch-action:none'});
       circle.addEventListener('pointerdown',e=>v212AreaDrag(e,svg,'vertex',i));circle.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();v212Remove('area',i);});layer.appendChild(circle);
     });
   }
   function v212AddAtEvent(e,svg){
-    if(appState.editor.polygonDraft||appState.editor.architectureTool==='walls'||e.button!==0)return;
+    if(e.target.closest?.('[data-v213-ui]')||appState.editor.polygonDraft||appState.editor.architectureTool==='walls'||e.button!==0)return;
     const kind=appState.editor.architectureTool,target=v212Target(kind);if(!target)return;
     const raw=svgPoint(e,svg),threshold=appState.editor.viewBox.w/Math.max(1,svg.getBoundingClientRect().width)*10;let hit={d:threshold,index:-1};
     target.pts.forEach((a,i)=>{const q=projectPointToSegment(raw,a,target.pts[(i+1)%target.pts.length]),d=Math.hypot(raw.x-q.x,raw.y-q.y);if(d<hit.d)hit={d,index:i};});
@@ -232,14 +237,14 @@
     appState.editor.geometrySelection={type,index};appState.editor.areaEdgeIndex=type==='edge'?index:0;
     if(v212Target('area')?.locked){renderLayoutEditor();return;}
     const original=clone(layoutBoundaryPts()),start=svgPoint(e,svg);let next=original,lastValid=original,moved=false;
-    const move=evt=>{const p=v212Snap(svgPoint(evt,svg)),dx=p.x-start.x,dy=p.y-start.y;
+    const move=evt=>{const p=v212Snap(svgPoint(evt,svg)),dx=p.x-start.x,dy=p.y-start.y;if(typeof v213DrawSnap==='function')v213DrawSnap(svg);
       if(Math.hypot(dx,dy)<1)return;
       next=type==='vertex'?original.map((v,j)=>j===index?p:v):(()=>{const a=original[index],b=original[(index+1)%original.length],len=Math.hypot(b.x-a.x,b.y-a.y)||1;return v212OffsetEdge(original,index,dx*-(b.y-a.y)/len+dy*(b.x-a.x)/len);})();
       if(!v209SimplePolygon(next)){next=lastValid;return;}lastValid=next;moved=true;
       // A preview path does not mutate zones or walls before release.
       let path=svg.querySelector('[data-area-preview]');if(!path){path=svgEl('path',{'data-area-preview':'1',fill:'rgba(205,137,61,.1)',stroke:'#b87932','stroke-width':2,'pointer-events':'none'});svg.appendChild(path);}path.setAttribute('d',pathFromPts(next));
     };
-    const cleanup=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);};
+    const cleanup=()=>{appState.editor.geometrySnapPreview=null;window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);};
     const finish=()=>{cleanup();if(moved)v212Commit('area',next);else renderLayoutEditor();};
     const cancel=()=>{cleanup();renderLayoutEditor();};
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',finish,{once:true});window.addEventListener('pointercancel',cancel,{once:true});

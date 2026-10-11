@@ -255,7 +255,7 @@
     }catch{ return {}; }
   }
   function saveBranchLayouts(){
-    try{ localStorage.setItem('wms_branch_layouts_v2', JSON.stringify(appState.branchLayouts||{})); }catch{}
+    try{ localStorage.setItem('wms_branch_layouts_v2', JSON.stringify(appState.branchLayouts||{}));return true; }catch(err){setLayoutSaveState('error','No se pudo guardar en este dispositivo');return false;}
   }
   const ZONE_COLOR_PALETTE = ['#ffd84d','#58c5ff','#6ef0a8','#ff8f70','#c48bff','#7cf0ff','#ff5db1','#9ee65e','#ffb84d','#63a4ff'];
   function getBranchColor(index){
@@ -351,7 +351,7 @@
     try{
       appState.ui = appState.ui || {};
       appState.ui.layoutSaveState = state;
-      appState.ui.layoutSaveMessage = message || (state === 'remote' ? 'Guardado en servidor' : state === 'saving' ? 'Guardando…' : state === 'error' ? 'Error al guardar' : 'Guardado local');
+      appState.ui.layoutSaveMessage = message || (state === 'remote' ? 'Guardado en servidor' : state === 'saving' ? 'Guardando…' : state === 'error' ? 'Error al guardar' : 'Guardado en este dispositivo');
       appState.ui.layoutSaveAt = new Date().toISOString();
       updateLayoutSaveStatus();
     }catch(_err){}
@@ -361,9 +361,10 @@
       const el = document.getElementById('layoutSaveStatus');
       if(!el) return;
       const state = appState.ui?.layoutSaveState || 'local';
-      const msg = appState.ui?.layoutSaveMessage || 'Guardado local';
+      const msg = appState.ui?.layoutSaveMessage || 'Guardado en este dispositivo';
       el.className = `v99-save-status ${state}`;
       el.textContent = msg;
+      el.setAttribute('role','status');el.setAttribute('aria-live','polite');
       el.title = appState.ui?.layoutSaveAt ? `Última actualización: ${new Date(appState.ui.layoutSaveAt).toLocaleString('es-PE')}` : msg;
     }catch(_err){}
   }
@@ -371,7 +372,7 @@
     try{
       appState.ui = appState.ui || {};
       appState.ui.layoutDirty = true;
-      setLayoutSaveState('local', reason ? `Guardado local · ${reason}` : 'Guardado local');
+      setLayoutSaveState('local','Guardado en este dispositivo · pendiente de sincronizar');
       if(window.__wmsDiagPush) window.__wmsDiagPush('layout', `Cambio local: ${reason || 'layout'}`);
     }catch(_err){}
   }
@@ -444,17 +445,18 @@
   }
 
 
-  function persistActiveLayout(){
+  function persistActiveLayout(operation='cambio'){
     const historyType = isRackDistributionScreen() ? 'distribution' : (isStructureLayoutScreen() ? 'structure' : 'layout');
     const bucket = getHistoryBucket(historyType);
-    if(!bucket?.isApplying) recordHistorySnapshot(historyType);
     const idx = getActiveLayoutBranchIndex();
     if(!appState.branchLayouts) appState.branchLayouts = {};
     normalizeLayoutSectionState();
     ensureLayoutMeta();
+    if(!bucket?.isApplying){recordHistorySnapshot(historyType);if(typeof snapshotForType==='function'){bucket.operationLabels=bucket.operationLabels||{};const key=JSON.stringify(snapshotForType(historyType));if(operation!=='cambio'||!bucket.operationLabels[key])bucket.operationLabels[key]=operation;const retained=new Set([...bucket.undoStack,...bucket.redoStack]);Object.keys(bucket.operationLabels).forEach(key=>{if(!retained.has(key))delete bucket.operationLabels[key];});}}
     appState.branchLayouts[idx] = clone(appState.layout);
-    saveBranchLayouts();
-    markLayoutDirty(`sucursal ${idx + 1}`);
+    const saved=saveBranchLayouts();
+    appState.ui.layoutLocalSaveFailed=!saved;
+    if(saved)markLayoutDirty(`sucursal ${idx + 1}`);
   }
   function loadLayoutForBranch(branchIndex){
     ensureBranchLayouts();
@@ -808,6 +810,7 @@
     return (appState.layout.racks||[]).filter(r => r.zoneId === zoneId).sort((a,b)=> (a.x-b.x) || (a.y-b.y) || String(a.id).localeCompare(String(b.id)));
   }
   function duplicateSelectedRack(){
+    if(typeof v213LayerLocked==='function'&&v213LayerLocked('racks'))return;
     const rack = findRackById(appState.selectedRackLayoutId); if(!rack) return;
     const zone = findZoneById(rack.zoneId); if(!zone) return;
     const copy = clone(rack);
@@ -821,6 +824,7 @@
     renderLayoutEditor();
   }
   function duplicateSelectedZone(){
+    if(typeof v213LayerLocked==='function'&&v213LayerLocked('zones'))return;
     if(findZoneById(appState.selectedZoneId)?.locked)return;
     const zone = findZoneById(appState.selectedZoneId); if(!zone || !isStructureLayoutScreen()) return;
     const cloneZone = clone(zone);

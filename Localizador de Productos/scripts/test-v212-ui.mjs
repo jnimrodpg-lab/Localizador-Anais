@@ -14,7 +14,7 @@ const {chromium:pw}=require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?proce
  s.layout={zones:[{id:'Z1',name:'Almacén',color:'#75a9d4',kind:'virtual',pts:r(40,40,200,240)},{id:'Z2',name:'Ventas',color:'#72b58b',kind:'virtual',pts:r(240,40,160,240)}],racks:[],walls:[],wallNodes:[],rooms:[],openings:[],streets:[],measurements:[],meta:{siteBoundary:{id:'AREA-GENERAL',name:'Área comercial',pts:r(0,0,500,400)},scaleCmPerUnit:1,autoFitBoundaryToZones:false,zoneSemantics:'virtual',commercialAreaV209:true,architectureInitializedV180:true}};s.selectedZoneId='Z1';s.editor.architectureTool='zones';s.editor.sectionVisible=false;s.editor.viewBox={x:-80,y:-50,w:720,h:540};s.editor.viewBoxCustomized=true;s.editor.viewBoxInitialized=true;t.setScreen('layout');});
  await page.waitForSelector('#v212AddPoint');await page.screenshot({timeout:30000,animations:'disabled',path:path.join(os.tmpdir(),'wms-v212-qa-zones.png')});
  assert.equal(await page.locator('[data-architecture-tool]').count(),3);
- await page.locator('#v212EdgeIndex').selectOption('1');await page.locator('#v212AddPoint').click();
+ await page.locator('#v213GeometryToggle').click();await page.locator('#v212EdgeIndex').selectOption('1');await page.locator('#v212AddPoint').click();
  assert.equal(await page.evaluate(()=>window.__test.appState.layout.zones[0].pts.length),5);
  assert.equal(await page.evaluate(()=>window.__test.appState.layout.zones[1].pts.length),5);
  await page.locator('#v212VertexIndex').selectOption('2');await page.locator('#v212X').fill('2.2');await page.locator('#v212ApplyPoint').click();
@@ -24,7 +24,7 @@ const {chromium:pw}=require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?proce
  await page.locator('#v212VertexIndex').selectOption('2');await page.locator('#v212RemovePoint').click();assert.equal(await page.evaluate(()=>window.__test.appState.layout.zones[0].pts.length),4);
  await page.locator('#v212Lock').click();assert(await page.locator('#v212ApplyPoint').isDisabled());await page.locator('#v212Lock').click();
  await page.locator('[data-architecture-tool="area"]').click();assert.equal(await page.locator('[data-site-vertex]').count(),4);assert.equal(await page.locator('[data-v211-zone]:visible').count(),0);
- await page.locator('#v212VertexIndex').selectOption('1');await page.locator('#v212X').fill('1');await page.locator('#v212ApplyPoint').click();assert(await page.locator('#v212CancelArea').isVisible());
+ await page.locator('#v213GeometryToggle').click();await page.locator('#v212VertexIndex').selectOption('1');await page.locator('#v212X').fill('1');await page.locator('#v212ApplyPoint').click();assert(await page.locator('#v212CancelArea').isVisible());
  assert.equal(await page.evaluate(()=>window.__test.appState.layout.meta.siteBoundary.pts[1].x),500);await page.locator('#v212CancelArea').click();
  await page.locator('#v212AddPoint').click();assert.equal(await page.locator('[data-site-vertex]').count(),5);await page.locator('#v212Undo').click();assert.equal(await page.locator('[data-site-vertex]').count(),4);
  await page.screenshot({timeout:30000,animations:'disabled',path:path.join(os.tmpdir(),'wms-v212-qa-area.png')});

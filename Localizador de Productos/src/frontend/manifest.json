@@ -1,5 +1,5 @@
 {
-  "version": "221",
+  "version": "222",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -22,10 +22,12 @@
     "69-streets-v220.js",
     "69-street-paths-v221.js",
     "70-rack-editor.js",
+    "71-furniture-sync-v222.js",
+    "72-library-ui-v222.js",
     "74-isometric-furniture.js",
     "75-virtual-space.js",
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V221: calles por puntos, ejes editables, cruces T/X y eliminación en 2D/3D"
+  "notes": "V222: mobiliario sincronizado, biblioteca con un preview, dimensiones paramétricas e intercambio de nomenclaturas"
 }

@@ -4,17 +4,11 @@
       if(!raw) return null;
       const arr = JSON.parse(raw);
       if(!Array.isArray(arr) || !arr.length) return null;
-      const baseDefaults = { std_4:{ width:120, depth:40, height:240 }, wide_5:{ width:120, depth:40, height:240 }, compact_3:{ width:120, depth:40, height:240 } };
-      arr.forEach(model => {
-        if(!model || !baseDefaults[model.id]) return;
-        model.width = baseDefaults[model.id].width;
-        model.depth = baseDefaults[model.id].depth;
-        model.height = baseDefaults[model.id].height;
-      });
       return arr;
     }catch{ return null; }
   }
   function saveRackModels(){
+    if(typeof v222SynchronizeModels==='function')v222SynchronizeModels();
     try{ localStorage.setItem('wms_rack_models_v3', JSON.stringify(appState.models || [])); }catch{}
   }
 
@@ -812,7 +806,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   function pointNearPolygonEdge(point, pts, tolerance = 8){ for(let i=0;i<pts.length;i++){ const a = pts[i], b = pts[(i+1)%pts.length]; const proj = projectPointToSegment(point, a, b); if(Math.sqrt(dist2(point, proj)) <= tolerance) return true; } return false; }
   function rackCorners(rack){
     if(!rack) return [];
-    const fp = getRackFootprint(rack.modelId, rack.rot || 0);
+    const fp = getRackFootprint(rack.modelId, rack.rot || 0, rack);
     const bw = fp.baseW || rack.w || 0;
     const bh = fp.baseH || rack.h || 0;
     const ang = normalizeAngle(rack.rot || 0) * Math.PI / 180;
@@ -2309,25 +2303,21 @@ const DEFAULT_GRID_SIZE = 2;
     return Math.round(value / step) * step;
   }
   function normalizeAngle(a){ return (((Number(a) || 0) % 360) + 360) % 360; }
-  function getRackBaseSize(modelId){
-    const m = rackModel(modelId);
-    const scale = 1;
-    return {
-      w: Math.max(44, Math.round((m.width || 150) * scale)),
-      h: Math.max(24, Math.round((m.depth || 82) * scale))
-    };
-  }
-  function getRackFootprint(modelId, rot = 0){
-    const base = getRackBaseSize(modelId);
-    const rad = normalizeAngle(rot) * Math.PI / 180;
-    const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
-    const w = Math.max(40, Math.round(base.w * c + base.h * s));
-    const h = Math.max(40, Math.round(base.w * s + base.h * c));
-    return { w, h, baseW: base.w, baseH: base.h };
+  function getRackBaseSize(modelId,rack=null){
+    const model=rackModel(modelId),dims=typeof v222Dimensions==='function'?(rack?v222Dimensions(rack,model):v222ModelDimensions(model)):{width:Number(model.width||120),depth:Number(model.depth||40)};
+    const scale=Math.max(.01,getScaleCmPerUnit());
+    return {w:dims.width/scale,h:dims.depth/scale};
   }
 
-  // V195 — apilamiento modular: un grupo puede tener distintos módulos por nivel.
-  const STACK_LEVEL_COLORS = Object.freeze(['#4a86c5','#59a66e','#e79a45','#9675bc','#5096a4','#c47c8a']);
+
+  function getRackFootprint(modelId,rot=0,rack=null){
+    const base=getRackBaseSize(modelId,rack),rad=normalizeAngle(rot)*Math.PI/180,c=Math.abs(Math.cos(rad)),s=Math.abs(Math.sin(rad));
+    return {w:base.w*c+base.h*s,h:base.w*s+base.h*c,baseW:base.w,baseH:base.h};
+  }
+
+  const STACK_LEVEL_COLORS=Object.freeze(['#4a86c5','#59a66e','#e79a45','#9675bc','#5096a4','#c47c8a']);
+
+
   function modularStackMembers(rackOrGroupId){
     const key=typeof rackOrGroupId==='string'?rackOrGroupId:rackOrGroupId?.stackGroupId;
     if(!key)return [];
@@ -2537,7 +2527,7 @@ const DEFAULT_GRID_SIZE = 2;
     const zone = findZoneById(rack.zoneId);
     if(!zone) return;
     const cloneRack = clone(rack);
-    cloneRack.id = nextRackId(rack.zoneId);
+    cloneRack.id = nextRackId(rack.zoneId);if(typeof v222PrepareRackCopy==='function')v222PrepareRackCopy(cloneRack,rack);
     cloneRack.stackLevel = getRackStackLevel(rack) + 1;
     cloneRack.baseHeight = 0;
     cloneRack.zoneId = rack.zoneId;
@@ -2597,7 +2587,7 @@ const DEFAULT_GRID_SIZE = 2;
     if(!rack) return;
     const oldW = rack.w || 48, oldH = rack.h || 90;
     const cx = rack.x + oldW / 2, cy = rack.y + oldH / 2;
-    const fp = getRackFootprint(rack.modelId, rack.rot || 0);
+    const fp = getRackFootprint(rack.modelId, rack.rot || 0, rack);
     rack.w = fp.w; rack.h = fp.h;
     if(preserveCenter){
       rack.x = cx - rack.w / 2;

@@ -15,17 +15,10 @@
     const kind = VSPACE_TYPES[rack?.virtualType] ? rack.virtualType : 'rack';
     const preset = VSPACE_TYPES[kind];
     const model = (appState.models||[]).find(m => m.id === rack?.modelId) || {};
-    const physical = rack?.virtual || {};
-    const scale = Math.max(.01,getScaleCmPerUnit());
-    return {
-      kind, title:String(rack?.virtualName || rack?.id || preset.name),
-      width:vspaceClamp(vspaceFloat(physical.width, rack?.virtualType ? preset.width : vspaceFloat(model.width,rack?.w*scale||120)),30,10000),
-      depth:vspaceClamp(vspaceFloat(physical.depth, rack?.virtualType ? preset.depth : vspaceFloat(model.depth,rack?.h*scale||50)),20,5000),
-      height:vspaceClamp(vspaceFloat(physical.height,vspaceFloat(rack?.rackHeight, vspaceFloat(model.height,preset.height))),30,10000),
-      levels:vspaceClamp(Math.round(vspaceFloat(physical.levels,vspaceFloat(model.levels,preset.levels))),1,12),
-      slots:vspaceClamp(Math.round(vspaceFloat(physical.slots,vspaceFloat(model.slots,preset.slots))),1,12)
-    };
+    const dims=v222Dimensions(rack,Object.keys(model).length?model:null);
+    return {kind,title:v222RackName(rack),code:v222RackCode(rack),...dims};
   }
+
   function vspaceIsEditable(){ return String(appState.auth?.role||'') === 'admin' && !!appState.auth?.loggedIn; }
   // Índice SKU por mueble/nivel/posición: evita filtrar 10 000 productos por cada repisa.
   let vspaceProductIndexSource=null;
@@ -221,34 +214,38 @@
     const available=vspaceFindPosition(rack);
     if(!available){appState.models=appState.models.filter(m=>m.id!==modelId);return vspaceToast('No hay espacio libre suficiente. Amplía la zona en Plano / Estructura.',true);}
     Object.assign(rack,available);
+    recordHistorySnapshot('distribution');
     appState.layout.racks.push(rack);
     vspaceActive.selectedId=rack.id;vspaceActive.selectedLevel=1;vspaceActive.selectedSlot=1;
+    saveRackModels();
     vspaceCommit(rack.virtualName);
     vspaceActive?.refreshInspector();
   }
   function vspaceUpdateRack(rack,patch){
     if(!rack || !vspaceIsEditable())return;
-    const cloneRack={...rack,virtual:{...rack.virtual}};
-    if(patch.name!==undefined)cloneRack.virtualName=String(patch.name).trim().slice(0,80)||rack.id;
+    const cloneRack=clone(rack),currentSpec=vspaceSpec(rack);cloneRack.furnitureOverrides={...(rack.furnitureOverrides||{})};cloneRack.furnitureDataVersion=222;
+    const codePlan=patch.code!==undefined?v222CodePlan(rack,patch.code):null;if(codePlan&&!codePlan.ok){vspaceToast(codePlan.msg,true);return;}
+    if(patch.name!==undefined)cloneRack.name=cloneRack.virtualName=String(patch.name).trim().slice(0,80)||v222RackName(rack);
     if(patch.x!==undefined)cloneRack.x=vspaceFloat(patch.x,rack.x);
     if(patch.y!==undefined)cloneRack.y=vspaceFloat(patch.y,rack.y);
     if(patch.npt!==undefined)cloneRack.baseHeight=vspaceClamp(vspaceFloat(patch.npt,Number(rack.baseHeight||0)),0,20000);
-    if(patch.rot!==undefined)cloneRack.rot=((Math.round(vspaceFloat(patch.rot,0)/90)*90)%360+360)%360;
+    if(patch.rot!==undefined)cloneRack.rot=normalizeAngle(vspaceFloat(patch.rot,rack.rot||0));
     for(const key of ['width','depth','height','levels','slots'])if(patch[key]!==undefined){
       const limits=key==='levels'||key==='slots'?[1,12]:key==='height'?[30,10000]:[20,10000];
-      cloneRack.virtual[key]=vspaceClamp(key==='levels'||key==='slots'?Math.round(vspaceFloat(patch[key],rack.virtual?.[key]||1)):vspaceFloat(patch[key],rack.virtual?.[key]||100),...limits);
+      const value=vspaceClamp(key==='levels'||key==='slots'?Math.round(vspaceFloat(patch[key],currentSpec[key])):vspaceFloat(patch[key],currentSpec[key]),...limits);
+      if(Math.abs(value-currentSpec[key])>.001||cloneRack.furnitureOverrides[key]!=null)cloneRack.furnitureOverrides[key]=value;
     }
     const spec=vspaceSpec(cloneRack), scale=getScaleCmPerUnit();
     const width=spec.width/scale, depth=spec.depth/scale;
-    const rotated=cloneRack.rot%180!==0;
-    const nextW=rotated?depth:width,nextH=rotated?width:depth;
+    const rad=Number(cloneRack.rot||0)*Math.PI/180;
+    const nextW=width*Math.abs(Math.cos(rad))+depth*Math.abs(Math.sin(rad)),nextH=width*Math.abs(Math.sin(rad))+depth*Math.abs(Math.cos(rad));
     // Mantener centro durante redimensionamiento y giro.
     if(patch.width!==undefined||patch.depth!==undefined||patch.rot!==undefined){
-      if(patch.x===undefined)cloneRack.x=Number(rack.x)+(Number(rack.w)-nextW)/2;
-      if(patch.y===undefined)cloneRack.y=Number(rack.y)+(Number(rack.h)-nextH)/2;
+      if(patch.x===undefined||Number(patch.x)===Number(rack.x))cloneRack.x=Number(rack.x)+(Number(rack.w)-nextW)/2;
+      if(patch.y===undefined||Number(patch.y)===Number(rack.y))cloneRack.y=Number(rack.y)+(Number(rack.h)-nextH)/2;
       cloneRack.w=nextW;cloneRack.h=nextH;
     }
-    cloneRack.rackHeight=spec.height;
+    cloneRack.rackHeight=spec.height;cloneRack.virtual={...(cloneRack.virtual||{}),width:spec.width,depth:spec.depth,height:spec.height,levels:spec.levels,slots:spec.slots};
     if(rack.stackedOnId && (Math.abs(Number(cloneRack.x||0)-Number(rack.x||0))>.01 || Math.abs(Number(cloneRack.y||0)-Number(rack.y||0))>.01 || Math.abs(Number(cloneRack.baseHeight||0)-Number(rack.baseHeight||0))>.01)){
       return vspaceToast('Este módulo está apoyado sobre otro. Para desplazarlo libremente usa «Desvincular soporte», o mueve el conjunto desde su base.',true);
     }
@@ -259,11 +256,9 @@
     const proposals=vspaceFollowAttachedModules(rack,cloneRack);
     const fitting=vspaceValidateRackProposals(proposals);
     if(!fitting.ok){vspaceToast(fitting.msg,true);vspaceActive?.refreshInspector();return;}
-    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot('structure');
+    if(typeof recordHistorySnapshot==='function')recordHistorySnapshot('distribution');
     proposals.forEach(next=>{const current=(appState.layout.racks||[]).find(item=>item.id===next.id);if(current)Object.assign(current,next);});
-    // Actualizar modelo compartido sin cambiar la identidad del rack.
-    const model=appState.models.find(m=>m.id===rack.modelId);
-    if(model && rack.virtualType)Object.assign(model,{name:rack.virtualName,width:spec.width,depth:spec.depth,height:spec.height,levels:spec.levels,slots:spec.slots});
+    if(codePlan)v222ApplyCodePlan(rack,codePlan);
     rack.virtualPlacements=(rack.virtualPlacements||[]).filter(p=>p.level<=spec.levels&&p.slot<=spec.slots);
     vspaceActive.selectedLevel=vspaceClamp(vspaceActive.selectedLevel,1,spec.levels);
     vspaceActive.selectedSlot=vspaceClamp(vspaceActive.selectedSlot,1,spec.slots);
@@ -433,7 +428,7 @@
     state.refreshObjects=()=>{
       root.querySelector('#vspaceObjects').innerHTML=(appState.layout.racks||[]).map(r=>{
         const sp=vspaceSpec(r),active=r.id===state.selectedId;
-        return `<button type="button" class="vspace-object ${active?'active':''}" data-vspace-select="${vspaceEsc(r.id)}"><b>${vspaceEsc(sp.title)}</b><small>${vspaceEsc(r.id)} · ${sp.levels} niveles · ${formatPosition(r)}</small></button>`;
+        return `<button type="button" class="vspace-object ${active?'active':''}" data-vspace-select="${vspaceEsc(r.id)}"><b>${vspaceEsc(sp.title)}</b><small>${vspaceEsc(sp.code)} · ${sp.levels} niveles · ${formatPosition(r)}</small></button>`;
       }).join('')||'<p class="vspace-muted">No hay muebles. Añade uno desde la biblioteca.</p>';
       const assigned=vspaceAllAssignments();
       root.querySelector('#vspaceStats').textContent=`${(appState.layout.racks||[]).length} muebles · ${assigned.length} ubicaciones`;
@@ -667,18 +662,18 @@
         ${groupLevels.slice().reverse().map(level=>`<div class="vspace-stack-level" style="border-left:4px solid ${STACK_LEVEL_COLORS[level.index%STACK_LEVEL_COLORS.length]}"><strong>Nivel ${level.index+1} · ${level.count} módulos</strong><small>NPT +${Math.round(level.npt)} cm</small><div class="vspace-stack-module-buttons">${level.modules.map(m=>`<button type="button" data-vs-modular="${vspaceEsc(m.id)}" class="${m.id===rack.id?'active':''}">${level.index+1}-${String.fromCharCode(65+Number(m.stackModuleIndex||0))}</button>`).join('')}</div></div>`).join('')}
         <button id="vsEditModularLayout" type="button">Editar conjunto en layout</button>
         <small class="vspace-muted">Selecciona cada módulo para editar su NPT y materiales. Alt+arrastrar mueve la pila en layout.</small></div>`:'';
-      host.innerHTML=`<div class="vspace-inspector-id"><b>${vspaceEsc(sp.title)}</b><small>${vspaceEsc(rack.id)} · ${vspaceEsc(VSPACE_TYPES[sp.kind].name)}</small></div>
+      host.innerHTML=`<div class="vspace-arch-toolbar"><button type="button" id="vsFurnitureUndo" ${lock}>Deshacer</button><button type="button" id="vsFurnitureRedo" ${lock}>Rehacer</button></div><div class="vspace-inspector-id"><b>${vspaceEsc(sp.title)}</b><small>${vspaceEsc(sp.code)} · ${vspaceEsc(VSPACE_TYPES[sp.kind].name)}</small></div>
         ${groupPanel}
-        <label class="vspace-field">Nombre<input id="vsName" value="${vspaceEsc(sp.title)}" ${lock}></label>
+        <label class="vspace-field">Nombre<input id="vsName" value="${vspaceEsc(sp.title)}" ${lock}></label><label class="vspace-field">Nomenclatura<input id="vsCode" value="${vspaceEsc(sp.code)}" maxlength="80" ${lock}></label>
         <div class="vspace-grid-2"><label class="vspace-field">Ancho (cm)<input id="vsWidth" type="number" min="30" max="10000" value="${sp.width}" ${lock}></label><label class="vspace-field">Fondo (cm)<input id="vsDepth" type="number" min="20" max="5000" value="${sp.depth}" ${lock}></label></div>
-        <div class="vspace-grid-2"><label class="vspace-field">Alto (cm)<input id="vsHeight" type="number" min="30" max="10000" value="${sp.height}" ${lock}></label><label class="vspace-field">Giro (°)<select id="vsRotation" ${lock}>${[0,90,180,270].map(d=>`<option value="${d}" ${Number(rack.rot||0)===d?'selected':''}>${d}°</option>`).join('')}</select></label></div>
+        <div class="vspace-grid-2"><label class="vspace-field">Alto (cm)<input id="vsHeight" type="number" min="30" max="10000" value="${sp.height}" ${lock}></label><label class="vspace-field">Giro (°)<input id="vsRotation" type="number" min="0" max="360" step=".1" value="${round1(rack.rot||0)}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">Niveles<input id="vsLevels" type="number" min="1" max="12" value="${sp.levels}" ${lock}></label><label class="vspace-field">Posiciones / nivel<input id="vsSlots" type="number" min="1" max="12" value="${sp.slots}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">X plano<input id="vsX" type="number" value="${Math.round(rack.x)}" ${lock}></label><label class="vspace-field">Y plano<input id="vsY" type="number" value="${Math.round(rack.y)}" ${lock}></label></div>
         <div class="vspace-grid-2"><label class="vspace-field">NPT — altura desde el piso (cm)<input id="vsNpt" type="number" min="0" max="20000" step="1" value="${Math.round(Number(rack.baseHeight||0))}" ${lock}></label><div class="vspace-field"><small class="vspace-muted">Cota superior</small><b>+${Math.round(Number(rack.baseHeight||0)+Number(rack.rackHeight||sp.height))} cm</b></div></div>
         <button class="vspace-primary" id="vsUpdate" ${lock}>Aplicar medidas y posición</button><div class="vspace-stack-controls"><button type="button" id="vsPlaceOnTop" ${lock}>Colocar encima de otro mueble</button>${rack.stackedOnId?`<small class="vspace-muted">Sobre: ${vspaceEsc((appState.layout.racks||[]).find(r=>r.id===rack.stackedOnId)?.virtualName||rack.stackedOnId)}</small><button type="button" id="vsReleaseStack" ${lock}>Desvincular soporte</button>`:''}</div><div class="vspace-divider"></div>
         <h4>Asignación por nivel</h4><small class="vspace-muted">Nivel: de abajo hacia arriba · P: de izquierda a derecha</small>
         <div class="vspace-numbers">${levels}</div><div class="vspace-numbers vspace-slots">${slots}</div>
-        <div class="vspace-loc-code">${vspaceEsc(rack.id)}-N${state.selectedLevel}-S${state.selectedSlot}</div>
+        <div class="vspace-loc-code">${vspaceEsc(sp.code)}-N${state.selectedLevel}-S${state.selectedSlot}</div>
         <div class="vspace-container-editor"><b>Cajas sobre el nivel</b><small class="vspace-muted">Elige el contenedor físico que aparecerá en el estante. No cambia el stock.</small>
         <div class="vspace-grid-2"><label class="vspace-field">Contenedor<select id="vsContainerKind" ${lock}>${[['none','Sin caja'],['carton','Cartón'],['plastic','Gaveta plástica']].map(([value,title])=>`<option value="${value}" ${vspaceContainersForSlot(rack,state.selectedLevel,state.selectedSlot).kind===value?'selected':''}>${title}</option>`).join('')}</select></label>
         <label class="vspace-field">Cantidad (1–4)<input type="number" min="1" max="4" id="vsContainerCount" value="${Math.max(1,vspaceContainersForSlot(rack,state.selectedLevel,state.selectedSlot).count)}" ${lock}></label></div>
@@ -691,6 +686,8 @@
         <div class="vspace-grid-2"><button class="vspace-primary" id="vsAssign" ${lock}>Asignar SKU</button><button id="vsRemoveAssignment" ${lock}>Vaciar posición</button></div>
         <div class="vspace-divider"></div><div class="vspace-grid-2"><button id="vsDuplicate" ${lock}>Duplicar mueble</button><button id="vsDelete" class="vspace-danger" ${lock}>Eliminar mueble</button></div>`;
       host.querySelectorAll('[data-vs-modular]').forEach(btn=>btn.onclick=()=>{const target=findRackById(btn.dataset.vsModular);if(target)state.select(target.id);});
+      host.querySelector('#vsFurnitureUndo')?.addEventListener('click',()=>{if(!canWrite())return;undoHistory('distribution');state.refreshInspector();state.render?.(true);});
+      host.querySelector('#vsFurnitureRedo')?.addEventListener('click',()=>{if(!canWrite())return;redoHistory('distribution');state.refreshInspector();state.render?.(true);});
       host.querySelector('#vsEditModularLayout')?.addEventListener('click',()=>{appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;appState.editor.stackViewMode='expanded';setScreen('distribution');});
       host.querySelectorAll('[data-vspace-level]').forEach(b=>b.onclick=()=>{state.selectedLevel=Number(b.dataset.vspaceLevel);state.refreshInspector();state.render?.(false);});
       host.querySelectorAll('[data-vspace-slot]').forEach(b=>b.onclick=()=>{state.selectedSlot=Number(b.dataset.vspaceSlot);state.refreshInspector();state.render?.(false);});
@@ -702,7 +699,7 @@
         vspaceCommit('soporte desvinculado');state.refreshInspector();
       });
       host.querySelector('#vsUpdate')?.addEventListener('click',()=>{
-        vspaceUpdateRack(rack,{name:host.querySelector('#vsName').value,width:host.querySelector('#vsWidth').value,depth:host.querySelector('#vsDepth').value,
+        vspaceUpdateRack(rack,{name:host.querySelector('#vsName').value,code:host.querySelector('#vsCode').value,width:host.querySelector('#vsWidth').value,depth:host.querySelector('#vsDepth').value,
           height:host.querySelector('#vsHeight').value,levels:host.querySelector('#vsLevels').value,slots:host.querySelector('#vsSlots').value,
           rot:host.querySelector('#vsRotation').value,x:host.querySelector('#vsX').value,y:host.querySelector('#vsY').value,npt:host.querySelector('#vsNpt').value});
       });
@@ -712,18 +709,21 @@
       host.querySelector('#vsDelete')?.addEventListener('click',()=>{
         if((appState.layout?.racks||[]).some(r=>r.stackedOnId===rack.id))return vspaceToast('No puedes eliminar un soporte que sostiene otros módulos. Desvincula primero los muebles superiores.',true);
         if(!confirm(`¿Eliminar ${sp.title} y sus asignaciones?`))return;
+        recordHistorySnapshot('distribution');
         appState.layout.racks=appState.layout.racks.filter(r=>r.id!==rack.id);
         state.selectedId=appState.layout.racks[0]?.id||'';
         vspaceCommit('mueble eliminado');state.refreshInspector();
       });
       host.querySelector('#vsDuplicate')?.addEventListener('click',()=>{
         const cloneRack=JSON.parse(JSON.stringify(rack));cloneRack.id=`${rack.id}-C${Date.now().toString(36).slice(-4).toUpperCase()}`;
-        cloneRack.virtualName=`${sp.title} (copia)`;delete cloneRack.stackedOnId;cloneRack.x+=20;cloneRack.y+=20;
+        v222PrepareRackCopy(cloneRack,rack);delete cloneRack.stackedOnId;cloneRack.x+=20;cloneRack.y+=20;
         const found=vspaceFindPosition(cloneRack);if(!found)return vspaceToast('No queda espacio disponible para duplicar.',true);
         Object.assign(cloneRack,found);
         const sourceModel=appState.models.find(m=>m.id===rack.modelId);
-        if(sourceModel){cloneRack.modelId=`${rack.modelId}_c${Date.now().toString(36)}`;appState.models.push({...sourceModel,id:cloneRack.modelId,name:cloneRack.virtualName});}
+        recordHistorySnapshot('distribution');
+        if(sourceModel){cloneRack.modelId=`${rack.modelId}_c${Date.now().toString(36)}`;appState.models.push({...clone(sourceModel),id:cloneRack.modelId,name:cloneRack.virtualName});}
         appState.layout.racks.push(cloneRack);state.selectedId=cloneRack.id;
+        saveRackModels();
         vspaceCommit('mueble duplicado');state.refreshInspector();
       });
     };

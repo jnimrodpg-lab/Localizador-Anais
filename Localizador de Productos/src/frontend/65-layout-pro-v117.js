@@ -251,7 +251,7 @@
   }
   function v117RackAisleGap(a,b){
     if(!a||!b)return null; let diff=Math.abs(normalizeAngle(a.rot||0)-normalizeAngle(b.rot||0)); diff=Math.min(diff,360-diff); if(diff>7&&Math.abs(diff-180)>7)return null;
-    const ca={x:a.x+a.w/2,y:a.y+a.h/2}, cb={x:b.x+b.w/2,y:b.y+b.h/2}; const ang=normalizeAngle(a.rot||0)*Math.PI/180; const dx=cb.x-ca.x,dy=cb.y-ca.y; const lx=dx*Math.cos(ang)+dy*Math.sin(ang), ly=-dx*Math.sin(ang)+dy*Math.cos(ang); const fa=getRackFootprint(a.modelId,a.rot||0), fb=getRackFootprint(b.modelId,b.rot||0);
+    const ca={x:a.x+a.w/2,y:a.y+a.h/2}, cb={x:b.x+b.w/2,y:b.y+b.h/2}; const ang=normalizeAngle(a.rot||0)*Math.PI/180; const dx=cb.x-ca.x,dy=cb.y-ca.y; const lx=dx*Math.cos(ang)+dy*Math.sin(ang), ly=-dx*Math.sin(ang)+dy*Math.cos(ang); const fa=getRackFootprint(a.modelId, a.rot||0, a), fb=getRackFootprint(b.modelId, b.rot||0, b);
     if(Math.abs(ly)<Math.abs(lx)*.55) return null; return Math.abs(ly)-(fa.baseH+fb.baseH)/2;
   }
   function v117DoorClearancePolygon(opening, wall, depthUnits){

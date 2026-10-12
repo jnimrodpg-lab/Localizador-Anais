@@ -2004,7 +2004,7 @@
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
     if(isRackDistributionScreen()){
-      if(rack) return { type:'rack', title:rack.displayCode||rack.id, subtitle:`${rack.zoneId} · ${escapeHtml((rackModel(rack.modelId)||{}).name || rack.modelId || 'Rack')}` };
+      if(rack) return { type:'rack', title:rack.displayCode||rack.id, subtitle:`${rack.zoneId} · ${escapeHtml(v222RackName(rack))}` };
       if(zone) return { type:'none', title:'Selecciona un rack', subtitle:`Zona ${zone.name||zone.id} · ${(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length} racks disponibles` };
       return { type:'none', title:'Sin rack seleccionado', subtitle:'Selecciona o agrega un rack; la estructura está bloqueada' };
     }
@@ -2216,7 +2216,7 @@
     const summary = layoutSelectedSummary();
     const zoneB = zone ? zoneBounds(zone) : null;
     const model = rack ? rackModel(rack.modelId) : null;
-    const fp = rack ? getRackFootprint(rack.modelId, rack.rot || 0) : null;
+    const fp = rack ? getRackFootprint(rack.modelId, rack.rot || 0, rack) : null;
     const modelOptions = appState.models.map(m=>`<option value="${escapeHtml(m.id)}" ${rack?.modelId===m.id?'selected':''}>${escapeHtml(m.name)}</option>`).join('');
     const rackMode = isRackDistributionScreen();
     const urbanismMode = !rackMode && activeLayoutWorkspace()==='urbanism';
@@ -2377,22 +2377,7 @@
           </details>
         </section>` : ''}
         </div></details>
-        ${rackMode && rack ? `<section class="layout-prop-card">
-          <div class="layout-prop-title">Rack</div>
-          <div class="layout-prop-grid two">
-            <label>ID<input value="${escapeHtml(rack.id)}" disabled></label>
-            <label>Zona<input value="${escapeHtml(rack.zoneId)}" disabled></label>
-            <label style="grid-column:1/-1">Nombre / nomenclatura<input id="rpRackDisplayCode" value="${escapeHtml(rack.displayCode||rack.id)}" placeholder="Ej. A-01-R03"></label>
-            <label>Modelo<select id="rpRackModel">${modelOptions}</select></label>
-            <label>Rotación (°)<input id="rpRackRot" type="number" min="0" max="360" step="0.1" value="${Number(normalizeAngle(rack.rot||0).toFixed(2))}"></label>
-            <label>X<input id="rpRackX" type="number" value="${formatUnitNumber(rack.x)}"></label>
-            <label>Y<input id="rpRackY" type="number" value="${formatUnitNumber(rack.y)}"></label>
-            <label>Huella<input value="${formatUnitNumber(fp?.w||rack.w)} × ${formatUnitNumber(fp?.h||rack.h)}" disabled></label>
-            <label>Altura<input id="rpRackHeight" type="number" min="60" step="10" value="${Math.round(Number(rack.rackHeight || model?.height || 238))}"></label>
-            <label>NPT (cm desde suelo)<input id="rpRackNpt" type="number" min="0" max="20000" step="1" value="${Math.round(Number(rack.baseHeight||0))}"></label>
-          </div>
-          <div class="layout-template-grid" style="margin-top:10px"><button class="seg-btn" id="rpDuplicateRack">Duplicar rack</button><button class="seg-btn" id="rpRack45">Girar 45°</button><button class="seg-btn" id="rpRack90">Girar 90°</button><button class="seg-btn" id="rpAddAbove">Agregar encima</button></div>
-        </section>` : ''}
+        ${rackMode&&rack?v222RackPropertiesMarkup(rack,model,fp,modelOptions):''}
         ${architectureMode && findWallById(appState.selectedWallId) ? (()=>{ const sw=findWallById(appState.selectedWallId); const na=!sw.autoZoneEdge?getWallNode(sw.startNodeId):null; const nb=!sw.autoZoneEdge?getWallNode(sw.endNodeId):null; const linkedA=na?wallsForNode(na.id).length:0; const linkedB=nb?wallsForNode(nb.id).length:0; return `<section class="layout-prop-card wall-pro-card">
           <div class="layout-prop-title">Muro</div>
           <div class="layout-prop-grid two">
@@ -2535,7 +2520,7 @@
     const baseAngle=normalizeAngle(Math.atan2(vy,vx)*180/Math.PI);
     const reverseAngle=normalizeAngle(baseAngle+180);
     const desired=Math.abs(shortestAngleDelta(rack.rot||0,baseAngle))<=Math.abs(shortestAngleDelta(rack.rot||0,reverseAngle))?baseAngle:reverseAngle;
-    const fp=getRackFootprint(rack.modelId,desired);
+    const fp=getRackFootprint(rack.modelId, desired, rack);
     const baseH=Math.max(4,Number(fp.baseH||rack.h||40));
     const oldCenter={x:Number(rack.x||0)+Number(rack.w||fp.w)/2,y:Number(rack.y||0)+Number(rack.h||fp.h)/2};
     const ux=vx/len,uy=vy/len,nx=-uy,ny=ux;
@@ -2640,7 +2625,7 @@
     const cy=Number(rack.y||0)+Number(rack.h||0)/2;
     // No usar applyRackRotation: llamaba a keepRackSnapped y podía desplazar
     // involuntariamente el rack incluso con "Movimiento libre" activo.
-    const fp=getRackFootprint(rack.modelId,desired);
+    const fp=getRackFootprint(rack.modelId, desired, rack);
     const proposal={...rack,rot:desired,w:fp.w,h:fp.h,x:cx-fp.w/2,y:cy-fp.h/2};
     const host=distributionHostForRack(proposal);
     if(host)proposal.zoneId=host.id;
@@ -2871,12 +2856,14 @@
       Object.assign(rack,{x:candidate.x,y:candidate.y,zoneId:candidate.zoneId});
       persistActiveLayout();renderLayoutEditor();
     };
-    if($('#rpRackDisplayCode')) $('#rpRackDisplayCode').onchange=e=>{if(!rack)return;const label=String(e.target.value||'').trim().slice(0,80);if(!label||label===(rack.displayCode||rack.id))return;recordHistorySnapshot('distribution');rack.displayCode=label;persistActiveLayout();renderLayoutEditor();};
-    if($('#rpRackModel')) $('#rpRackModel').onchange = e => { if(!rack) return; rack.modelId=e.target.value; syncRackFootprint(rack,true); const host=findZoneById(rack.zoneId); if(host && !distributionIsFreeMove()) keepRackSnapped(rack, host); persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpRackName'))$('#rpRackName').onchange=e=>{v222RenameRack(rack,'name',e.target.value);renderLayoutEditor();};
+    if($('#rpRackDisplayCode'))$('#rpRackDisplayCode').onchange=e=>{v222RenameRack(rack,'code',e.target.value);renderLayoutEditor();};
+    for(const [id,field] of [['rpRackWidth','width'],['rpRackDepth','depth'],['rpRackHeight','height']])if($('#'+id))$('#'+id).onchange=e=>{v222SetInstanceDimensions(rack,{[field]:e.target.value});renderLayoutEditor();};
+    if($('#rpRackResetDimensions'))$('#rpRackResetDimensions').onclick=()=>{v222SetInstanceDimensions(rack,{reset:true});renderLayoutEditor();};
+    if($('#rpRackModel')) $('#rpRackModel').onchange = e => { if(!rack) return; recordHistorySnapshot('distribution');rack.modelId=e.target.value;rack.furnitureOverrides={};rack.furnitureDataVersion=222;v222SyncRack(rack);syncRackFootprint(rack,true); const host=findZoneById(rack.zoneId); if(host && !distributionIsFreeMove()) keepRackSnapped(rack, host); persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpRackRot')) $('#rpRackRot').onchange = e => v194RotateRack(rack,e.target.value);
     if($('#rpRackX')) $('#rpRackX').onchange = applyRackPosition;
     if($('#rpRackY')) $('#rpRackY').onchange = applyRackPosition;
-    if($('#rpRackHeight')) $('#rpRackHeight').onchange = e => { if(!rack) return; rack.rackHeight = Math.max(60, Number(e.target.value||60)||60); persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpRackNpt')) $('#rpRackNpt').onchange=e=>{if(!rack)return;const npt=Math.max(0,Math.min(20000,Number(e.target.value)||0));if(Math.abs(Number(rack.baseHeight||0)-npt)<.001)return;const trial={...rack,baseHeight:npt};if(typeof vspaceFits==='function'&&!vspaceFits(trial,rack.id).ok){showToast('Elevación NPT bloqueada por colisión.','warning',2600);renderLayoutEditor();return;}recordHistorySnapshot('distribution');rack.baseHeight=npt;persistActiveLayout();renderLayoutEditor();};
     if($('#rpDuplicateRack')) $('#rpDuplicateRack').onclick = () => duplicateSelectedRack();
     if($('#rpRack45')) $('#rpRack45').onclick = () => v194RotateRack(rack,Number(rack?.rot||0)+45);
@@ -3045,7 +3032,7 @@
     const isIsoView = false;
     const selectedRack = findRackById(appState.selectedRackLayoutId);
     const selectedRackModel = selectedRack ? rackModel(selectedRack.modelId) : null;
-    const selectedRackFootprint = selectedRack ? getRackFootprint(selectedRack.modelId, selectedRack.rot || 0) : null;
+    const selectedRackFootprint = selectedRack ? getRackFootprint(selectedRack.modelId, selectedRack.rot || 0, selectedRack) : null;
     const selectedZone = findZoneById(appState.selectedZoneId);
     const selectedWall = findWallById(appState.selectedWallId);
     const selectedOpening = findOpeningById(appState.selectedOpeningId);
@@ -3254,7 +3241,7 @@
       {x:zb.maxX-badgeW-12,y:zb.maxY-badgeH-12}
     ];
     const overlap=(c)=>racks.some(r=>{
-      const fp=getRackFootprint(r.modelId, r.rot||0); const w=fp.w||r.w||40, h=fp.h||r.h||28;
+      const fp=getRackFootprint(r.modelId, r.rot||0, r); const w=fp.w||r.w||40, h=fp.h||r.h||28;
       const cx=(r.x||0)+w/2, cy=(r.y||0)+h/2; const rx=cx-w/2-10, ry=cy-h/2-10, rw=w+20, rh=h+20;
       return !(c.x+badgeW < rx || c.x > rx+rw || c.y+badgeH < ry || c.y > ry+rh);
     });
@@ -4232,7 +4219,7 @@
       }
       r.rot = normalizeAngle(r.rot || 0);
       r.front = r.front || 'top';
-      const fp = getRackFootprint(r.modelId, r.rot || 0);
+      const fp = getRackFootprint(r.modelId, r.rot || 0, r);
       const unitScale=Math.max(.01,getScaleCmPerUnit());
       const baseW = r.stackGroupId ? Number(r.virtual?.width||120)/unitScale : fp.baseW;
       const baseH = r.stackGroupId ? Number(r.virtual?.depth||60)/unitScale : fp.baseH;
@@ -4281,7 +4268,7 @@
         x:0,y:4,class:'ortho-label','text-anchor':'middle','dominant-baseline':'middle',
         style:'pointer-events:none', transform:`rotate(${-normalizeAngle(r.rot||0)})`
       });
-      t.textContent = r.stackGroupId?`N${Number(r.stackLevel||0)+1}-${String.fromCharCode(65+Number(r.stackModuleIndex||0))}`:(r.displayCode||r.id);
+      t.textContent=v222RackCode(r);const rackTitle=svgEl('title');rackTitle.textContent=`${v222RackCode(r)} · ${v222RackName(r)}`;g.appendChild(rackTitle);
       const baseHVal = Math.round(Number(r.baseHeight || 0));
       const levelBadge = svgEl('g',{transform:`translate(${-visualW/2 + 18} ${-visualH/2 + 10})`,style:'pointer-events:none'});
       levelBadge.appendChild(svgEl('rect',{x:-18,y:-12,width:36,height:18,rx:'9',fill:'rgba(8,18,30,.95)',stroke:'#56d2ff','stroke-width':'1'}));
@@ -4308,6 +4295,10 @@
         g.appendChild(stackBadge);
       }
       g.append(hit, body, outline, frontLine, frontArrow, t);
+      if(appState.editor.showLabels!==false&&(isRackSelected(r.id)||visualW>=100)){
+        const nameLabel=svgEl('text',{x:0,y:18,class:'ortho-label v222-rack-name','text-anchor':'middle','dominant-baseline':'middle',style:'pointer-events:none',transform:`rotate(${-normalizeAngle(r.rot||0)})`});
+        const name=v222RackName(r);nameLabel.textContent=name.length>24?name.slice(0,23)+'…':name;g.appendChild(nameLabel);
+      }
       if(r.stackGroupId){
         g.appendChild(svgEl('rect',{x:-visualW/2,y:-visualH/2,width:Math.min(7,visualW*.08),height:visualH,rx:'2',fill:STACK_LEVEL_COLORS[Number(r.stackLevel||0)%STACK_LEVEL_COLORS.length],style:'pointer-events:none'}));
       }
@@ -5526,7 +5517,7 @@
     const sectionOpen = !!appState.editor?.inspectorSectionOpen;
     const stack = rack ? rackStackSummary(rack) : { count:0, isStacked:false, members:[] };
     const selectedRackModel = rack ? rackModel(rack.modelId) : null;
-    const selectedRackFootprint = rack ? getRackFootprint(rack.modelId, rack.rot || 0) : null;
+    const selectedRackFootprint = rack ? getRackFootprint(rack.modelId, rack.rot || 0, rack) : null;
     const edgeWallCtx = getSelectedEdgeWallContext();
 
     if(headerMount){
@@ -5773,12 +5764,12 @@
       $('#sideRackStackLevel').onchange = e => { if(!rack) return; rack.stackLevel = Math.max(0, parseInt(e.target.value || 0, 10) || 0); recalcAllRackStackHeights(); persistActiveLayout(); renderLayoutEditor(); };
     }
     if($('#insRackHeight')) {
-      $('#insRackHeight').oninput = e => { rack.rackHeight = Math.max(60, Number(e.target.value || 0) || 60); };
-      $('#insRackHeight').onchange = e => { rack.rackHeight = Math.max(60, Number(e.target.value || 0) || 60); persistActiveLayout(); renderLayoutEditor(); };
+      $('#insRackHeight').oninput = null;
+      $('#insRackHeight').onchange = e => { if(!rack)return;v222SetInstanceDimensions(rack,{height:e.target.value});renderLayoutEditor(); };
     }
     if($('#sideRackHeight')) {
-      $('#sideRackHeight').oninput = e => { if(!rack) return; rack.rackHeight = Math.max(60, Number(e.target.value || 0) || 60); };
-      $('#sideRackHeight').onchange = e => { if(!rack) return; rack.rackHeight = Math.max(60, Number(e.target.value || 0) || 60); persistActiveLayout(); renderLayoutEditor(); };
+      $('#sideRackHeight').oninput = null;
+      $('#sideRackHeight').onchange = e => { if(!rack)return;v222SetInstanceDimensions(rack,{height:e.target.value});renderLayoutEditor(); };
     }
     const syncSelectedUnderStairsModel = () => {
       if(!rack) return;

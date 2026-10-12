@@ -2063,7 +2063,7 @@
   }
 
   function getRackIsoPlan(r){
-    const fp = getRackFootprint(r.modelId, 0);
+    const fp = getRackFootprint(r.modelId, 0, r);
     const bw = fp.baseW || r.w || 120;
     const bd = fp.baseH || r.h || 80;
     const cx = Number(r.x || 0) + Number(r.w || bw) / 2;

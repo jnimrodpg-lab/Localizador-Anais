@@ -53,15 +53,15 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     }
     part(x,y+bh*.79,z+bd/2+.01,bw*.27,bh*.07,.007,shared.paper,l,s);
   };
-  const slotContents=(l,s,surfaceY,bayW,bayDepth,bayX)=>{
+  const slotContents=(l,s,surfaceY,bayW,bayDepth,bayX,bayHeight=Infinity)=>{
     const cfg=vspaceContainersForSlot(rack,l,s);
     const filled=products(rack,l,s).length>0;
     const count=cfg.kind==='none'?0:cfg.count;
-    const capH=Math.max(.10,Math.min(.46,h/Math.max(1,spec.levels)*.52));
+    const capH=Math.max(.04,Math.min(.46,h/Math.max(1,spec.levels)*.52,bayHeight-.05));
     if(selected&&l===selectedLevel&&s===selectedSlot){
       part(bayX,surfaceY+.013,d*.02,bayW*.89,.017,bayDepth*.84,shared.highlight,l,s);
     }
-    if(!count)return;
+    if(!count||bayHeight<.075)return;
     const space=bayW*.89/count;
     for(let n=0;n<count;n++){
       const bx=bayX-bayW*.445+space*(n+.5);
@@ -72,41 +72,28 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     }
   };
   // Modelos diseñados en Furniture Builder: mismas piezas y cotas en espacio 3D.
-  const customModel=(appState.models||[]).find(m=>m.id===rack.modelId);
+  const customModel=v222FurnitureForRack(rack,spec);
   if(customModel?.furniture?.enabled && Array.isArray(customModel.furniture.pieces) && customModel.furniture.pieces.length){
     const f=customModel.furniture;
     const finishColors={oak:0xcda579,white:0xe9e8e2,walnut:0x826046,graphite:0x4f5357};
-    const board=new THREE.MeshStandardMaterial({color:finishColors[f.finish]||finishColors.oak,roughness:.76,metalness:.025});
-    const powder=new THREE.MeshStandardMaterial({color:0x59656c,roughness:.49,metalness:.65});
-    const renderPieces=customModel.furniture.pieces;
-    const mw=Math.max(1,Number(customModel.width||spec.width)),md=Math.max(1,Number(customModel.depth||spec.depth));
-    const physicalScaleX=spec.width/mw,physicalScaleD=spec.depth/md,physicalScaleH=spec.height/Math.max(1,Number(customModel.height||spec.height));
-    renderPieces.forEach(p=>{
-      const px=Number(p.x||0),py=Number(p.y||0),pz=Number(p.z||0),pw=Math.max(.1,Number(p.w||1)),pd=Math.max(.1,Number(p.d||1)),ph=Math.max(.1,Number(p.h||1));
-      const metalPiece=f.material==='metal'||(f.material==='metal-wood' && ['post','beam','brace'].includes(p.type));
-      const mat=metalPiece?powder:board;
-      const cx=((px+pw/2)*physicalScaleX-spec.width/2)/100;
-      const cy=((pz+ph/2)*physicalScaleH)/100;
-      const cz=((py+pd/2)*physicalScaleD-spec.depth/2)/100;
-      if(p.type==='brace'){
-        const ex=Number.isFinite(Number(p.x2))?Number(p.x2):px+pw, ez=Number.isFinite(Number(p.z2))?Number(p.z2):pz+ph;
-        const dx=(ex-px)*physicalScaleX/100,dy=(ez-pz)*physicalScaleH/100;
-        const length=Math.max(.01,Math.hypot(dx,dy));
-        const midX=((px+ex)/2*physicalScaleX-spec.width/2)/100;
-        const midY=((pz+ez)/2*physicalScaleH)/100;
-        const mesh=part(midX,midY,cz,length,Math.max(.008,pd/100),Math.max(.008,pd/100),powder);
-        mesh.rotation.z=Math.atan2(dy,dx);
-      }else{
-        part(cx,cy,cz,Math.max(.004,pw*physicalScaleX/100),Math.max(.004,ph*physicalScaleH/100),Math.max(.004,pd*physicalScaleD/100),mat);
-      }
+    const board=rackFurnitureMaterialSet(THREE,f.material==='melamine'?'melamine':'wood',false,f.finish);
+    const powder=rackFurnitureMaterialSet(THREE,'metal',false,f.finish);
+    v222FurnitureMeshes(customModel).forEach(item=>{
+      const p=item.piece,mat=furniturePieceFinish(customModel,p)==='metal'?powder:board;
+      const mesh=new THREE.Mesh(v222PieceGeometry(THREE,item,.01),mat);
+      if(item.profile)mesh.position.set(-spec.width/200,0,(Number(p.y||0)-spec.depth/2)/100);
+      else{mesh.position.set((item.x-spec.width/2)/100,item.y/100,(item.z-spec.depth/2)/100);mesh.rotation.z=item.angle;}
+      group.add(mesh);
+      mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={...mesh.userData,furnitureId:rack.id,pieceId:p.id,type:p.type};
     });
+    deriveFurnitureLevels(customModel).forEach(level=>level.slots.forEach(slot=>slotContents(level.index,slot.index,level.z0/100,slot.width/100,spec.depth/100,(slot.x0+slot.x1-spec.width)/200,Math.max(0,Math.min(level.z1,furnitureRoofHeightAtX(customModel,slot.x0),furnitureRoofHeightAtX(customModel,slot.x1))-level.z0)/100)));
     if(selected){
       // El resaltado se dibuja separado de las mallas: no modifica pintura ni veta del mueble.
       const boundary=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2],[-w/2,-d/2]];
       const geo=new THREE.BufferGeometry().setFromPoints(boundary.map(([x,z])=>new THREE.Vector3(x,.022,z)));
       const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0x15a889,depthTest:false}));
       line.renderOrder=8;group.add(line);
-      sign(spec.title,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
+      sign(`${spec.code||rack.id} · ${spec.title}`,0,spec.height/100+.12,0,Math.min(1.6,Math.max(.4,w*.9)));
     }
     return;
   }
@@ -135,7 +122,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       const brace=part(0,h/2,-d/2+.017,.022,braceLength,.021,shared.metalDark);
       brace.rotation.z=side*Math.atan2(w-.18,h-.20);
     }
-    sign(spec.title,0,h+.14,0,Math.min(.9,Math.max(.4,w*.64)));
+    sign(`${spec.code||rack.id} · ${spec.title}`,0,h+.14,0,Math.min(.9,Math.max(.4,w*.64)));
   }else if(spec.kind==='vitrina'){
     const base=Math.min(.52,h*.29),topY=base,glassH=h-base;
     // Wooden storage plinth with drawer lines.
@@ -160,7 +147,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     pane(-w/2+.006,base+glassH/2,0,.012,glassH-.045,d-.045);
     pane(w/2-.006,base+glassH/2,0,.012,glassH-.045,d-.045);
     part(0,base+glassH/2,d/2+.015,.017,glassH,frame,shared.metalDark);
-    sign(spec.title,0,h+.20,0,Math.min(1.7,w));
+    sign(`${spec.code||rack.id} · ${spec.title}`,0,h+.20,0,Math.min(1.7,w));
   }else if(spec.kind==='mostrador'){
     const base=Math.max(.09,h-.08);
     part(0,base/2,0,w-.07,base,d-.065,shared.woodDark);
@@ -191,7 +178,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         }
       }
     }
-    sign(spec.title,0,h+.47,0,Math.min(2,w*1.05));
+    sign(`${spec.code||rack.id} · ${spec.title}`,0,h+.47,0,Math.min(2,w*1.05));
   }else if(spec.kind==='contenedor'){
     // Modular open bin shelving, blue molded plastic with compartments.
     const unit=h/spec.levels;
@@ -206,7 +193,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       }
     }
     for(const x of [-w/2+.025,w/2-.025])part(x,h/2,0,.05,h,d,shared.plasticDark);
-    sign(spec.title,0,h+.23,0,Math.min(1.9,w*1.2));
+    sign(`${spec.code||rack.id} · ${spec.title}`,0,h+.23,0,Math.min(1.9,w*1.2));
   }else if(spec.kind==='cajonera'){
     // Chest of drawers / dresser with pickable drawers and warm wooden finish.
     const shell=Math.max(.028,Math.min(.045,w*.035));
@@ -232,10 +219,10 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       }
     }
     for(const x of [-w/2+shell/2,w/2-shell/2]) part(x,h/2,0,shell,h,d,shared.woodDark);
-    sign(spec.title,0,h+.20,0,Math.min(1.9,w*1.15));
+    sign(`${spec.code||rack.id} · ${spec.title}`,0,h+.20,0,Math.min(1.9,w*1.15));
   }else{
     carton(0,0,0,w,h,d,1,1,shared.cardboard);
-    sign(spec.title,0,h+.17,0,Math.min(1.55,w*1.4));
+    sign(`${spec.code||rack.id} · ${spec.title}`,0,h+.17,0,Math.min(1.55,w*1.4));
   }
   // Thin selected outline on the floor: does not obstruct selection or shelf contents.
   if(selected){

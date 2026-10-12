@@ -490,7 +490,7 @@
     return best;
   }
   function keepRackInsideZone(rack, zone){
-    const fp = getRackFootprint(rack.modelId, rack.rot || 0);
+    const fp = getRackFootprint(rack.modelId, rack.rot || 0, rack);
     const b = zoneBounds(zone);
     const margin = 0;
     const effW = Math.max(0, Number(rack.w || fp.w || fp.baseW || 0));
@@ -566,7 +566,7 @@
   }
   function rackAxisData(rack){
     if(!rack) return null;
-    const fp = getRackFootprint(rack.modelId, rack.rot || 0);
+    const fp = getRackFootprint(rack.modelId, rack.rot || 0, rack);
     const baseW = Math.max(8, fp.baseW || rack.w || 0);
     const baseH = Math.max(8, fp.baseH || rack.h || 0);
     const angle = normalizeAngle(rack.rot || 0) * Math.PI / 180;
@@ -815,7 +815,7 @@
     const rack = findRackById(appState.selectedRackLayoutId); if(!rack) return;
     const zone = findZoneById(rack.zoneId); if(!zone) return;
     const copy = clone(rack);
-    copy.id = nextRackId(zone.id);
+    copy.id = nextRackId(zone.id);if(typeof v222PrepareRackCopy==='function')v222PrepareRackCopy(copy,rack);
     copy.x = snapGrid(rack.x + rack.w + 12);
     copy.y = snapGrid(rack.y);
     if(!(typeof distributionIsFreeMove==='function' && distributionIsFreeMove())) keepRackSnapped(copy, zone);
@@ -948,7 +948,7 @@
   }
   function drawSelectedRackMeasurements(layer, rack, zone){
     if(!layer || !rack || !zone || !appState.editor.showDims) return;
-    const fp = getRackFootprint(rack.modelId, rack.rot || 0);
+    const fp = getRackFootprint(rack.modelId, rack.rot || 0, rack);
     const geomW = Math.max(8, fp.baseW || rack.w || 0);
     const geomH = Math.max(8, fp.baseH || rack.h || 0);
     const cx = rack.x + Math.max(8, rack.w || fp.w || geomW)/2;

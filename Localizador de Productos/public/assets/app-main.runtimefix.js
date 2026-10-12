@@ -17092,10 +17092,20 @@ function getSheetBranchOpenMap(){
     const aa=getWallFaceOffsets(a),bb=getWallFaceOffsets(b),reverse=(a.x2-a.x1)*(b.x2-b.x1)+(a.y2-a.y1)*(b.y2-b.y1)<0;
     return Math.abs(aa.left-(reverse?bb.right:bb.left))<1e-6&&Math.abs(aa.right-(reverse?bb.left:bb.right))<1e-6&&Math.abs((Number(a.height)||290)-(Number(b.height)||290))<1e-6&&(a.material||'default')===(b.material||'default');
   }
-  function v216OpeningVoids(){
+  function v216OpeningVoids(visibleParts=null){
     if(typeof getOpeningFootprint!=='function')return [];
     const scale=getScaleCmPerUnit()/100;
-    return (appState.layout.openings||[]).map(o=>{const wall=findWallById(o.wallId);if(!wall)return null;const footprint=getOpeningFootprint(o,wall),defaults=openingDefaultForType(o.type),sill=Math.max(0,Number(o.sill??defaults.sill));return footprint?{poly:footprint.poly,y0:sill*scale,y1:Math.min(Number(wall.height)||290,sill+(Number(o.height)||defaults.height))*scale}:null;}).filter(Boolean);
+    return (appState.layout.openings||[]).flatMap(o=>{
+      const wall=findWallById(o.wallId);if(!wall)return [];const footprint=getOpeningFootprint(o,wall),defaults=openingDefaultForType(o.type),sill=Math.max(0,Number(o.sill??defaults.sill));if(!footprint)return [];
+      const band={y0:sill*scale,y1:Math.min(Number(wall.height)||290,sill+(Number(o.height)||defaults.height))*scale};
+      if(!visibleParts)return [{...band,poly:footprint.poly}];
+      const length=wallLength(wall),center=footprint.seg.t*length,half=footprint.seg.width/2;
+      return visibleParts.filter(p=>p.id===wall.id).flatMap(part=>{
+        const len=wallLength(part);if(len<1e-7)return [];
+        const start=part.v217StartDistance||0,a=Math.max(0,(center-half-start)/len),b=Math.min(1,(center+half-start)/len);
+        if(b<=a)return [];const slice=getWallRawSlicePolygon(part,a,b,1);return slice?[{...band,poly:slice.poly}]:[];
+      });
+    });
   }
   let v216PlanCache=null;
   function v216PlanRings(polys,voids=[]){const signature=JSON.stringify([polys,voids]);if(v216PlanCache?.signature===signature)return v216PlanCache.rings;const rings=v216Union(polys,voids);v216PlanCache={signature,rings};return rings;}
@@ -17104,9 +17114,9 @@ function getSheetBranchOpenMap(){
     const rings=v216PlanRings(physical,v216OpeningVoids().map(v=>v.poly)),d=rings.map(r=>wallPolygonPath(r)).join(' ');
     const path=svgEl('path',{d,fill:'rgba(232,223,209,.99)',stroke:'#7b6753','stroke-width':1.6,'fill-rule':'evenodd','pointer-events':'none','data-v216-wall-union':'1'});layer.prepend(path);
   }
-  function v216AddUnionMeshes(THREE,host,bands,mapper,register){
+  function v216AddUnionMeshes(THREE,host,bands,mapper,register,options={}){
     if(!bands.length)return;
-    const voids=v216OpeningVoids();
+    const voids=v216OpeningVoids(options.walls||null);
     const levels=[...new Set([...bands,...voids].flatMap(b=>[b.y0,b.y1]))].sort((a,b)=>a-b);
     for(let i=0;i<levels.length-1;i++){
       const y0=levels[i],y1=levels[i+1],mid=(y0+y1)/2;if(y1-y0<1e-7)continue;
@@ -17155,6 +17165,42 @@ function getSheetBranchOpenMap(){
   }
   function v217WallModeNext(mode){return mode==='diorama'?'full':mode==='full'?'none':'diorama';}
   function v217WallModeLabel(mode){return mode==='full'?'Muros completos':mode==='none'?'Sin muros':'Diorama';}
+  // V218: camera-dependent cutaway. Plan coordinates x/y map to world x/z.
+  function v218InwardFaces(wall,boundary){
+    const pts=boundary?.pts||boundary||[];if(pts.length<3)return [];
+    const area=pts.reduce((s,p,i)=>s+Number(p.x)*Number(pts[(i+1)%pts.length].y)-Number(pts[(i+1)%pts.length].x)*Number(p.y),0);
+    if(Math.abs(area)<1e-8)return [];
+    const sign=area>0?1:-1,a={x:Number(wall.x1),y:Number(wall.y1)},dx=Number(wall.x2)-a.x,dy=Number(wall.y2)-a.y,L=Math.hypot(dx,dy);if(!L)return [];
+    const tolerance=Math.max(.08,Math.min(.5,(Number(wall.thickness)||12)*.02)),faces=[];
+    const parameter=p=>((p.x-a.x)*dx+(p.y-a.y)*dy)/(L*L),distance=p=>Math.abs((p.x-a.x)*dy-(p.y-a.y)*dx)/L;
+    pts.forEach((p,i)=>{const q=pts[(i+1)%pts.length],ex=Number(q.x)-Number(p.x),ey=Number(q.y)-Number(p.y),len=Math.hypot(ex,ey);if(len<1e-7)return;
+      if(Math.abs(dx*ey-dy*ex)/(L*len)>1e-5||distance(p)>tolerance||distance(q)>tolerance)return;
+      const t=parameter(p),u=parameter(q),start=Math.max(0,Math.min(t,u)),end=Math.min(1,Math.max(t,u));if(end-start<=1e-7)return;
+      const normal={x:-ey/len*sign,z:ex/len*sign};
+      // Normal is part of the key: a changed contour cannot inherit an old side.
+      faces.push({start,end,normal,key:`${wall.id}:${i}:${normal.x.toFixed(6)}:${normal.z.toFixed(6)}`});
+    });return faces;
+  }
+  function v218FaceVisible(normal,towardCamera,previous){
+    const x=Number(towardCamera?.x)||0,z=Number(towardCamera?.z)||0,y=Number(towardCamera?.y)||0,flat=Math.hypot(x,z),length=Math.hypot(x,y,z);
+    // Near plan view keep the complete footprint; vertical faces are edge-on.
+    if(!length||flat/length<.12)return true;
+    const dot=(normal.x*x+normal.z*z)/flat,hysteresis=.025;
+    if(dot>hysteresis)return true;if(dot<-hysteresis)return false;
+    return typeof previous==='boolean'?previous:dot>=0;
+  }
+  function v218VisibleWallParts(walls,boundary,mode='diorama',towardCamera={x:-1,y:1,z:1},previous=new Map()){
+    if(mode==='none')return {parts:[],visibility:previous,signature:'none'};
+    if(mode==='full')return {parts:walls,visibility:previous,signature:'full'};
+    const next=new Map(),parts=walls.flatMap(wall=>{
+      const faces=v218InwardFaces(wall,boundary),hidden=[];
+      faces.forEach(face=>{const visible=v218FaceVisible(face.normal,towardCamera,previous.get(face.key));next.set(face.key,visible);if(!visible)hidden.push([face.start,face.end]);});
+      hidden.sort((a,b)=>a[0]-b[0]);const ranges=[];let start=0;
+      hidden.forEach(([a,b])=>{if(a-start>1e-7)ranges.push([start,a]);start=Math.max(start,b);});if(1-start>1e-7)ranges.push([start,1]);
+      return ranges.map(([a,b])=>{if(a===0&&b===1)return wall;const ax=Number(wall.x1),ay=Number(wall.y1),dx=Number(wall.x2)-ax,dy=Number(wall.y2)-ay,L=Math.hypot(dx,dy);return {...wall,x1:ax+dx*a,y1:ay+dy*a,x2:ax+dx*b,y2:ay+dy*b,v217SourceLength:L,v217StartDistance:L*a};});
+    });
+    return {parts,visibility:next,signature:JSON.stringify(parts.map(w=>[w.id,w.x1,w.y1,w.x2,w.y2,w.v217StartDistance||0,w.v217SourceLength||0]))};
+  }
   function resetRackPreviewCamera(){
     if(!appState.ui) appState.ui = {};
     appState.ui.rackPreviewCamera = null;
@@ -19745,7 +19791,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     const typelist=Object.entries(VSPACE_TYPES).map(([id,p])=>`<button type="button" class="vspace-catalog-btn" data-vspace-add="${id}" ${canEdit?'':'disabled'}><b>${p.icon}</b><span>${vspaceEsc(p.name)}</span><small>${p.levels} niveles</small></button>`).join('');
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
-      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active" title="Diorama: exteriores ocultos, interiores visibles. Pulsa para ver muros completos o esconder todos." aria-label="Cambiar visibilidad de muros: Diorama">Diorama</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
+      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active" title="Diorama dinámico: muestra la cara interior de los muros exteriores según la cámara. Las divisiones interiores permanecen visibles. Pulsa para ver muros completos o esconder todos." aria-label="Cambiar visibilidad de muros: Diorama">Diorama</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
       <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
@@ -20521,7 +20567,13 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             state.urbanMeshes.push(group);
           });
         };
-        let wallUnionBands=[],visibleWallParts=[];
+        let wallUnionBands=[],visibleWallParts=[],cutVisibility=new Map(),visibleWallSignature='',renderingFrame=false;
+        const towardCamera=new THREE.Vector3();
+        const resolveWallCut=()=>{
+          camera.getWorldDirection(towardCamera).negate();
+          const result=v218VisibleWallParts(appState.layout.walls||[],appState.layout.meta?.siteBoundary,state.wallDisplay,towardCamera,cutVisibility);
+          cutVisibility=result.visibility;return result;
+        };
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
           const scale=getScaleCmPerUnit()/100;
           const dx=Number(wall.x2||0)-Number(wall.x1||0),dy=Number(wall.y2||0)-Number(wall.y1||0);
@@ -20540,8 +20592,9 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const mat=meshMat(selected?0x83b4a2:color,{metalness:0,roughness:.89,side:THREE.DoubleSide});
           const lineMat=new THREE.LineBasicMaterial({color:selected?0x398d70:0xc2ae92,transparent:true,opacity:selected?.78:.38});
           const openings=(appState.layout.openings||[]).filter(o=>o.wallId===wall.id).map(o=>{
-            const w=Math.min(Math.max(35,Number(o.width||90))*scale,length*.93);
-            const t=vspaceClamp(Number(o.t??.5),.03,.97),c=(t*(wall.v217SourceLength||L)-(wall.v217StartDistance||0))*scale;
+            const source=findWallById(wall.id)||wall,segment=getOpeningSegment(o,source);
+            const w=Math.max(40,Number(segment?.width||o.width||90))*scale;
+            const t=Number(segment?.t??o.t??.5),c=(t*(wall.v217SourceLength||L)-(wall.v217StartDistance||0))*scale;
             const sill=Math.max(0,Number(o.sill||0))*scale;
             const h=Math.min(Math.max(20,Number(o.height||210))*scale,Math.max(.001,wallHeight-sill));
             return {o,left:Math.max(0,c-w/2),right:Math.min(length,c+w/2),c,w,sill,h};
@@ -20584,8 +20637,10 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const frameMat=meshMat(0x515a55,{metalness:.38,roughness:.48});
           const glassMat=meshMat(0xadc9c5,{metalness:.08,roughness:.18,transparent:true,opacity:.33,depthWrite:false,side:THREE.DoubleSide});
           const addTrim=(o,cx,cy,w,h,d,material)=>{
-            const mesh=new THREE.Mesh(new THREE.BoxGeometry(Math.max(.012,w),Math.max(.012,h),Math.max(.015,d)),material);
-            mesh.position.set(cx,cy,faceCenter);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
+            const half=Math.max(.012,w)/2,left=Math.max(0,cx-half),right=Math.min(length,cx+half);
+            if(right-left<.001)return null;
+            const mesh=new THREE.Mesh(new THREE.BoxGeometry(right-left,Math.max(.012,h),Math.max(.015,d)),material);
+            mesh.position.set((left+right)/2,cy,faceCenter);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
             mesh.userData={openingId:o.id,wallId:wall.id,entityType:'opening'};
             group.add(mesh);state.architectureMeshes.push(mesh);
             return mesh;
@@ -20594,8 +20649,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             const kind=normalizeOpeningType(o.type);
             if(kind==='free')return;
             const trim=Math.min(.055,Math.max(.025,w*.035));
-            addTrim(o,left+trim/2,sill+h/2,trim,h,thickness*1.12,frameMat);
-            addTrim(o,right-trim/2,sill+h/2,trim,h,thickness*1.12,frameMat);
+            addTrim(o,c-w/2+trim/2,sill+h/2,trim,h,thickness*1.12,frameMat);
+            addTrim(o,c+w/2-trim/2,sill+h/2,trim,h,thickness*1.12,frameMat);
             addTrim(o,c,sill+h-trim/2,w,trim,thickness*1.12,frameMat);
             if(kind==='window'){
               addTrim(o,c,sill+trim/2,w,trim,thickness*1.12,frameMat);
@@ -20647,7 +20702,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           world.add(group);state.objects.set(r.id,group);
         };
         const rebuild=()=>{
-          clearWorld();wallUnionBands=[];visibleWallParts=v217VisibleWallParts(appState.layout.walls||[],appState.layout.meta?.siteBoundary,state.wallDisplay);
+          clearWorld();wallUnionBands=[];const cut=resolveWallCut();visibleWallParts=cut.parts;visibleWallSignature=cut.signature;
           refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
@@ -20684,7 +20739,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           if(state.wallVisible){
             visibleWallParts.forEach(w=>buildArchitecturalWall(w));
             v216JointPieces(visibleWallParts).forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId));if(host)wallUnionBands.push({poly:j.poly,y0:0,y1:j.height*getScaleCmPerUnit()/100,wallId:host.wallId,material:host.material});});
-            v216AddUnionMeshes(THREE,world,wallUnionBands,coord,mesh=>state.architectureMeshes.push(mesh));
+            v216AddUnionMeshes(THREE,world,wallUnionBands,coord,mesh=>state.architectureMeshes.push(mesh),{walls:visibleWallParts});
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.
           const boundsW=(zoneBounds.length?Math.max(...zoneBounds.map(p=>p.x))-Math.min(...zoneBounds.map(p=>p.x)):700)*getScaleCmPerUnit()/100;
@@ -20699,8 +20754,12 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           state.requestRender();
         };
         state.requestRender=()=>{
-          if(state.destroyed||state.raf)return;
-          state.raf=requestAnimationFrame(()=>{state.raf=0;if(state.destroyed)return;updateCam();renderer.render(scene,camera);});
+          if(state.destroyed||state.raf||renderingFrame)return;
+          state.raf=requestAnimationFrame(()=>{
+            state.raf=0;if(state.destroyed)return;renderingFrame=true;
+            try{updateCam();const cut=resolveWallCut();if(cut.signature!==visibleWallSignature)rebuild();renderer.render(scene,camera);}
+            finally{renderingFrame=false;}
+          });
         };
         state.render=()=>rebuild();
         state.updateSceneTheme=()=>{scene.background.setHex(document.body.classList.contains('theme-light')?0xd6dde1:0x202b33);state.requestRender();};
@@ -20831,7 +20890,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         canvas.addEventListener('pointerup',()=>{
           if(gesture?.mode==='move-urban'&&gesture.moved){vspaceCommit('mobiliario urbano desplazado');state.refreshInspector();}
           if(gesture?.mode==='move'&&gesture.moved){vspaceCommit('mueble desplazado');state.refreshInspector();}
-          // Wall visibility is independent of orbit: no rebuild on rotation.
+          // Camera cut is evaluated in the render frame; rebuild only if the visible set changes.
           gesture=null;
         });
         canvas.addEventListener('pointercancel',()=>{gesture=null;});

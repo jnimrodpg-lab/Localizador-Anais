@@ -1,16 +1,19 @@
-# WMS Industrial V217 — Diorama isométrico
+# WMS Industrial V218 — Diorama dinámico
 
-Vista 3D mejorada sobre V216. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+Vista 3D corregida sobre V217. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
 
-## Espacio virtual 3D: diorama V217
+## Espacio virtual 3D: corte según la cámara V218
 
 - Abre con el modelo completo encuadrado y una orientación isométrica de ejes equivalentes, mirando desde el lado opuesto al preset anterior. Coincide con la orientación solicitada en la segunda captura.
 - La selección previa de un mueble mantiene sus propiedades, pero no cambia automáticamente el encuadre al entrar. «Enfocar», F y doble clic siguen acercando al elemento; «Isométrica» y «Ajustar» recuperan la vista completa.
-- **Diorama** es el modo de muros inicial: oculta los tramos del perímetro del área comercial y conserva los interiores desde todos los ángulos. La clasificación usa el contorno del área, no las zonas virtuales ni la dirección de la cámara. Admite perímetros cóncavos y diagonales, sentidos invertidos y tramos mixtos: solo se recorta visualmente su parte exterior.
+- **Diorama** es el modo de muros inicial: cada tramo del perímetro comercial aparece cuando su cara interior mira hacia la cámara y desaparece cuando se mira desde su cara exterior. Al girar, cambia el corte de la maqueta: se abren los muros de primer plano y se conservan los del fondo. Las divisiones interiores siempre permanecen visibles.
+- La normal interior se obtiene del contorno del área, con independencia del sentido de sus vértices o de los extremos del muro. La comparación usa la dirección de la cámara ortográfica; desplazar o acercar la vista no cambia qué lado se ve. Admite perímetros cóncavos y diagonales y tramos mixtos: se recorta solo la porción exterior que corresponda.
+- Una pequeña tolerancia angular estabiliza el cambio cuando un muro queda de canto. En vista Planta se conserva el perímetro completo para leer su huella.
 - El botón alterna **Diorama → Muros completos → Sin muros → Diorama**. La arquitectura guardada, sus ID, vínculos, aberturas y la geometría del plano 2D se conservan.
-- Las puertas y ventanas de muros exteriores se ocultan con sus muros. Las aberturas interiores siguen visibles. Los empalmes 3D se calculan con los tramos visibles para evitar picos heredados de un vecino oculto.
+- Las puertas, ventanas y sombras se ocultan y reaparecen con su muro. Las aberturas interiores siguen visibles. El corte se resuelve antes de calcular empalmes y superficies unidas; los vecinos ocultos no dejan puntas ni huecos sobre otros muros. Los huecos, marcos y vidrios de un tramo mixto se limitan a su parte visible.
 - Fondo gris azulado en tema claro y azul oscuro en tema oscuro; iluminación más moderada para recuperar colores y volumen. Base cálida con canto oscuro y sombra de contacto bajo la maqueta.
-- Cambiar tema actualiza el fondo 3D inmediatamente. Girar la cámara conserva los muros interiores y no reconstruye la geometría en cada giro.
+- Cambiar tema actualiza el fondo 3D inmediatamente. El corte se evalúa durante el arrastre y solo reconstruye la escena cuando cambia el conjunto de tramos visibles. La arquitectura guardada permanece intacta.
+- El visor mantiene su altura al reducir la ventana a 1280 px; se retiran de esta pantalla las filas heredadas del antiguo diseño de cuatro paneles.
 
 ## Muros: correcciones V216
 
@@ -57,9 +60,9 @@ La creación y edición avanzadas siguen disponibles. El nombre visible y el có
 
 Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y error de sincronización. Una respuesta anterior de guardado no marca los cambios nuevos como sincronizados. Se mantienen las comprobaciones del almacenamiento local.
 
-`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V217 y sintaxis y comprueba sintaxis del backend/frontend.
+`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V218 y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` comprueba V217 en navegador: vista isométrica inicial con un mueble previamente seleccionado, exteriores e interiores, puertas/ventanas, temas, base/sombra, rotación, modos de cámara, ciclo de muros y conservación de la geometría guardada. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
+`npm run test:ui` comprueba V218 en navegador: vista isométrica inicial con un mueble previamente seleccionado, cambio de caras exteriores durante una rotación completa, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y conservación de la geometría guardada. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
 
 ## Alcance
 

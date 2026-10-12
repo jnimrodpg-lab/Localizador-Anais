@@ -885,3 +885,11 @@ body.theme-light #appRoot.app .layout-type-pill{color:var(--primary)!important}
 #appRoot.app .vspace-root .vspace-example-btn{background:var(--surface-2)!important;color:var(--primary)!important;border-color:var(--line-2)!important}
 #appRoot.app .vspace-root .vspace-container-editor{background:var(--surface-2)!important;color:var(--ink)!important;border-color:var(--line)!important}
 #appRoot.app .vspace-container-editor :is(b,label){color:var(--ink)!important}
+
+/* V218: the 3D workspace has one row; the legacy four-panel responsive
+   rows otherwise collapse its canvas when the window reaches 1280 px. */
+@media(min-width:1181px){
+ body[data-screen=virtual] #appRoot.app{grid-template-rows:minmax(0,1fr)!important}
+ body[data-screen=virtual] #appRoot.app>.sidebar,
+ body[data-screen=virtual] #appRoot.app>.content-panel{grid-row:1!important;height:100%!important;min-height:0!important}
+}

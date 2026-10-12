@@ -49,10 +49,20 @@
     const aa=getWallFaceOffsets(a),bb=getWallFaceOffsets(b),reverse=(a.x2-a.x1)*(b.x2-b.x1)+(a.y2-a.y1)*(b.y2-b.y1)<0;
     return Math.abs(aa.left-(reverse?bb.right:bb.left))<1e-6&&Math.abs(aa.right-(reverse?bb.left:bb.right))<1e-6&&Math.abs((Number(a.height)||290)-(Number(b.height)||290))<1e-6&&(a.material||'default')===(b.material||'default');
   }
-  function v216OpeningVoids(){
+  function v216OpeningVoids(visibleParts=null){
     if(typeof getOpeningFootprint!=='function')return [];
     const scale=getScaleCmPerUnit()/100;
-    return (appState.layout.openings||[]).map(o=>{const wall=findWallById(o.wallId);if(!wall)return null;const footprint=getOpeningFootprint(o,wall),defaults=openingDefaultForType(o.type),sill=Math.max(0,Number(o.sill??defaults.sill));return footprint?{poly:footprint.poly,y0:sill*scale,y1:Math.min(Number(wall.height)||290,sill+(Number(o.height)||defaults.height))*scale}:null;}).filter(Boolean);
+    return (appState.layout.openings||[]).flatMap(o=>{
+      const wall=findWallById(o.wallId);if(!wall)return [];const footprint=getOpeningFootprint(o,wall),defaults=openingDefaultForType(o.type),sill=Math.max(0,Number(o.sill??defaults.sill));if(!footprint)return [];
+      const band={y0:sill*scale,y1:Math.min(Number(wall.height)||290,sill+(Number(o.height)||defaults.height))*scale};
+      if(!visibleParts)return [{...band,poly:footprint.poly}];
+      const length=wallLength(wall),center=footprint.seg.t*length,half=footprint.seg.width/2;
+      return visibleParts.filter(p=>p.id===wall.id).flatMap(part=>{
+        const len=wallLength(part);if(len<1e-7)return [];
+        const start=part.v217StartDistance||0,a=Math.max(0,(center-half-start)/len),b=Math.min(1,(center+half-start)/len);
+        if(b<=a)return [];const slice=getWallRawSlicePolygon(part,a,b,1);return slice?[{...band,poly:slice.poly}]:[];
+      });
+    });
   }
   let v216PlanCache=null;
   function v216PlanRings(polys,voids=[]){const signature=JSON.stringify([polys,voids]);if(v216PlanCache?.signature===signature)return v216PlanCache.rings;const rings=v216Union(polys,voids);v216PlanCache={signature,rings};return rings;}
@@ -61,9 +71,9 @@
     const rings=v216PlanRings(physical,v216OpeningVoids().map(v=>v.poly)),d=rings.map(r=>wallPolygonPath(r)).join(' ');
     const path=svgEl('path',{d,fill:'rgba(232,223,209,.99)',stroke:'#7b6753','stroke-width':1.6,'fill-rule':'evenodd','pointer-events':'none','data-v216-wall-union':'1'});layer.prepend(path);
   }
-  function v216AddUnionMeshes(THREE,host,bands,mapper,register){
+  function v216AddUnionMeshes(THREE,host,bands,mapper,register,options={}){
     if(!bands.length)return;
-    const voids=v216OpeningVoids();
+    const voids=v216OpeningVoids(options.walls||null);
     const levels=[...new Set([...bands,...voids].flatMap(b=>[b.y0,b.y1]))].sort((a,b)=>a-b);
     for(let i=0;i<levels.length-1;i++){
       const y0=levels[i],y1=levels[i+1],mid=(y0+y1)/2;if(y1-y0<1e-7)continue;

@@ -19,6 +19,7 @@
   function v117PointSegmentParam(point,a,b){ const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy||1; return ((point.x-a.x)*dx+(point.y-a.y)*dy)/den; }
   function v117PointLineDistance(point,a,b){ const t=v117PointSegmentParam(point,a,b); const q={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t}; return Math.hypot(q.x-point.x,q.y-point.y); }
   function v117SplitCollinearOverlap(wa,wb){
+    if(typeof v216SameWallProfile==='function'&&!v216SameWallProfile(wa,wb))return false;
     const ea=v117WallEndpoints(wa), eb=v117WallEndpoints(wb); const adx=ea.b.x-ea.a.x,ady=ea.b.y-ea.a.y,bdx=eb.b.x-eb.a.x,bdy=eb.b.y-eb.a.y; const la=Math.hypot(adx,ady)||1,lb=Math.hypot(bdx,bdy)||1;
     const cross=Math.abs(adx*bdy-ady*bdx)/(la*lb); if(cross>.015) return false;
     if(v117PointLineDistance(eb.a,ea.a,ea.b)>1.6 || v117PointLineDistance(eb.b,ea.a,ea.b)>1.6) return false;
@@ -75,9 +76,9 @@
       const walls=manualWalls().filter(w=>wallLength(w)>2);
       outer: for(let i=0;i<walls.length;i++) for(let j=i+1;j<walls.length;j++){
         const wa=walls[i], wb=walls[j];
-        if([wa.startNodeId,wa.endNodeId].some(id=>id===wb.startNodeId||id===wb.endNodeId)) continue;
         const ea=v117WallEndpoints(wa), eb=v117WallEndpoints(wb);
         if(v117SplitCollinearOverlap(wa,wb)){ splits++; changed=true; dedupeManualWalls({}); break outer; }
+        if([wa.startNodeId,wa.endNodeId].some(id=>id===wb.startNodeId||id===wb.endNodeId)) continue;
         const hit=v117SegmentIntersection(ea.a,ea.b,eb.a,eb.b); if(!hit) continue;
         const aInterior=hit.t>.004&&hit.t<.996, bInterior=hit.u>.004&&hit.u<.996;
         if(!aInterior&&!bInterior) continue;

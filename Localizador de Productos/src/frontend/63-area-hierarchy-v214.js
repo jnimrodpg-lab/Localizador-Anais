@@ -214,5 +214,5 @@
     const create=root.querySelector('#v214ZoneWidth'),height=root.querySelector('#v214ZoneHeight');if(create)create.oninput=()=>appState.editor.newZoneWidthM=Number(create.value);if(height)height.oninput=()=>appState.editor.newZoneHeightM=Number(height.value);
     const cancel=root.querySelector('#v214CancelZone');if(cancel)cancel.onclick=()=>{appState.editor.mode='select';renderLayoutEditor();};
     const placement=root.querySelector('#rpWallPlacement');if(placement&&v213LayerLocked('walls'))placement.disabled=true;
-    const wallTools=root.querySelector('.v203-wall-card');if(wallTools&&appState.selectedWallId){wallTools.hidden=true;}
+    const wallTools=root.querySelector('.v203-wall-card');if(wallTools&&appState.selectedWallId&&appState.editor.mode!=='wall'){wallTools.hidden=true;}
   }

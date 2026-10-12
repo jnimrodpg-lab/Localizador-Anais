@@ -7765,4 +7765,8 @@ body.theme-light #appRoot.app .layout-type-pill{color:var(--primary)!important}
  body[data-screen=layout] #appRoot.app .content-panel,body[data-screen=distribution] #appRoot.app .content-panel{grid-template-rows:auto minmax(0,1fr) auto!important}
  body[data-screen=layout] #appRoot.app .content-wrap,body[data-screen=distribution] #appRoot.app .content-wrap{display:block!important;align-content:normal!important}
 }
+#appRoot.app .v216-finish-wall{position:absolute;top:16px;left:105px;z-index:9;font-size:13px;min-height:36px;background:var(--surface-1);box-shadow:0 3px 12px rgba(20,30,20,.12)}
+#appRoot.app .layout-cad-v80 .wall-draw-help{max-width:calc(100% - 40px);font-size:12px;white-space:normal;pointer-events:none}
+
+#appRoot.app .layout-cad-shell-v80[data-mode=wall] .wall-pro-card{display:none!important}
 

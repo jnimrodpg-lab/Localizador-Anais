@@ -1063,14 +1063,17 @@
     return true;
   }
   function completeWallChainPoint(rawPoint, opts={}){
-    ensureWallTopology();
+    ensureWallTopology();v128RebuildSharedWallRegistry();
     const pending=appState.editor.pendingWallPoint;
     if(!pending) return null;
     const snap=opts.numeric ? {x:Number(rawPoint.x||0),y:Number(rawPoint.y||0),type:'numeric',label:'Medida exacta',nodeId:''} : snapWallPointSmart(rawPoint,{origin:pending,shiftKey:!!opts.shiftKey});
+    if(Math.hypot(snap.x-pending.x,snap.y-pending.y)<10){showToast('El tramo debe medir al menos '+formatDistanceCm(10)+'.','warning');return null;}
+    recordHistorySnapshot('structure');
     let endNode=snap.nodeId ? getWallNode(snap.nodeId) : null;
     if(!endNode) endNode=findOrCreateWallNode(snap);
     const startNode=getWallNode(pending.nodeId) || findOrCreateWallNode(pending,pending.nodeId);
     if(!startNode || !endNode || startNode.id===endNode.id) return null;
+    if(!appState.editor.wallChainStartNodeId)appState.editor.wallChainStartNodeId=startNode.id;
     const wall=createWallSegment(startNode,endNode,{startNodeId:startNode.id,endNodeId:endNode.id});
     if(!wall) return null;
     const v117Splits = v117ResolveWallIntersections();
@@ -1089,7 +1092,8 @@
       appState.editor.wallCursor={x:endNode.x+100,y:endNode.y,type:'grid',label:'Rejilla'};
     }
     appState.editor.wallLengthDraft='';
-    persistActiveLayout();
+    v128RebuildSharedWallRegistry();
+    persistActiveLayout('tramo de muro');
     renderLayoutEditor();
     return wall;
   }
@@ -1183,6 +1187,7 @@
       const tag=String(e.target?.tagName||'').toLowerCase(); const editing=['input','textarea','select'].includes(tag) || e.target?.isContentEditable;
       if(e.key==='Escape'){ e.preventDefault(); if(document.getElementById('v213CanvasPopover')){v213ClosePopover();return;} cancelLayoutDrawing(); return; }
       if(editing) return;
+      if(e.key==='Enter'&&appState.editor.mode==='wall'&&!appState.editor.wallLengthDraft){e.preventDefault();cancelLayoutDrawing();return;}
       if(e.key==='Enter'&&appState.editor.polygonDraft){e.preventDefault();v212FinishPolygon();return;}
       if((e.ctrlKey||e.metaKey) && String(e.key||'').toLowerCase()==='z'){
         e.preventDefault();const bucket=isRackDistributionScreen()?'distribution':(appState.editor.areaMoveMode?'layout':'structure');
@@ -1603,7 +1608,7 @@
     // Polygon order: start-right, end-right, end-left, start-left.
     const leftIndex=atStart?3:1;
     const rightIndex=atStart?0:2;
-    return {node,ray,atStart,leftIndex,rightIndex,
+    return {node,ray,length,atStart,leftIndex,rightIndex,
       left:raw.poly[leftIndex],right:raw.poly[rightIndex],poly:raw.poly,
       thickness:Number(raw.thickness)||12};
   }
@@ -1619,7 +1624,7 @@
   function getWallSlicePolygon(wall,t0=0,t1=1,inflate=1){
     const raw=getWallRawSlicePolygon(wall,t0,t1,inflate);
     if(!raw?.poly || wall?.autoZoneEdge)return raw;
-    const poly=raw.poly.map(p=>({...p}));
+    const poly=raw.poly.map(p=>({...p}));let miterLimited=false;
     const walls=(appState.layout?.walls||[]).filter(w=>w && w.id!==wall.id && !w.autoZoneEdge && wallLength(w)>1);
     const join=(atStart)=>{
       const t=atStart?Number(t0||0):Number(t1??1);
@@ -1648,11 +1653,14 @@
         {point:self.right,ray:self.ray},{point:other.left,ray:other.ray},self.node,thickness);
       // Do not mutate the opposite end: openings and other pieces preserve
       // their own profile. Both neighbors compute identical intersections.
-      if(leftHit)poly[self.leftIndex]=leftHit;
-      if(rightHit)poly[self.rightIndex]=rightHit;
+      const budget=Math.min(self.length,other.length)*.45;
+      if(!leftHit||!rightHit||pointDist2D(leftHit,self.node)>budget||pointDist2D(rightHit,self.node)>budget){miterLimited=true;return;}
+      poly[self.leftIndex]=leftHit;poly[self.rightIndex]=rightHit;
     };
     join(true);join(false);
-    return {...raw,poly};
+    const forward=(a,b)=>(b.x-a.x)*raw.dir.x+(b.y-a.y)*raw.dir.y;
+    if(forward(poly[0],poly[1])<=1e-7||forward(poly[3],poly[2])<=1e-7)return {...raw,miterLimited:true};
+    return {...raw,poly,miterLimited};
   }
 
   function getOpeningFootprint(opening, wall=findWallById(opening?.wallId), inflate=1){
@@ -1782,8 +1790,9 @@
       id:nextWallId(), name:'Muro',
       x1:startNode.x, y1:startNode.y, x2:endNode.x, y2:endNode.y,
       startNodeId:startNode.id, endNodeId:endNode.id,
-      thickness:Math.max(4,Number(appState.layout?.meta?.defaultWallThickness||12)||12),
-      height:Math.max(120,Number(appState.layout?.meta?.defaultWallHeight||290)||290),
+      thickness:appState.editor.wallDraftThickness!=null?Math.max(4,Math.min(80,Number(appState.editor.wallDraftThickness)||12))/Math.max(.0001,getScaleCmPerUnit()):Math.max(4,Number(appState.layout?.meta?.defaultWallThickness||12)||12),
+      height:appState.editor.wallDraftHeight!=null?Math.max(100,Math.min(800,Number(appState.editor.wallDraftHeight)||290))/Math.max(.0001,getScaleCmPerUnit()):Math.max(120,Number(appState.layout?.meta?.defaultWallHeight||290)||290),
+      placement:normalizeWallPlacement(appState.editor.wallDefaultPlacement||'inside'),
       ownerAreaId:'AREA-GENERAL', kind:'wall'
     };
     appState.layout.walls.push(wall);
@@ -1930,6 +1939,7 @@
   function layoutWallToolsMarkup(){
     const wallMode=appState.editor.architectureTool==='walls';
     if(!wallMode)return '';
+    const drawing=appState.editor.mode==='wall';
     const ctx=getSelectedEdgeWallContext();
     const selected=ctx?.zone ? findManualWallForZoneEdge(ctx.zone,ctx.edgeIndex):null;
     const wall=selected||findWallById(appState.selectedWallId);
@@ -1937,9 +1947,9 @@
     const thickness=appState.editor.wallDraftThickness ?? Math.round((Number(wall?.thickness||appState.layout?.meta?.defaultWallThickness||12))*getScaleCmPerUnit());
     const height=appState.editor.wallDraftHeight ?? Math.round((Number(wall?.height||appState.layout?.meta?.defaultWallHeight||290))*getScaleCmPerUnit());
     return `<section class="layout-prop-card v203-wall-card">
-       <div class="layout-prop-title">Muros · creación contextual</div>
-       <p class="tiny muted">Selecciona un lado del Área comercial para crear su muro. Sus extremos siguen los vértices del área.</p>
-       <div class="layout-selected-title">${ctx?`Arista ${ctx.edgeIndex+1} · ${escapeHtml(ctx.zone.name||ctx.zone.id)}`:wall?`Muro ${escapeHtml(wall.name||wall.id)}`:'Selecciona un lado del Área comercial'}</div>
+       <div class="layout-prop-title">${drawing?'Muros · trazado continuo':'Muros · creación contextual'}</div>
+       <p class="tiny muted">${drawing?'Clic para iniciar y continuar tramos. Vuelve al primer punto para cerrar; Esc, Enter o clic derecho para terminar.':'Selecciona un lado del Área comercial para crear su muro. Sus extremos siguen los vértices del área.'}</p>
+       <div class="layout-selected-title">${drawing?(appState.editor.pendingWallPoint?'Elige el siguiente extremo':'Elige el punto inicial'):ctx?`Arista ${ctx.edgeIndex+1} · ${escapeHtml(ctx.zone.name||ctx.zone.id)}`:wall?`Muro ${escapeHtml(wall.name||wall.id)}`:'Selecciona un lado del Área comercial'}</div>
        <div class="layout-prop-grid two">
          <label style="grid-column:1/-1">Espesor respecto al eje<select id="v203WallPlacement">
            <option value="inside" ${defaultPlacement==='inside'?'selected':''}>Hacia dentro</option>
@@ -1949,7 +1959,7 @@
          <label>Espesor (cm)<input id="v203WallThickness" type="number" min="4" max="80" value="${thickness}"></label>
          <label>Altura (cm)<input id="v203WallHeight" type="number" min="100" max="800" value="${height}"></label>
        </div>
-       <div class="layout-template-grid" style="margin-top:10px">
+       <div class="layout-template-grid" style="margin-top:10px" ${drawing?'hidden':''}>
          <button class="btn primary" type="button" id="v203WallApply" ${!ctx&&!wall?'disabled':''}>${wall?'Actualizar muro':'Crear muro en arista'}</button>
          <button class="seg-btn danger" type="button" id="v203WallRemove" ${!wall?'disabled':''}>Quitar muro</button>
          <button class="seg-btn" type="button" id="v203WallPerimeter" ${!ctx?.zone?'disabled':''}>Crear muros del área</button>
@@ -3075,7 +3085,7 @@
 
     contentWrap.innerHTML = `
       <div class="stage layout-premium-render layout-cad-v80" style="position:relative;height:100%">
-        <div data-subsystem="${activeLayoutWorkspace()}" class="layout-cad-shell-v80 ${appState.editor.rightPanelOpen === false ? 'right-collapsed' : ''} ${appState.editor.beginnerMode ? 'beginner-ui' : 'advanced-ui'} ${appState.editor.presentationMode ? 'presentation-mode' : ''}">
+        <div data-subsystem="${activeLayoutWorkspace()}" data-mode="${appState.editor.mode}" class="layout-cad-shell-v80 ${appState.editor.rightPanelOpen === false ? 'right-collapsed' : ''} ${appState.editor.beginnerMode ? 'beginner-ui' : 'advanced-ui'} ${appState.editor.presentationMode ? 'presentation-mode' : ''}">
           ${layoutWorkspaceTabs()}
           ${architectureMode?layoutWallSubtabs():''}
           <div class="layout-cad-localbar-v80">
@@ -3129,7 +3139,7 @@
                   </div>
 
                   ${architectureMode && appState.editor.mode==='wall' && appState.editor.pendingWallPoint ? `<div class="wall-length-hud"><span>Longitud</span><input id="wallLengthInput" type="number" min="1" step="1" placeholder="cm" value="${escapeHtml(String(appState.editor.wallLengthDraft||''))}"><b>cm</b><small>Enter fija · ESC termina</small></div>` : ''}
-                  ${architectureMode && appState.editor.mode==='wall' ? `<div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · ESC finaliza</div>` : ''}
+                  ${architectureMode && appState.editor.mode==='wall' ? `<button type="button" class="seg-btn v216-finish-wall" id="btnFinishWall">Terminar trazado</button><div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · Esc / Enter termina · clic en el inicio cierra</div>` : ''}
                   <div id="layoutStackMenu" class="layout-stack-overlay"></div>
                 </div>
               </div>
@@ -3162,6 +3172,7 @@
       fitLayoutViewBox();
     }
     svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+    svg.oncontextmenu=e=>{if(appState.editor.mode==='wall'){e.preventDefault();cancelLayoutDrawing();}};
     renderLayoutSvg(svg);
     renderLayoutSection();
     renderLayoutInspector();
@@ -3901,6 +3912,7 @@
     };
 
     const v117ConflictWalls = v117ConflictWallIds();
+    const v216WallPolys=[];
     const renderWallSlice = (wall, t0, t1, selected) => {
       if(t1 - t0 <= .002) return;
       const isAutoZoneEdge = !!wall.autoZoneEdge;
@@ -3909,6 +3921,7 @@
       const innerStroke = selected ? '#6d4815' : (isSharedWall ? '#2f5f48' : (isAutoZoneEdge ? '#8a6c49' : '#6a5543'));
       const slice = getWallSlicePolygon(wall, t0, t1, 1);
       if(!slice?.poly) return;
+      v216WallPolys.push(slice.poly);
       const d = wallPolygonPath(slice.poly);
       const hit = svgEl('path',{ d, fill:'transparent', stroke:'transparent', 'stroke-width':'14', style:wall.autoZoneEdge?'cursor:pointer':'cursor:move' });
       const conflict=v117ConflictWalls.has(wall.id);
@@ -3935,6 +3948,9 @@
         renderLayoutEditor();
       };
       [fill, hit].forEach(el => el.addEventListener('pointerdown', selectWall));
+      // Only the union owns the normal fill/outline; selection remains per axis.
+      if(!selected&&!conflict){fill.setAttribute('fill','transparent');fill.setAttribute('stroke','none');}
+      accent.setAttribute('opacity',selected?'.92':'0');
       wallLayer.append(fill, accent, hit);
     };
 
@@ -3958,6 +3974,7 @@
       wallLayer.appendChild(label);
     });
 
+    v216RenderWallUnion(wallLayer,v216WallPolys);
     const roomMergePreview=appState.editor?.roomMovePreview;
     if(roomMergePreview){
       const tw=findWallById(roomMergePreview.targetWallId);
@@ -3983,6 +4000,7 @@
 
     // v102: cierre completo de esquinas en L.
     getAllWallCornerClosurePolygons().forEach(joint => {
+      if(!joint.zoneId)return; // Manual joins are included in the physical union.
       if(!Array.isArray(joint.poly) || joint.poly.length < 4) return;
       wallLayer.appendChild(svgEl('path',{
         d: wallPolygonPath(joint.poly),
@@ -4715,7 +4733,7 @@
         if(isRackDistributionScreen())renderLayoutEditor();
       });
     }
-    $$('.seg-btn[data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode;if(activeLayoutWorkspace()==='architecture'&&['area','zone'].includes(nextMode)){v212BeginDraw(nextMode==='area'?'area':'zones');return;}if(activeLayoutWorkspace()==='architecture'&&['wall','door','opening'].includes(nextMode)){v212SetMode('walls');} if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; if(activeLayoutWorkspace()==='urbanism' && !['select','street','navigate'].includes(nextMode))return; if(activeLayoutWorkspace()==='architecture' && nextMode==='street')return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } if(nextMode!=='measure')appState.editor.measureDraft=null; renderLayoutEditor(); } });
+    $$('.layout-cad-shell-v80 [data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode;if(activeLayoutWorkspace()==='architecture'&&['area','zone'].includes(nextMode)){v212BeginDraw(nextMode==='area'?'area':'zones');return;}if(activeLayoutWorkspace()==='architecture'&&['wall','door','opening'].includes(nextMode)){v212SetMode('walls');} if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; if(activeLayoutWorkspace()==='urbanism' && !['select','street','navigate'].includes(nextMode))return; if(activeLayoutWorkspace()==='architecture' && nextMode==='street')return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } if(nextMode!=='measure')appState.editor.measureDraft=null; renderLayoutEditor(); } });
     $$('[data-layout-tag-action]').forEach(btn => btn.onclick = () => {
       markLayoutManualInteraction();
       const action = btn.getAttribute('data-layout-tag-action');
@@ -4739,6 +4757,7 @@
       renderLayoutEditor();
     });
     if($('#layoutBranchSelect')) $('#layoutBranchSelect').onchange = e => { markLayoutManualInteraction(); setLayoutBranch(+e.target.value || 0); renderLayoutEditor(); };
+    if($('#btnFinishWall')) $('#btnFinishWall').onclick=()=>cancelLayoutDrawing();
     if($('#btnAreaPlus')) $('#btnAreaPlus').onclick=()=>v212BeginDraw('area');
     if($('#btnZonePlus')) $('#btnZonePlus').onclick=()=>v212BeginDraw('zones');
     if(!document.getElementById('btnStreetPlus') && activeLayoutWorkspace()==='urbanism'){
@@ -4924,10 +4943,10 @@
     if(appState.editor.mode === 'wall' && isStructureLayoutScreen()){
       const smart=snapWallPointSmart(raw,{origin:appState.editor.pendingWallPoint,shiftKey:e.shiftKey});
       if(!appState.editor.pendingWallPoint){
-        let node=smart.nodeId?getWallNode(smart.nodeId):findOrCreateWallNode(smart);
+        let node=smart.nodeId?getWallNode(smart.nodeId):{...smart,id:''};
         appState.editor.pendingWallPoint = { x:node.x, y:node.y, nodeId:node.id };
         appState.editor.wallCursor = {...smart,x:node.x+100,y:node.y};
-        appState.editor.wallChainNodeIds=[node.id]; appState.editor.wallChainStartNodeId=node.id;
+        appState.editor.wallChainNodeIds=node.id?[node.id]:[]; appState.editor.wallChainStartNodeId=node.id;
         appState.selectedWallId = ''; appState.selectedOpeningId = '';
         renderLayoutEditor(); return;
       }

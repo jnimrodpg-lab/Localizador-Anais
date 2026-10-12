@@ -1,6 +1,17 @@
-# WMS Industrial V215 — Editor con más espacio
+# WMS Industrial V216 — Muros unidos y trazado continuo
 
-Rediseño sobre V214. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+Corrección sobre V215. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+
+## Muros: correcciones V216
+
+- Los espesores traslapados forman un contorno físico unido, sin diagonales ni líneas internas permanentes. Se conservan los ejes e IDs necesarios para seleccionar y editar cada tramo y sus vínculos al área.
+- Los empalmes tienen un límite proporcional a la longitud de ambos tramos. Si el encuentro invertiría una cara o produciría una punta desproporcionada, se utiliza un encuentro acotado y se une su superficie con la del vecino.
+- La vista 2D y ambas vistas 3D utilizan las mismas superficies. La unión admite huecos y cambios de altura; las puertas y ventanas se recortan también sobre superficies superpuestas. Se mantienen los acabados de los muros.
+- Los tramos colineales superpuestos con el mismo perfil y acabado se fragmentan y deduplican, incluso si comparten un extremo. Los perfiles distintos mantienen sus propiedades y se unen en la superficie visible.
+- **Dibujar muro** activa ahora el botón principal. Primer clic: inicio. Siguientes clics: tramos encadenados con extremo compartido y vista previa. Volver al inicio cierra el ciclo y termina el trazado.
+- **Esc**, **Enter** sin medida pendiente, clic derecho o **Terminar trazado** finalizan la cadena conservando los tramos ya creados. Iniciar y cancelar sin crear un tramo no deja un nodo suelto.
+- Para una longitud exacta, orienta el cursor, introduce centímetros en el campo de longitud y pulsa Enter. El siguiente tramo comienza en el extremo recién creado. Se respetan espesor, altura y posición respecto al eje del panel de creación.
+- Deshacer/rehacer actúa sobre cada tramo confirmado. El cierre de un ciclo crea un recinto físico; no crea automáticamente una zona virtual.
 
 ## Jerarquía y creación
 
@@ -36,9 +47,9 @@ La creación y edición avanzadas siguen disponibles. El nombre visible y el có
 
 Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y error de sincronización. Una respuesta anterior de guardado no marca los cambios nuevos como sincronizados. Se mantienen las comprobaciones del almacenamiento local.
 
-`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V214 y la interfaz V215 y comprueba sintaxis del backend/frontend.
+`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V216 y sintaxis y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` ejecuta la prueba de interfaz V215. Requiere Playwright/Chromium como dependencia opcional de pruebas; no forma parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Se comprueban jerarquía, creación poligonal del área, creación rectangular/irregular de zonas, vínculos de muros, esquinas nuevas, medidas, historial, independencia de zonas, menú de posición del muro, capas, Más, tres espacios de edición, recarga local y visor 3D. También se verifica la altura completa con cortes abiertos, el cambio entre vértice/lado y los controles a distintos tamaños. Capturas de QA solo temporales.
+`npm run test:ui` ejecuta la prueba de interfaz V216. Requiere Playwright/Chromium como dependencia opcional de pruebas; no forma parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Se comprueban jerarquía, creación poligonal del área, creación rectangular/irregular de zonas, vínculos de muros, esquinas nuevas, medidas, historial, independencia de zonas, menú de posición del muro, capas, Más, tres espacios de edición, recarga local y visor 3D. También se verifica la altura completa con cortes abiertos, el cambio entre vértice/lado y los controles a distintos tamaños. También se comprueban el botón principal, encadenado con clics reales, cierre, medida exacta, terminación, perfil de creación, deduplicación de un tramo invertido con extremo compartido, historial y reproducción de muros cortos en 2D/3D. Capturas de QA solo temporales.
 
 ## Alcance
 

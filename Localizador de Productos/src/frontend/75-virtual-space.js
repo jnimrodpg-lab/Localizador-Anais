@@ -1085,10 +1085,11 @@
             state.urbanMeshes.push(group);
           });
         };
+        let wallUnionBands=[];
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
           const scale=getScaleCmPerUnit()/100;
           const dx=Number(wall.x2||0)-Number(wall.x1||0),dy=Number(wall.y2||0)-Number(wall.y1||0);
-          const L=Math.hypot(dx,dy);if(L<8)return;
+          const L=Math.hypot(dx,dy);if(L<1)return;
           const selected=wall.id===state.selectedWallId && state.inspectorMode==='architecture';
           const wallCenter={x:(Number(wall.x1||0)+Number(wall.x2||0))/2,y:(Number(wall.y1||0)+Number(wall.y2||0))/2};
           const zone=(appState.layout.zones||[]).find(z=>z.id===wall.zoneBoundarySource?.zoneId)||null;
@@ -1126,6 +1127,7 @@
             // x/z frame so the virtual designer and layout close on the same
             // bevel/miter points, even at diagonal-to-vertical intersections.
             const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1):null;
+            if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat});return;}
             if(slice?.poly?.length===4){
               const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
               const ax=Number(wall.x1||0),ay=Number(wall.y1||0);
@@ -1217,7 +1219,7 @@
           world.add(group);state.objects.set(r.id,group);
         };
         const rebuild=()=>{
-          clearWorld();
+          clearWorld();wallUnionBands=[];
           refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
@@ -1253,7 +1255,8 @@
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
             (appState.layout.walls||[]).forEach(w=>buildArchitecturalWall(w));
-            addArchitecturalWallJoints();
+            v216JointPieces().forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId));if(host)wallUnionBands.push({poly:j.poly,y0:0,y1:j.height*getScaleCmPerUnit()/100,wallId:host.wallId,material:host.material});});
+            v216AddUnionMeshes(THREE,world,wallUnionBands,coord,mesh=>state.architectureMeshes.push(mesh));
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.
           const boundsW=(zoneBounds.length?Math.max(...zoneBounds.map(p=>p.x))-Math.min(...zoneBounds.map(p=>p.x)):700)*getScaleCmPerUnit()/100;
@@ -1293,7 +1296,7 @@
           const hits=raycaster.intersectObjects(state.architectureMeshes||[],false);
           const opening=hits.find(hit=>hit.object?.userData?.openingId);
           const hit=opening||hits[0];
-          return hit?{wallId:hit.object.userData.wallId||'',openingId:hit.object.userData.openingId||''}:null;
+          return hit?{wallId:v216WallIdAtHit(hit),openingId:hit.object.userData.openingId||''}:null;
         };
         const intersectFurniture=(e,excludeRackId='')=>{
           applyPointer(e);

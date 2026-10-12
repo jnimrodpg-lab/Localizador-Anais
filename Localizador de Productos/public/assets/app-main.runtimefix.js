@@ -7233,7 +7233,7 @@ function getSheetBranchOpenMap(){
           const joined=getWallSlicePolygon(seg.raw,t0,t1,1);
           if(joined?.poly?.length>=4){
             const prism=makeWallPrismGeometry(joined.poly,height);
-            if(prism){prism.translate(0,Number(y0||0),0);return prism;}
+            if(prism){prism.translate(0,Number(y0||0),0);prism.userData.v216Band={poly:joined.poly,y0:Number(y0||0),y1:Number(y1||0)};return prism;}
           }
         }
         const ax = Number(seg.a?.x || 0), ay = Number(seg.a?.y || 0);
@@ -7274,8 +7274,10 @@ function getSheetBranchOpenMap(){
           return { ...o, t, t0:Math.max(0, t-half), t1:Math.min(1, t+half), sillUnits, heightUnits };
         }).sort((a,b)=>a.t0-b.t0);
       };
+      const v216ViewerBands=[];
       const addWallMesh = (group, geo, mat, isActive, wallId='') => {
         if(!geo) return null;
+        if(geo.userData?.v216Band){v216ViewerBands.push({...geo.userData.v216Band,material:mat,wallId});geo.dispose();return null;}
         const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -7449,6 +7451,7 @@ function getSheetBranchOpenMap(){
           const joinedPoly = !seg.autoZoneEdge && seg.raw && typeof getWallSlicePolygon==='function'
             ? getWallSlicePolygon(seg.raw,0,1,1)?.poly :
             (seg.autoZoneEdge && seg.zoneId && Number.isFinite(seg.edgeIndex) ? getAutoWallPolygon(seg.raw || seg) : null);
+          if(joinedPoly?.length>=3){v216ViewerBands.push({poly:joinedPoly,y0:0,y1:height,material:wallMat,wallId:seg.id});addArchitecturalBaseboards(group,seg,[],thicknessUnits,isActive);return;}
           let wall = null;
           if(Array.isArray(joinedPoly) && joinedPoly.length >= 4){
             const geo = makeWallPrismGeometry(joinedPoly, height);
@@ -7481,35 +7484,8 @@ function getSheetBranchOpenMap(){
           addArchitecturalBaseboards(group,seg,[],thicknessUnits,isActive);
         });
 
-        // v105: cierre completo de esquinas tipo L en 3D sin usar variables fuera de scope.
-        getAllWallCornerClosurePolygons().forEach(joint => {
-          if(!Array.isArray(joint.poly) || joint.poly.length < 4) return;
-          const isActive = joint.selected || activeZoneIds.has(joint.zoneId);
-          const height = Math.max(2.8, (Number(joint.height || DEFAULT_WALL_HEIGHT) || DEFAULT_WALL_HEIGHT) * hScale);
-          const geo = makeWallPrismGeometry(joint.poly, height);
-          if(!geo) return;
-          const jointMat = new THREE.MeshStandardMaterial({
-            color:presentationMode ? (isActive ? 0xffffff : 0xeeeae3) : (isActive ? 0xf2f7fb : 0xb8c8d8),
-            transparent:true,
-            opacity:presentationMode ? .985 : (appState.ui?.nav3DArchitectural ? (isActive ? .98 : .86) : (isActive ? .96 : .72)),
-            roughness:presentationMode ? .92 : .78,
-            metalness:.02,
-            side:THREE.DoubleSide
-          });
-          const wall = new THREE.Mesh(geo, jointMat);
-          wall.castShadow = true;
-          wall.receiveShadow = true;
-          wall.userData.wallId = `${joint.prevWallId || ''}+${joint.currWallId || ''}`;
-          group.add(wall);
-          const edges = new THREE.LineSegments(
-            new THREE.EdgesGeometry(wall.geometry),
-            new THREE.LineBasicMaterial({ color:presentationMode ? 0x697985 : (isActive ? 0xffffff : 0xd7e7f4), transparent:true, opacity:presentationMode ? (isActive ? .34 : .10) : (isActive ? .70 : .36) })
-          );
-          edges.position.copy(wall.position);
-          edges.rotation.copy(wall.rotation);
-          edges.scale.copy(wall.scale);
-          group.add(edges);
-        });
+        v216JointPieces().forEach(j=>{const host=v216ViewerBands.find(b=>j.ids.includes(b.wallId));if(host)v216ViewerBands.push({poly:j.poly,y0:0,y1:Math.min(j.height*hScale,Math.max(...v216ViewerBands.filter(b=>j.ids.includes(b.wallId)).map(b=>b.y1))),wallId:host.wallId,material:host.material});});
+        v216AddUnionMeshes(THREE,group,v216ViewerBands,p=>({x:(p.x-bounds.cx)*scale,z:(p.y-bounds.cy)*scale}),mesh=>pickables.push(mesh));
         return group;
       };
       const roomSlabsGroup = buildArchitecturalRoomSlabs(layoutZones, focusZoneIds);
@@ -7893,7 +7869,7 @@ function getSheetBranchOpenMap(){
         if(data.isRackInstanced && Number.isInteger(hit.instanceId)){ const id=data.rackIds?.[hit.instanceId]||''; if(id)return {type:'rack',id,object:hit.object,instanceId:hit.instanceId,point:hit.point}; }
         if(data.openingId) return {type:'opening',id:data.openingId,object:hit.object,point:hit.point};
         if(data.rackId) return {type:'rack',id:data.rackId,object:hit.object,point:hit.point};
-        if(data.wallId) return {type:'wall',id:data.wallId,object:hit.object,point:hit.point};
+        if(data.wallId) return {type:'wall',id:v216WallIdAtHit(hit),object:hit.object,point:hit.point};
         if(data.zoneId) return {type:'zone',id:data.zoneId,object:hit.object,point:hit.point};
         return null;
       };
@@ -7911,7 +7887,7 @@ function getSheetBranchOpenMap(){
         if(!entity?.type||!entity.id)return null;
         if(entity.object && !entity.object.isInstancedMesh){ try{return new THREE.Box3().setFromObject(entity.object);}catch{} }
         if(entity.type==='rack'){ const r=findNav3DRackById(entity.id); if(!r)return null; const model=rackModel(r.modelId)||baseRackModel(),w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale),p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0); return new THREE.Box3(new THREE.Vector3(p.x-w/2,0,p.z-d/2),new THREE.Vector3(p.x+w/2,rh,p.z+d/2)); }
-        const candidate=pickables.find(o=>(entity.type==='wall'&&o.userData?.wallId===entity.id)||(entity.type==='opening'&&o.userData?.openingId===entity.id)||(entity.type==='zone'&&o.userData?.zoneId===entity.id));
+        const candidate=pickables.find(o=>(entity.type==='wall'&&(o.userData?.wallId===entity.id||o.userData?.wallIds?.includes(entity.id)))||(entity.type==='opening'&&o.userData?.openingId===entity.id)||(entity.type==='zone'&&o.userData?.zoneId===entity.id));
         if(candidate){try{return new THREE.Box3().setFromObject(candidate);}catch{}} return null;
       };
       const showSelectionHelper = entity => { clearSelectionHelper(); const box=entityBox(entity); if(!box||box.isEmpty())return; selectionHelper=new THREE.Box3Helper(box,0x66ffd0); selectionHelper.material.transparent=true; selectionHelper.material.opacity=.92; scene.add(selectionHelper); if(entity?.type==='rack'&&typeof isRackDistributionScreen==='function'&&isRackDistributionScreen()){const c=box.getCenter(new THREE.Vector3());c.y=Math.max(.10,box.min.y+.10);selectionGizmo=new THREE.Group();selectionGizmo.add(new THREE.ArrowHelper(new THREE.Vector3(1,0,0),c,1.05,0xff675c,.24,.12));selectionGizmo.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1),c,1.05,0x4bb8ff,.24,.12));scene.add(selectionGizmo);} requestRender(true); };
@@ -11046,14 +11022,17 @@ function getSheetBranchOpenMap(){
     return true;
   }
   function completeWallChainPoint(rawPoint, opts={}){
-    ensureWallTopology();
+    ensureWallTopology();v128RebuildSharedWallRegistry();
     const pending=appState.editor.pendingWallPoint;
     if(!pending) return null;
     const snap=opts.numeric ? {x:Number(rawPoint.x||0),y:Number(rawPoint.y||0),type:'numeric',label:'Medida exacta',nodeId:''} : snapWallPointSmart(rawPoint,{origin:pending,shiftKey:!!opts.shiftKey});
+    if(Math.hypot(snap.x-pending.x,snap.y-pending.y)<10){showToast('El tramo debe medir al menos '+formatDistanceCm(10)+'.','warning');return null;}
+    recordHistorySnapshot('structure');
     let endNode=snap.nodeId ? getWallNode(snap.nodeId) : null;
     if(!endNode) endNode=findOrCreateWallNode(snap);
     const startNode=getWallNode(pending.nodeId) || findOrCreateWallNode(pending,pending.nodeId);
     if(!startNode || !endNode || startNode.id===endNode.id) return null;
+    if(!appState.editor.wallChainStartNodeId)appState.editor.wallChainStartNodeId=startNode.id;
     const wall=createWallSegment(startNode,endNode,{startNodeId:startNode.id,endNodeId:endNode.id});
     if(!wall) return null;
     const v117Splits = v117ResolveWallIntersections();
@@ -11072,7 +11051,8 @@ function getSheetBranchOpenMap(){
       appState.editor.wallCursor={x:endNode.x+100,y:endNode.y,type:'grid',label:'Rejilla'};
     }
     appState.editor.wallLengthDraft='';
-    persistActiveLayout();
+    v128RebuildSharedWallRegistry();
+    persistActiveLayout('tramo de muro');
     renderLayoutEditor();
     return wall;
   }
@@ -11166,6 +11146,7 @@ function getSheetBranchOpenMap(){
       const tag=String(e.target?.tagName||'').toLowerCase(); const editing=['input','textarea','select'].includes(tag) || e.target?.isContentEditable;
       if(e.key==='Escape'){ e.preventDefault(); if(document.getElementById('v213CanvasPopover')){v213ClosePopover();return;} cancelLayoutDrawing(); return; }
       if(editing) return;
+      if(e.key==='Enter'&&appState.editor.mode==='wall'&&!appState.editor.wallLengthDraft){e.preventDefault();cancelLayoutDrawing();return;}
       if(e.key==='Enter'&&appState.editor.polygonDraft){e.preventDefault();v212FinishPolygon();return;}
       if((e.ctrlKey||e.metaKey) && String(e.key||'').toLowerCase()==='z'){
         e.preventDefault();const bucket=isRackDistributionScreen()?'distribution':(appState.editor.areaMoveMode?'layout':'structure');
@@ -11586,7 +11567,7 @@ function getSheetBranchOpenMap(){
     // Polygon order: start-right, end-right, end-left, start-left.
     const leftIndex=atStart?3:1;
     const rightIndex=atStart?0:2;
-    return {node,ray,atStart,leftIndex,rightIndex,
+    return {node,ray,length,atStart,leftIndex,rightIndex,
       left:raw.poly[leftIndex],right:raw.poly[rightIndex],poly:raw.poly,
       thickness:Number(raw.thickness)||12};
   }
@@ -11602,7 +11583,7 @@ function getSheetBranchOpenMap(){
   function getWallSlicePolygon(wall,t0=0,t1=1,inflate=1){
     const raw=getWallRawSlicePolygon(wall,t0,t1,inflate);
     if(!raw?.poly || wall?.autoZoneEdge)return raw;
-    const poly=raw.poly.map(p=>({...p}));
+    const poly=raw.poly.map(p=>({...p}));let miterLimited=false;
     const walls=(appState.layout?.walls||[]).filter(w=>w && w.id!==wall.id && !w.autoZoneEdge && wallLength(w)>1);
     const join=(atStart)=>{
       const t=atStart?Number(t0||0):Number(t1??1);
@@ -11631,11 +11612,14 @@ function getSheetBranchOpenMap(){
         {point:self.right,ray:self.ray},{point:other.left,ray:other.ray},self.node,thickness);
       // Do not mutate the opposite end: openings and other pieces preserve
       // their own profile. Both neighbors compute identical intersections.
-      if(leftHit)poly[self.leftIndex]=leftHit;
-      if(rightHit)poly[self.rightIndex]=rightHit;
+      const budget=Math.min(self.length,other.length)*.45;
+      if(!leftHit||!rightHit||pointDist2D(leftHit,self.node)>budget||pointDist2D(rightHit,self.node)>budget){miterLimited=true;return;}
+      poly[self.leftIndex]=leftHit;poly[self.rightIndex]=rightHit;
     };
     join(true);join(false);
-    return {...raw,poly};
+    const forward=(a,b)=>(b.x-a.x)*raw.dir.x+(b.y-a.y)*raw.dir.y;
+    if(forward(poly[0],poly[1])<=1e-7||forward(poly[3],poly[2])<=1e-7)return {...raw,miterLimited:true};
+    return {...raw,poly,miterLimited};
   }
 
   function getOpeningFootprint(opening, wall=findWallById(opening?.wallId), inflate=1){
@@ -11765,8 +11749,9 @@ function getSheetBranchOpenMap(){
       id:nextWallId(), name:'Muro',
       x1:startNode.x, y1:startNode.y, x2:endNode.x, y2:endNode.y,
       startNodeId:startNode.id, endNodeId:endNode.id,
-      thickness:Math.max(4,Number(appState.layout?.meta?.defaultWallThickness||12)||12),
-      height:Math.max(120,Number(appState.layout?.meta?.defaultWallHeight||290)||290),
+      thickness:appState.editor.wallDraftThickness!=null?Math.max(4,Math.min(80,Number(appState.editor.wallDraftThickness)||12))/Math.max(.0001,getScaleCmPerUnit()):Math.max(4,Number(appState.layout?.meta?.defaultWallThickness||12)||12),
+      height:appState.editor.wallDraftHeight!=null?Math.max(100,Math.min(800,Number(appState.editor.wallDraftHeight)||290))/Math.max(.0001,getScaleCmPerUnit()):Math.max(120,Number(appState.layout?.meta?.defaultWallHeight||290)||290),
+      placement:normalizeWallPlacement(appState.editor.wallDefaultPlacement||'inside'),
       ownerAreaId:'AREA-GENERAL', kind:'wall'
     };
     appState.layout.walls.push(wall);
@@ -11913,6 +11898,7 @@ function getSheetBranchOpenMap(){
   function layoutWallToolsMarkup(){
     const wallMode=appState.editor.architectureTool==='walls';
     if(!wallMode)return '';
+    const drawing=appState.editor.mode==='wall';
     const ctx=getSelectedEdgeWallContext();
     const selected=ctx?.zone ? findManualWallForZoneEdge(ctx.zone,ctx.edgeIndex):null;
     const wall=selected||findWallById(appState.selectedWallId);
@@ -11920,9 +11906,9 @@ function getSheetBranchOpenMap(){
     const thickness=appState.editor.wallDraftThickness ?? Math.round((Number(wall?.thickness||appState.layout?.meta?.defaultWallThickness||12))*getScaleCmPerUnit());
     const height=appState.editor.wallDraftHeight ?? Math.round((Number(wall?.height||appState.layout?.meta?.defaultWallHeight||290))*getScaleCmPerUnit());
     return `<section class="layout-prop-card v203-wall-card">
-       <div class="layout-prop-title">Muros · creación contextual</div>
-       <p class="tiny muted">Selecciona un lado del Área comercial para crear su muro. Sus extremos siguen los vértices del área.</p>
-       <div class="layout-selected-title">${ctx?`Arista ${ctx.edgeIndex+1} · ${escapeHtml(ctx.zone.name||ctx.zone.id)}`:wall?`Muro ${escapeHtml(wall.name||wall.id)}`:'Selecciona un lado del Área comercial'}</div>
+       <div class="layout-prop-title">${drawing?'Muros · trazado continuo':'Muros · creación contextual'}</div>
+       <p class="tiny muted">${drawing?'Clic para iniciar y continuar tramos. Vuelve al primer punto para cerrar; Esc, Enter o clic derecho para terminar.':'Selecciona un lado del Área comercial para crear su muro. Sus extremos siguen los vértices del área.'}</p>
+       <div class="layout-selected-title">${drawing?(appState.editor.pendingWallPoint?'Elige el siguiente extremo':'Elige el punto inicial'):ctx?`Arista ${ctx.edgeIndex+1} · ${escapeHtml(ctx.zone.name||ctx.zone.id)}`:wall?`Muro ${escapeHtml(wall.name||wall.id)}`:'Selecciona un lado del Área comercial'}</div>
        <div class="layout-prop-grid two">
          <label style="grid-column:1/-1">Espesor respecto al eje<select id="v203WallPlacement">
            <option value="inside" ${defaultPlacement==='inside'?'selected':''}>Hacia dentro</option>
@@ -11932,7 +11918,7 @@ function getSheetBranchOpenMap(){
          <label>Espesor (cm)<input id="v203WallThickness" type="number" min="4" max="80" value="${thickness}"></label>
          <label>Altura (cm)<input id="v203WallHeight" type="number" min="100" max="800" value="${height}"></label>
        </div>
-       <div class="layout-template-grid" style="margin-top:10px">
+       <div class="layout-template-grid" style="margin-top:10px" ${drawing?'hidden':''}>
          <button class="btn primary" type="button" id="v203WallApply" ${!ctx&&!wall?'disabled':''}>${wall?'Actualizar muro':'Crear muro en arista'}</button>
          <button class="seg-btn danger" type="button" id="v203WallRemove" ${!wall?'disabled':''}>Quitar muro</button>
          <button class="seg-btn" type="button" id="v203WallPerimeter" ${!ctx?.zone?'disabled':''}>Crear muros del área</button>
@@ -13058,7 +13044,7 @@ function getSheetBranchOpenMap(){
 
     contentWrap.innerHTML = `
       <div class="stage layout-premium-render layout-cad-v80" style="position:relative;height:100%">
-        <div data-subsystem="${activeLayoutWorkspace()}" class="layout-cad-shell-v80 ${appState.editor.rightPanelOpen === false ? 'right-collapsed' : ''} ${appState.editor.beginnerMode ? 'beginner-ui' : 'advanced-ui'} ${appState.editor.presentationMode ? 'presentation-mode' : ''}">
+        <div data-subsystem="${activeLayoutWorkspace()}" data-mode="${appState.editor.mode}" class="layout-cad-shell-v80 ${appState.editor.rightPanelOpen === false ? 'right-collapsed' : ''} ${appState.editor.beginnerMode ? 'beginner-ui' : 'advanced-ui'} ${appState.editor.presentationMode ? 'presentation-mode' : ''}">
           ${layoutWorkspaceTabs()}
           ${architectureMode?layoutWallSubtabs():''}
           <div class="layout-cad-localbar-v80">
@@ -13112,7 +13098,7 @@ function getSheetBranchOpenMap(){
                   </div>
 
                   ${architectureMode && appState.editor.mode==='wall' && appState.editor.pendingWallPoint ? `<div class="wall-length-hud"><span>Longitud</span><input id="wallLengthInput" type="number" min="1" step="1" placeholder="cm" value="${escapeHtml(String(appState.editor.wallLengthDraft||''))}"><b>cm</b><small>Enter fija · ESC termina</small></div>` : ''}
-                  ${architectureMode && appState.editor.mode==='wall' ? `<div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · ESC finaliza</div>` : ''}
+                  ${architectureMode && appState.editor.mode==='wall' ? `<button type="button" class="seg-btn v216-finish-wall" id="btnFinishWall">Terminar trazado</button><div class="wall-draw-help">Clic para iniciar · clic para encadenar · Shift ortogonal · escribe una medida · Esc / Enter termina · clic en el inicio cierra</div>` : ''}
                   <div id="layoutStackMenu" class="layout-stack-overlay"></div>
                 </div>
               </div>
@@ -13145,6 +13131,7 @@ function getSheetBranchOpenMap(){
       fitLayoutViewBox();
     }
     svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+    svg.oncontextmenu=e=>{if(appState.editor.mode==='wall'){e.preventDefault();cancelLayoutDrawing();}};
     renderLayoutSvg(svg);
     renderLayoutSection();
     renderLayoutInspector();
@@ -13884,6 +13871,7 @@ function getSheetBranchOpenMap(){
     };
 
     const v117ConflictWalls = v117ConflictWallIds();
+    const v216WallPolys=[];
     const renderWallSlice = (wall, t0, t1, selected) => {
       if(t1 - t0 <= .002) return;
       const isAutoZoneEdge = !!wall.autoZoneEdge;
@@ -13892,6 +13880,7 @@ function getSheetBranchOpenMap(){
       const innerStroke = selected ? '#6d4815' : (isSharedWall ? '#2f5f48' : (isAutoZoneEdge ? '#8a6c49' : '#6a5543'));
       const slice = getWallSlicePolygon(wall, t0, t1, 1);
       if(!slice?.poly) return;
+      v216WallPolys.push(slice.poly);
       const d = wallPolygonPath(slice.poly);
       const hit = svgEl('path',{ d, fill:'transparent', stroke:'transparent', 'stroke-width':'14', style:wall.autoZoneEdge?'cursor:pointer':'cursor:move' });
       const conflict=v117ConflictWalls.has(wall.id);
@@ -13918,6 +13907,9 @@ function getSheetBranchOpenMap(){
         renderLayoutEditor();
       };
       [fill, hit].forEach(el => el.addEventListener('pointerdown', selectWall));
+      // Only the union owns the normal fill/outline; selection remains per axis.
+      if(!selected&&!conflict){fill.setAttribute('fill','transparent');fill.setAttribute('stroke','none');}
+      accent.setAttribute('opacity',selected?'.92':'0');
       wallLayer.append(fill, accent, hit);
     };
 
@@ -13941,6 +13933,7 @@ function getSheetBranchOpenMap(){
       wallLayer.appendChild(label);
     });
 
+    v216RenderWallUnion(wallLayer,v216WallPolys);
     const roomMergePreview=appState.editor?.roomMovePreview;
     if(roomMergePreview){
       const tw=findWallById(roomMergePreview.targetWallId);
@@ -13966,6 +13959,7 @@ function getSheetBranchOpenMap(){
 
     // v102: cierre completo de esquinas en L.
     getAllWallCornerClosurePolygons().forEach(joint => {
+      if(!joint.zoneId)return; // Manual joins are included in the physical union.
       if(!Array.isArray(joint.poly) || joint.poly.length < 4) return;
       wallLayer.appendChild(svgEl('path',{
         d: wallPolygonPath(joint.poly),
@@ -14698,7 +14692,7 @@ function getSheetBranchOpenMap(){
         if(isRackDistributionScreen())renderLayoutEditor();
       });
     }
-    $$('.seg-btn[data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode;if(activeLayoutWorkspace()==='architecture'&&['area','zone'].includes(nextMode)){v212BeginDraw(nextMode==='area'?'area':'zones');return;}if(activeLayoutWorkspace()==='architecture'&&['wall','door','opening'].includes(nextMode)){v212SetMode('walls');} if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; if(activeLayoutWorkspace()==='urbanism' && !['select','street','navigate'].includes(nextMode))return; if(activeLayoutWorkspace()==='architecture' && nextMode==='street')return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } if(nextMode!=='measure')appState.editor.measureDraft=null; renderLayoutEditor(); } });
+    $$('.layout-cad-shell-v80 [data-emode]').forEach(btn => btn.onclick = () => { const nextMode = btn.dataset.emode;if(activeLayoutWorkspace()==='architecture'&&['area','zone'].includes(nextMode)){v212BeginDraw(nextMode==='area'?'area':'zones');return;}if(activeLayoutWorkspace()==='architecture'&&['wall','door','opening'].includes(nextMode)){v212SetMode('walls');} if(nextMode === 'rack' && !isRackDistributionScreen()) return; if(['zone','area','street','wall','opening','door','measure'].includes(nextMode) && isRackDistributionScreen()) return; if(activeLayoutWorkspace()==='urbanism' && !['select','street','navigate'].includes(nextMode))return; if(activeLayoutWorkspace()==='architecture' && nextMode==='street')return; markLayoutManualInteraction(); if(nextMode==='select') cancelLayoutDrawing(); else { appState.editor.mode = nextMode; if(nextMode!=='wall'){ appState.editor.pendingWallPoint=null; appState.editor.wallCursor=null; appState.editor.wallChainNodeIds=[]; appState.editor.wallChainStartNodeId=''; } if(nextMode!=='measure')appState.editor.measureDraft=null; renderLayoutEditor(); } });
     $$('[data-layout-tag-action]').forEach(btn => btn.onclick = () => {
       markLayoutManualInteraction();
       const action = btn.getAttribute('data-layout-tag-action');
@@ -14722,6 +14716,7 @@ function getSheetBranchOpenMap(){
       renderLayoutEditor();
     });
     if($('#layoutBranchSelect')) $('#layoutBranchSelect').onchange = e => { markLayoutManualInteraction(); setLayoutBranch(+e.target.value || 0); renderLayoutEditor(); };
+    if($('#btnFinishWall')) $('#btnFinishWall').onclick=()=>cancelLayoutDrawing();
     if($('#btnAreaPlus')) $('#btnAreaPlus').onclick=()=>v212BeginDraw('area');
     if($('#btnZonePlus')) $('#btnZonePlus').onclick=()=>v212BeginDraw('zones');
     if(!document.getElementById('btnStreetPlus') && activeLayoutWorkspace()==='urbanism'){
@@ -14907,10 +14902,10 @@ function getSheetBranchOpenMap(){
     if(appState.editor.mode === 'wall' && isStructureLayoutScreen()){
       const smart=snapWallPointSmart(raw,{origin:appState.editor.pendingWallPoint,shiftKey:e.shiftKey});
       if(!appState.editor.pendingWallPoint){
-        let node=smart.nodeId?getWallNode(smart.nodeId):findOrCreateWallNode(smart);
+        let node=smart.nodeId?getWallNode(smart.nodeId):{...smart,id:''};
         appState.editor.pendingWallPoint = { x:node.x, y:node.y, nodeId:node.id };
         appState.editor.wallCursor = {...smart,x:node.x+100,y:node.y};
-        appState.editor.wallChainNodeIds=[node.id]; appState.editor.wallChainStartNodeId=node.id;
+        appState.editor.wallChainNodeIds=node.id?[node.id]:[]; appState.editor.wallChainStartNodeId=node.id;
         appState.selectedWallId = ''; appState.selectedOpeningId = '';
         renderLayoutEditor(); return;
       }
@@ -16094,6 +16089,7 @@ function getSheetBranchOpenMap(){
     if(activeLayoutWorkspace()!=='architecture')return 'Edición de calles y veredas';
     const opening=findOpeningById(appState.selectedOpeningId),wall=findWallById(appState.selectedWallId);
     if(opening)return `Editando abertura: ${opening.id}`;
+    if(appState.editor.architectureTool==='walls'&&appState.editor.mode==='wall')return appState.editor.pendingWallPoint?'Trazado continuo · siguiente extremo':'Trazado continuo · punto inicial';
     if(appState.editor.architectureTool==='walls')return wall?`Editando muro: ${wall.name||wall.id}`:'Selecciona un muro o una arista';
     const target=v212Target(),sel=v213SelectedPart();
     if(!target)return 'Selecciona una zona';
@@ -16485,7 +16481,7 @@ function getSheetBranchOpenMap(){
     const create=root.querySelector('#v214ZoneWidth'),height=root.querySelector('#v214ZoneHeight');if(create)create.oninput=()=>appState.editor.newZoneWidthM=Number(create.value);if(height)height.oninput=()=>appState.editor.newZoneHeightM=Number(height.value);
     const cancel=root.querySelector('#v214CancelZone');if(cancel)cancel.onclick=()=>{appState.editor.mode='select';renderLayoutEditor();};
     const placement=root.querySelector('#rpWallPlacement');if(placement&&v213LayerLocked('walls'))placement.disabled=true;
-    const wallTools=root.querySelector('.v203-wall-card');if(wallTools&&appState.selectedWallId){wallTools.hidden=true;}
+    const wallTools=root.querySelector('.v203-wall-card');if(wallTools&&appState.selectedWallId&&appState.editor.mode!=='wall'){wallTools.hidden=true;}
   }
   // V215: presentation only. Geometry and hierarchy stay in V212–V214.
   function v215GridStep(base,scale){
@@ -16567,6 +16563,7 @@ function getSheetBranchOpenMap(){
   function v117PointSegmentParam(point,a,b){ const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy||1; return ((point.x-a.x)*dx+(point.y-a.y)*dy)/den; }
   function v117PointLineDistance(point,a,b){ const t=v117PointSegmentParam(point,a,b); const q={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t}; return Math.hypot(q.x-point.x,q.y-point.y); }
   function v117SplitCollinearOverlap(wa,wb){
+    if(typeof v216SameWallProfile==='function'&&!v216SameWallProfile(wa,wb))return false;
     const ea=v117WallEndpoints(wa), eb=v117WallEndpoints(wb); const adx=ea.b.x-ea.a.x,ady=ea.b.y-ea.a.y,bdx=eb.b.x-eb.a.x,bdy=eb.b.y-eb.a.y; const la=Math.hypot(adx,ady)||1,lb=Math.hypot(bdx,bdy)||1;
     const cross=Math.abs(adx*bdy-ady*bdx)/(la*lb); if(cross>.015) return false;
     if(v117PointLineDistance(eb.a,ea.a,ea.b)>1.6 || v117PointLineDistance(eb.b,ea.a,ea.b)>1.6) return false;
@@ -16623,9 +16620,9 @@ function getSheetBranchOpenMap(){
       const walls=manualWalls().filter(w=>wallLength(w)>2);
       outer: for(let i=0;i<walls.length;i++) for(let j=i+1;j<walls.length;j++){
         const wa=walls[i], wb=walls[j];
-        if([wa.startNodeId,wa.endNodeId].some(id=>id===wb.startNodeId||id===wb.endNodeId)) continue;
         const ea=v117WallEndpoints(wa), eb=v117WallEndpoints(wb);
         if(v117SplitCollinearOverlap(wa,wb)){ splits++; changed=true; dedupeManualWalls({}); break outer; }
+        if([wa.startNodeId,wa.endNodeId].some(id=>id===wb.startNodeId||id===wb.endNodeId)) continue;
         const hit=v117SegmentIntersection(ea.a,ea.b,eb.a,eb.b); if(!hit) continue;
         const aInterior=hit.t>.004&&hit.t<.996, bInterior=hit.u>.004&&hit.u<.996;
         if(!aInterior&&!bInterior) continue;
@@ -17043,6 +17040,94 @@ function getSheetBranchOpenMap(){
     v117ResolveWallIntersections(); const result=v128FuseTouchingRoomWalls(room,{targetRoomId,notify:false}); v117RefreshRooms(); syncRoomLinkedZones(); v128RebuildSharedWallRegistry();
     if(notify&&result.merged)showToast(result.split?`Muro compartida creada (${result.split} corte(s) automático(s)).`:'Muros fusionadas como muro compartido reversible.','success',2300);
     return result;
+  }
+  // V216: union of physical wall footprints. Editable axes/IDs remain stable.
+  function v216SignedArea(poly){return poly.reduce((s,p,i)=>s+p.x*poly[(i+1)%poly.length].y-poly[(i+1)%poly.length].x*p.y,0)/2;}
+  function v216Inside(p,poly){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)inside=!inside;}return inside;}
+  function v216Union(polygons,excluded=[]){
+    const polys=polygons.filter(p=>p?.length>=3&&p.every(v=>Number.isFinite(v.x)&&Number.isFinite(v.y))&&Math.abs(v216SignedArea(p))>1e-10);
+    if(!polys.length)return [];
+    const masks=excluded.filter(p=>p?.length>=3);
+    const all=[...polys,...masks].flat(),span=Math.max(1,...all.map(p=>Math.abs(p.x)),...all.map(p=>Math.abs(p.y))),eps=Math.max(1e-7,span*1e-10),key=p=>`${Math.round(p.x/(eps*4))},${Math.round(p.y/(eps*4))}`;
+    const bounds=polys.map(p=>({minX:Math.min(...p.map(v=>v.x)),maxX:Math.max(...p.map(v=>v.x)),minY:Math.min(...p.map(v=>v.y)),maxY:Math.max(...p.map(v=>v.y))}));
+    const occupied=p=>polys.some((poly,i)=>p.x>=bounds[i].minX&&p.x<=bounds[i].maxX&&p.y>=bounds[i].minY&&p.y<=bounds[i].maxY&&v216Inside(p,poly))&&!masks.some(poly=>v216Inside(p,poly));
+    const edges=[...polys,...masks].flatMap(poly=>poly.map((a,i)=>({a,b:poly[(i+1)%poly.length],ts:[0,1]}))).filter(e=>Math.hypot(e.a.x-e.b.x,e.a.y-e.b.y)>eps);
+    const cross=(a,b)=>a.x*b.y-a.y*b.x;
+    for(let i=0;i<edges.length;i++)for(let j=i+1;j<edges.length;j++){
+      const e=edges[i],f=edges[j],r={x:e.b.x-e.a.x,y:e.b.y-e.a.y},s={x:f.b.x-f.a.x,y:f.b.y-f.a.y},q={x:f.a.x-e.a.x,y:f.a.y-e.a.y},den=cross(r,s);
+      if(Math.abs(den)>1e-9*Math.hypot(r.x,r.y)*Math.hypot(s.x,s.y)){const t=cross(q,s)/den,u=cross(q,r)/den;if(t>=-1e-9&&t<=1+1e-9&&u>=-1e-9&&u<=1+1e-9){e.ts.push(Math.max(0,Math.min(1,t)));f.ts.push(Math.max(0,Math.min(1,u)));}}
+      else if(Math.abs(cross(q,r))<=eps*Math.hypot(r.x,r.y)){
+        const add=(edge,p)=>{const dx=edge.b.x-edge.a.x,dy=edge.b.y-edge.a.y,t=((p.x-edge.a.x)*dx+(p.y-edge.a.y)*dy)/(dx*dx+dy*dy);if(t>0&&t<1)edge.ts.push(t);};add(e,f.a);add(e,f.b);add(f,e.a);add(f,e.b);
+      }
+    }
+    const boundary=new Map();
+    edges.forEach(e=>{const ts=[...new Set(e.ts)].sort((a,b)=>a-b);for(let i=0;i<ts.length-1;i++){
+      const at=t=>({x:e.a.x+(e.b.x-e.a.x)*t,y:e.a.y+(e.b.y-e.a.y)*t});let a=at(ts[i]),b=at(ts[i+1]);const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);if(len<=eps*4)continue;
+      const delta=Math.min(len*.001,eps*20),m={x:(a.x+b.x)/2,y:(a.y+b.y)/2},left=occupied({x:m.x-dy/len*delta,y:m.y+dx/len*delta}),right=occupied({x:m.x+dy/len*delta,y:m.y-dx/len*delta});
+      if(left===right)continue;if(!left)[a,b]=[b,a];boundary.set(key(a)+'>'+key(b),{a,b,ka:key(a),kb:key(b)});
+    }});
+    const outgoing=new Map();boundary.forEach(e=>{if(!outgoing.has(e.ka))outgoing.set(e.ka,[]);outgoing.get(e.ka).push(e);});
+    const used=new Set(),rings=[];
+    for(const start of boundary.values()){
+      if(used.has(start))continue;const ring=[];let e=start,closed=false;
+      for(let guard=0;guard<=boundary.size;guard++){
+        used.add(e);ring.push(e.a);if(e.kb===start.ka){closed=true;break;}
+        const choices=(outgoing.get(e.kb)||[]).filter(x=>!used.has(x));if(!choices.length)break;
+        const back=Math.atan2(e.a.y-e.b.y,e.a.x-e.b.x);
+        choices.sort((u,v)=>{const turn=x=>(back-Math.atan2(x.b.y-x.a.y,x.b.x-x.a.x)+Math.PI*2)%(Math.PI*2);return turn(u)-turn(v);});e=choices[0];
+      }
+      if(!closed)throw new Error('Contorno de muro no cerrado');
+      if(ring.length>=3&&Math.abs(v216SignedArea(ring))>eps*eps)rings.push(ring);
+    }
+    return rings;
+  }
+  function v216JointPieces(walls=appState.layout.walls){
+    const nodes=new Map(),key=p=>`${Math.round(p.x*1e5)},${Math.round(p.y*1e5)}`;
+    walls.filter(w=>!w.autoZoneEdge).forEach(w=>{const raw=getWallRawSlicePolygon(w);if(!raw)return;const limited=getWallSlicePolygon(w)?.miterLimited;
+      [[raw.a,[raw.poly[0],raw.poly[3]]],[raw.b,[raw.poly[1],raw.poly[2]]]].forEach(([p,ends])=>{const k=key(p);if(!nodes.has(k))nodes.set(k,{ends:[],walls:[],limited:false});const n=nodes.get(k);n.ends.push(...ends);n.walls.push(w);n.limited||=!!limited;});
+    });
+    return [...nodes.values()].filter(n=>n.walls.length>=3||n.walls.length===2&&n.limited).map(n=>({poly:convexHull2D(n.ends),ids:n.walls.map(w=>w.id),height:Math.min(...n.walls.map(w=>Number(w.height)||290))}));
+  }
+  function v216SameWallProfile(a,b){
+    const aa=getWallFaceOffsets(a),bb=getWallFaceOffsets(b),reverse=(a.x2-a.x1)*(b.x2-b.x1)+(a.y2-a.y1)*(b.y2-b.y1)<0;
+    return Math.abs(aa.left-(reverse?bb.right:bb.left))<1e-6&&Math.abs(aa.right-(reverse?bb.left:bb.right))<1e-6&&Math.abs((Number(a.height)||290)-(Number(b.height)||290))<1e-6&&(a.material||'default')===(b.material||'default');
+  }
+  function v216OpeningVoids(){
+    if(typeof getOpeningFootprint!=='function')return [];
+    const scale=getScaleCmPerUnit()/100;
+    return (appState.layout.openings||[]).map(o=>{const wall=findWallById(o.wallId);if(!wall)return null;const footprint=getOpeningFootprint(o,wall),defaults=openingDefaultForType(o.type),sill=Math.max(0,Number(o.sill??defaults.sill));return footprint?{poly:footprint.poly,y0:sill*scale,y1:Math.min(Number(wall.height)||290,sill+(Number(o.height)||defaults.height))*scale}:null;}).filter(Boolean);
+  }
+  let v216PlanCache=null;
+  function v216PlanRings(polys,voids=[]){const signature=JSON.stringify([polys,voids]);if(v216PlanCache?.signature===signature)return v216PlanCache.rings;const rings=v216Union(polys,voids);v216PlanCache={signature,rings};return rings;}
+  function v216RenderWallUnion(layer,polys){
+    const physical=polys.concat(v216JointPieces().map(j=>j.poly));if(!physical.length)return;
+    const rings=v216PlanRings(physical,v216OpeningVoids().map(v=>v.poly)),d=rings.map(r=>wallPolygonPath(r)).join(' ');
+    const path=svgEl('path',{d,fill:'rgba(232,223,209,.99)',stroke:'#7b6753','stroke-width':1.6,'fill-rule':'evenodd','pointer-events':'none','data-v216-wall-union':'1'});layer.prepend(path);
+  }
+  function v216AddUnionMeshes(THREE,host,bands,mapper,register){
+    if(!bands.length)return;
+    const voids=v216OpeningVoids();
+    const levels=[...new Set([...bands,...voids].flatMap(b=>[b.y0,b.y1]))].sort((a,b)=>a-b);
+    for(let i=0;i<levels.length-1;i++){
+      const y0=levels[i],y1=levels[i+1],mid=(y0+y1)/2;if(y1-y0<1e-7)continue;
+      const active=bands.filter(b=>b.y0<=mid&&b.y1>=mid);if(!active.length)continue;
+      const materials=new Map();active.forEach(b=>{const m=b.material,k=[m.color?.getHex(),m.opacity,m.transparent,m.roughness,m.metalness].join('|');if(!materials.has(k))materials.set(k,[]);materials.get(k).push(b);});
+      let covered=voids.filter(v=>v.y0<=mid&&v.y1>=mid).map(v=>v.poly);
+      for(const parts of materials.values()){
+      const rings=v216Union(parts.map(b=>b.poly),covered),outers=rings.filter(r=>v216SignedArea(r)>0),holes=rings.filter(r=>v216SignedArea(r)<0);
+      outers.forEach(r=>{
+        const make=(ring,Type)=>{const path=new Type();ring.forEach((p,i)=>{const q=mapper(p);i?path.lineTo(q.x,-q.z):path.moveTo(q.x,-q.z);});path.closePath();return path;};
+        const shape=make(r,THREE.Shape);holes.filter(h=>v216Inside(h[0],r)&&!outers.some(o=>o!==r&&Math.abs(v216SignedArea(o))<Math.abs(v216SignedArea(r))&&v216Inside(h[0],o))).forEach(h=>shape.holes.push(make(h,THREE.Path)));
+        const geo=new THREE.ExtrudeGeometry(shape,{depth:y1-y0,bevelEnabled:false,curveSegments:1,steps:1});geo.rotateX(-Math.PI/2);geo.translate(0,y0,0);
+        const mesh=new THREE.Mesh(geo,parts[0].material);mesh.castShadow=mesh.receiveShadow=true;
+        mesh.userData={entityType:'wall',wallId:parts[0].wallId,wallIds:[...new Set(parts.map(b=>b.wallId))],wallUnion:true,wallParts:parts.map(b=>({id:b.wallId,poly:b.poly.map(mapper)}))};host.add(mesh);register(mesh);
+      });covered=covered.concat(parts.map(b=>b.poly));
+      }
+    }
+  }
+  function v216WallIdAtHit(hit){
+    const parts=hit?.object?.userData?.wallParts;if(!parts)return hit?.object?.userData?.wallId||'';
+    const p={x:hit.point.x,y:hit.point.z};return parts.find(part=>v216Inside(p,part.poly.map(q=>({x:q.x,y:q.z}))))?.id||hit.object.userData.wallId||'';
   }
   function resetRackPreviewCamera(){
     if(!appState.ui) appState.ui = {};
@@ -20407,10 +20492,11 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             state.urbanMeshes.push(group);
           });
         };
+        let wallUnionBands=[];
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
           const scale=getScaleCmPerUnit()/100;
           const dx=Number(wall.x2||0)-Number(wall.x1||0),dy=Number(wall.y2||0)-Number(wall.y1||0);
-          const L=Math.hypot(dx,dy);if(L<8)return;
+          const L=Math.hypot(dx,dy);if(L<1)return;
           const selected=wall.id===state.selectedWallId && state.inspectorMode==='architecture';
           const wallCenter={x:(Number(wall.x1||0)+Number(wall.x2||0))/2,y:(Number(wall.y1||0)+Number(wall.y2||0))/2};
           const zone=(appState.layout.zones||[]).find(z=>z.id===wall.zoneBoundarySource?.zoneId)||null;
@@ -20448,6 +20534,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             // x/z frame so the virtual designer and layout close on the same
             // bevel/miter points, even at diagonal-to-vertical intersections.
             const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1):null;
+            if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat});return;}
             if(slice?.poly?.length===4){
               const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
               const ax=Number(wall.x1||0),ay=Number(wall.y1||0);
@@ -20539,7 +20626,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           world.add(group);state.objects.set(r.id,group);
         };
         const rebuild=()=>{
-          clearWorld();
+          clearWorld();wallUnionBands=[];
           refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
@@ -20575,7 +20662,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
             (appState.layout.walls||[]).forEach(w=>buildArchitecturalWall(w));
-            addArchitecturalWallJoints();
+            v216JointPieces().forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId));if(host)wallUnionBands.push({poly:j.poly,y0:0,y1:j.height*getScaleCmPerUnit()/100,wallId:host.wallId,material:host.material});});
+            v216AddUnionMeshes(THREE,world,wallUnionBands,coord,mesh=>state.architectureMeshes.push(mesh));
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.
           const boundsW=(zoneBounds.length?Math.max(...zoneBounds.map(p=>p.x))-Math.min(...zoneBounds.map(p=>p.x)):700)*getScaleCmPerUnit()/100;
@@ -20615,7 +20703,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const hits=raycaster.intersectObjects(state.architectureMeshes||[],false);
           const opening=hits.find(hit=>hit.object?.userData?.openingId);
           const hit=opening||hits[0];
-          return hit?{wallId:hit.object.userData.wallId||'',openingId:hit.object.userData.openingId||''}:null;
+          return hit?{wallId:v216WallIdAtHit(hit),openingId:hit.object.userData.openingId||''}:null;
         };
         const intersectFurniture=(e,excludeRackId='')=>{
           applyPointer(e);

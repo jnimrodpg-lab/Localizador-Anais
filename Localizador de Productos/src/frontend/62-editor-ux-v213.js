@@ -29,6 +29,7 @@
     if(activeLayoutWorkspace()!=='architecture')return 'Edición de calles y veredas';
     const opening=findOpeningById(appState.selectedOpeningId),wall=findWallById(appState.selectedWallId);
     if(opening)return `Editando abertura: ${opening.id}`;
+    if(appState.editor.architectureTool==='walls'&&appState.editor.mode==='wall')return appState.editor.pendingWallPoint?'Trazado continuo · siguiente extremo':'Trazado continuo · punto inicial';
     if(appState.editor.architectureTool==='walls')return wall?`Editando muro: ${wall.name||wall.id}`:'Selecciona un muro o una arista';
     const target=v212Target(),sel=v213SelectedPart();
     if(!target)return 'Selecciona una zona';

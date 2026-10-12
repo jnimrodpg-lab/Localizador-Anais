@@ -694,7 +694,7 @@
           const joined=getWallSlicePolygon(seg.raw,t0,t1,1);
           if(joined?.poly?.length>=4){
             const prism=makeWallPrismGeometry(joined.poly,height);
-            if(prism){prism.translate(0,Number(y0||0),0);return prism;}
+            if(prism){prism.translate(0,Number(y0||0),0);prism.userData.v216Band={poly:joined.poly,y0:Number(y0||0),y1:Number(y1||0)};return prism;}
           }
         }
         const ax = Number(seg.a?.x || 0), ay = Number(seg.a?.y || 0);
@@ -735,8 +735,10 @@
           return { ...o, t, t0:Math.max(0, t-half), t1:Math.min(1, t+half), sillUnits, heightUnits };
         }).sort((a,b)=>a.t0-b.t0);
       };
+      const v216ViewerBands=[];
       const addWallMesh = (group, geo, mat, isActive, wallId='') => {
         if(!geo) return null;
+        if(geo.userData?.v216Band){v216ViewerBands.push({...geo.userData.v216Band,material:mat,wallId});geo.dispose();return null;}
         const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -910,6 +912,7 @@
           const joinedPoly = !seg.autoZoneEdge && seg.raw && typeof getWallSlicePolygon==='function'
             ? getWallSlicePolygon(seg.raw,0,1,1)?.poly :
             (seg.autoZoneEdge && seg.zoneId && Number.isFinite(seg.edgeIndex) ? getAutoWallPolygon(seg.raw || seg) : null);
+          if(joinedPoly?.length>=3){v216ViewerBands.push({poly:joinedPoly,y0:0,y1:height,material:wallMat,wallId:seg.id});addArchitecturalBaseboards(group,seg,[],thicknessUnits,isActive);return;}
           let wall = null;
           if(Array.isArray(joinedPoly) && joinedPoly.length >= 4){
             const geo = makeWallPrismGeometry(joinedPoly, height);
@@ -942,35 +945,8 @@
           addArchitecturalBaseboards(group,seg,[],thicknessUnits,isActive);
         });
 
-        // v105: cierre completo de esquinas tipo L en 3D sin usar variables fuera de scope.
-        getAllWallCornerClosurePolygons().forEach(joint => {
-          if(!Array.isArray(joint.poly) || joint.poly.length < 4) return;
-          const isActive = joint.selected || activeZoneIds.has(joint.zoneId);
-          const height = Math.max(2.8, (Number(joint.height || DEFAULT_WALL_HEIGHT) || DEFAULT_WALL_HEIGHT) * hScale);
-          const geo = makeWallPrismGeometry(joint.poly, height);
-          if(!geo) return;
-          const jointMat = new THREE.MeshStandardMaterial({
-            color:presentationMode ? (isActive ? 0xffffff : 0xeeeae3) : (isActive ? 0xf2f7fb : 0xb8c8d8),
-            transparent:true,
-            opacity:presentationMode ? .985 : (appState.ui?.nav3DArchitectural ? (isActive ? .98 : .86) : (isActive ? .96 : .72)),
-            roughness:presentationMode ? .92 : .78,
-            metalness:.02,
-            side:THREE.DoubleSide
-          });
-          const wall = new THREE.Mesh(geo, jointMat);
-          wall.castShadow = true;
-          wall.receiveShadow = true;
-          wall.userData.wallId = `${joint.prevWallId || ''}+${joint.currWallId || ''}`;
-          group.add(wall);
-          const edges = new THREE.LineSegments(
-            new THREE.EdgesGeometry(wall.geometry),
-            new THREE.LineBasicMaterial({ color:presentationMode ? 0x697985 : (isActive ? 0xffffff : 0xd7e7f4), transparent:true, opacity:presentationMode ? (isActive ? .34 : .10) : (isActive ? .70 : .36) })
-          );
-          edges.position.copy(wall.position);
-          edges.rotation.copy(wall.rotation);
-          edges.scale.copy(wall.scale);
-          group.add(edges);
-        });
+        v216JointPieces().forEach(j=>{const host=v216ViewerBands.find(b=>j.ids.includes(b.wallId));if(host)v216ViewerBands.push({poly:j.poly,y0:0,y1:Math.min(j.height*hScale,Math.max(...v216ViewerBands.filter(b=>j.ids.includes(b.wallId)).map(b=>b.y1))),wallId:host.wallId,material:host.material});});
+        v216AddUnionMeshes(THREE,group,v216ViewerBands,p=>({x:(p.x-bounds.cx)*scale,z:(p.y-bounds.cy)*scale}),mesh=>pickables.push(mesh));
         return group;
       };
       const roomSlabsGroup = buildArchitecturalRoomSlabs(layoutZones, focusZoneIds);
@@ -1354,7 +1330,7 @@
         if(data.isRackInstanced && Number.isInteger(hit.instanceId)){ const id=data.rackIds?.[hit.instanceId]||''; if(id)return {type:'rack',id,object:hit.object,instanceId:hit.instanceId,point:hit.point}; }
         if(data.openingId) return {type:'opening',id:data.openingId,object:hit.object,point:hit.point};
         if(data.rackId) return {type:'rack',id:data.rackId,object:hit.object,point:hit.point};
-        if(data.wallId) return {type:'wall',id:data.wallId,object:hit.object,point:hit.point};
+        if(data.wallId) return {type:'wall',id:v216WallIdAtHit(hit),object:hit.object,point:hit.point};
         if(data.zoneId) return {type:'zone',id:data.zoneId,object:hit.object,point:hit.point};
         return null;
       };
@@ -1372,7 +1348,7 @@
         if(!entity?.type||!entity.id)return null;
         if(entity.object && !entity.object.isInstancedMesh){ try{return new THREE.Box3().setFromObject(entity.object);}catch{} }
         if(entity.type==='rack'){ const r=findNav3DRackById(entity.id); if(!r)return null; const model=rackModel(r.modelId)||baseRackModel(),w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale),p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0); return new THREE.Box3(new THREE.Vector3(p.x-w/2,0,p.z-d/2),new THREE.Vector3(p.x+w/2,rh,p.z+d/2)); }
-        const candidate=pickables.find(o=>(entity.type==='wall'&&o.userData?.wallId===entity.id)||(entity.type==='opening'&&o.userData?.openingId===entity.id)||(entity.type==='zone'&&o.userData?.zoneId===entity.id));
+        const candidate=pickables.find(o=>(entity.type==='wall'&&(o.userData?.wallId===entity.id||o.userData?.wallIds?.includes(entity.id)))||(entity.type==='opening'&&o.userData?.openingId===entity.id)||(entity.type==='zone'&&o.userData?.zoneId===entity.id));
         if(candidate){try{return new THREE.Box3().setFromObject(candidate);}catch{}} return null;
       };
       const showSelectionHelper = entity => { clearSelectionHelper(); const box=entityBox(entity); if(!box||box.isEmpty())return; selectionHelper=new THREE.Box3Helper(box,0x66ffd0); selectionHelper.material.transparent=true; selectionHelper.material.opacity=.92; scene.add(selectionHelper); if(entity?.type==='rack'&&typeof isRackDistributionScreen==='function'&&isRackDistributionScreen()){const c=box.getCenter(new THREE.Vector3());c.y=Math.max(.10,box.min.y+.10);selectionGizmo=new THREE.Group();selectionGizmo.add(new THREE.ArrowHelper(new THREE.Vector3(1,0,0),c,1.05,0xff675c,.24,.12));selectionGizmo.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1),c,1.05,0x4bb8ff,.24,.12));scene.add(selectionGizmo);} requestRender(true); };

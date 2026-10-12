@@ -402,7 +402,7 @@
       const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
       sitePts.forEach(p=>pts.push(p));
       v219TotalContours().flat().forEach(p=>pts.push(p));
-      (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>pts.push(p)));
+      (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[]),...(s.sidewalkExtraContours||[]).flat()].forEach(p=>pts.push(p)));
       if(!pts.length)(appState.layout.racks||[]).forEach(r=>pts.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
       return pts;
     };
@@ -478,9 +478,10 @@
         ${selected?`<div class="vspace-arch-subtitle">Calzada y veredas</div>
           <label class="vspace-field">Modelo de calle<select id="vsUrbanRoadType" ${lock}>${Object.entries(STREET_SURFACE_PRESETS).map(([key,p])=>`<option value="${key}" ${selected.roadType===key?'selected':''}>${vspaceEsc(p.label)}</option>`).join('')}</select></label>
           <label class="vspace-field">Acabado de veredas<select id="vsUrbanWalkType" ${lock}>${Object.entries(SIDEWALK_SURFACE_PRESETS).map(([key,p])=>`<option value="${key}" ${selected.sidewalkType===key?'selected':''}>${vspaceEsc(p.label)}</option>`).join('')}</select></label>
-          <div class="vspace-grid-2"><label class="vspace-field">Calzada (cm)<input id="vsUrbanRoadWidth" type="number" min="26" max="600" value="${Math.round(Number(selected.roadWidth||92)*u)}" ${lock}></label>
-          <label class="vspace-field">Veredas (cm)<input id="vsUrbanSidewalkWidth" type="number" min="20" max="300" value="${Math.round(Number(selected.sidewalkWidth||42)*u)}" ${lock}></label></div>
-          <label class="vspace-field">Tipo de esquina<select id="vsUrbanCorner" ${lock}><option value="right" ${selected.cornerStyle!=='diagonal'?'selected':''}>90°</option><option value="diagonal" ${selected.cornerStyle==='diagonal'?'selected':''}>Diagonal / ochava</option></select></label>
+          <div class="vspace-grid-2"><label class="vspace-field">Calzada (cm)<input id="vsUrbanRoadWidth" type="number" min="26" max="2400" value="${Math.round(Number(selected.roadWidth||600)*u)}" ${lock}></label>
+          <label class="vspace-field">Veredas (cm)<input id="vsUrbanSidewalkWidth" type="number" min="20" max="1200" value="${Math.round(Number(selected.sidewalkWidth||240)*u)}" ${lock}></label></div>
+          <label class="vspace-field">Canaletas (cm)<input id="vsUrbanGutterWidth" type="number" min="0" max="300" value="${Math.round(Number(selected.gutterWidth||0)*u)}" ${lock}></label>
+          <label class="vspace-field">Tipo de esquina<select id="vsUrbanCorner" ${lock}><option value="right" ${selected.cornerStyle==='right'?'selected':''}>90°</option><option value="round" ${selected.cornerStyle==='round'?'selected':''}>Redondeada</option><option value="diagonal" ${selected.cornerStyle==='diagonal'?'selected':''}>Diagonal / ochava</option></select></label>
           <button type="button" class="vspace-primary" id="vsUrbanApply" ${lock}>Aplicar a la calle</button>
           <div class="vspace-arch-subtitle">Mobiliario urbano (grupo único)</div>
           <button type="button" id="vsUrbanAdd" ${lock}>${urban?'Reemplazar conjunto':'Añadir conjunto'}</button>
@@ -494,13 +495,13 @@
       host.querySelectorAll('[data-vs-street]').forEach(btn=>btn.onclick=()=>{state.selectedStreetId=btn.dataset.vsStreet;appState.selectedStreetId=btn.dataset.vsStreet;state.selectedStreetFurnitureId='';state.refreshInspector();state.render?.(true);});
       host.querySelector('#vsUrbanApply')?.addEventListener('click',()=>{
         if(!canWrite()||!selected)return;
-        const nextRoad=safeArchNum(host.querySelector('#vsUrbanRoadWidth')?.value,26,600,92)/u;
-        const nextWalk=safeArchNum(host.querySelector('#vsUrbanSidewalkWidth')?.value,20,300,42)/u;
+        const nextRoad=safeArchNum(host.querySelector('#vsUrbanRoadWidth')?.value,26,2400,600)/u;
+        const nextWalk=safeArchNum(host.querySelector('#vsUrbanSidewalkWidth')?.value,20,1200,240)/u;
         recordHistorySnapshot('structure');
         selected.roadType=host.querySelector('#vsUrbanRoadType')?.value in STREET_SURFACE_PRESETS ? host.querySelector('#vsUrbanRoadType').value : 'drain-covered';
         selected.sidewalkType=host.querySelector('#vsUrbanWalkType')?.value in SIDEWALK_SURFACE_PRESETS ? host.querySelector('#vsUrbanWalkType').value : 'paver';
-        selected.roadWidth=nextRoad;selected.sidewalkWidth=nextWalk;
-        selected.cornerStyle=host.querySelector('#vsUrbanCorner')?.value==='diagonal'?'diagonal':'right';
+        selected.roadWidth=nextRoad;selected.sidewalkWidth=nextWalk;selected.gutterWidth=safeArchNum(host.querySelector('#vsUrbanGutterWidth')?.value,0,300,60)/u;
+        selected.cornerStyle=v220Corner(host.querySelector('#vsUrbanCorner')?.value);
         rebuildStreetNetwork();vspaceCommit(`calle ${selected.id}`);state.refreshInspector();
       });
       host.querySelector('#vsUrbanAdd')?.addEventListener('click',()=>{
@@ -513,7 +514,7 @@
         if(!canWrite()||!selected||!urban)return;
         const next={x:safeArchNum(host.querySelector('#vsUrbanX')?.value,-200000,200000,urban.x*u)/u,
           y:safeArchNum(host.querySelector('#vsUrbanY')?.value,-200000,200000,urban.y*u)/u};
-        const fits=[selected.sidewalkPts,selected.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(next,poly));
+        const fits=v220PointOnSidewalk(next,selected);
         if(!fits) return vspaceToast('Coloca el conjunto sobre una de las veredas.',true);
         recordHistorySnapshot('structure');urban.x=appState.editor?.snapEnabled===false?next.x:snapGrid(next.x);
         urban.y=appState.editor?.snapEnabled===false?next.y:snapGrid(next.y);
@@ -971,21 +972,9 @@
           const cacheKey=`street:${kind}:${key}`;
           if(floorTextureCache.has(cacheKey)) return floorTextureCache.get(cacheKey);
           const texture=makeCanvasTexture(cacheKey,(ctx,w,h)=>{
-            if(kind==='road' && key==='drain-covered'){
-              ctx.fillStyle='#7f8588';ctx.fillRect(0,0,w,h);
-              ctx.fillStyle='rgba(255,255,255,.035)';for(let i=0;i<160;i++){ctx.fillRect((i*37)%w,(i*83)%h,2,2);} 
-              const gutterW=Math.max(18,w*.1);
-              ctx.fillStyle='#696f72';ctx.fillRect(0,0,gutterW,h);ctx.fillRect(w-gutterW,0,gutterW,h);
-              ctx.strokeStyle='rgba(201,209,214,.58)';ctx.lineWidth=2;
-              for(let y=10;y<h;y+=20){ctx.beginPath();ctx.moveTo(gutterW*.2,y);ctx.lineTo(gutterW*.82,y-8);ctx.stroke();ctx.beginPath();ctx.moveTo(w-gutterW*.82,y);ctx.lineTo(w-gutterW*.2,y-8);ctx.stroke();}
-              ctx.strokeStyle='#efc84d';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,h*.24);ctx.lineTo(w,h*.24);ctx.moveTo(0,h*.76);ctx.lineTo(w,h*.76);ctx.stroke();
-              ctx.strokeStyle='rgba(70,74,77,.28)';ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(28,h*.58);ctx.bezierCurveTo(74,h*.48,132,h*.67,230,h*.52);ctx.stroke();
-              ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(18,h*.38);ctx.bezierCurveTo(64,h*.32,118,h*.43,186,h*.34);ctx.stroke();
-            }else if(kind==='road'){
-              ctx.fillStyle='#8d9194';ctx.fillRect(0,0,w,h);
-              ctx.fillStyle='rgba(255,255,255,.03)';for(let i=0;i<130;i++){ctx.fillRect((i*43)%w,(i*71)%h,2,2);} 
-              ctx.strokeStyle='rgba(248,242,223,.46)';ctx.lineWidth=3.6;ctx.beginPath();ctx.moveTo(0,h*.5);ctx.lineTo(w,h*.5);ctx.stroke();
-              ctx.strokeStyle='rgba(67,69,72,.22)';ctx.lineWidth=1.7;ctx.beginPath();ctx.moveTo(16,h*.72);ctx.bezierCurveTo(58,h*.58,118,h*.78,228,h*.56);ctx.stroke();
+            if(kind==='road'){
+              ctx.fillStyle='#70777b';ctx.fillRect(0,0,w,h);
+              ctx.fillStyle='rgba(255,255,255,.035)';for(let i=0;i<150;i++)ctx.fillRect((i*37)%w,(i*83)%h,2,2);
             }else if(kind==='sidewalk' && key==='paver'){
               ctx.fillStyle='#bf7c63';ctx.fillRect(0,0,w,h);
               ctx.strokeStyle='rgba(114,68,52,.42)';ctx.lineWidth=1.8;
@@ -1014,6 +1003,17 @@
           world.add(mesh);
           if(outlineColor !== null) addOutlineFromPts(pts, outlineColor, y + .0035, .92);
           return mesh;
+        };
+        const addStreetNetwork=()=>{
+          const model=v220StreetScene();
+          const add=(rings,color,y,depth,kind,texture=null)=>{
+            const geo=v220StreetGeometry(THREE,rings,coord,depth);if(!geo)return;
+            const order={road:3,gutter:4,grates:5,centerline:6,crosswalk:7,sidewalk:2,curb:8}[kind]||3;
+            const material=meshMat(texture?0xffffff:color,{map:texture,metalness:kind==='grates'?.35:.03,roughness:.89,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1-order*.4,polygonOffsetUnits:-2});
+            const mesh=new THREE.Mesh(geo,material);mesh.rotation.x=-Math.PI/2;mesh.position.y=y;mesh.receiveShadow=true;mesh.castShadow=depth>0;mesh.userData={streetSurface:kind,streetIds:(appState.layout.streets||[]).map(s=>s.id)};world.add(mesh);
+          };
+          model.walks.forEach(w=>add(w.rings,w.finish==='paver'?0xbf7c63:0xe4ddd0,0,.12,'sidewalk',streetTexture('sidewalk',w.finish)));
+          add(model.roads,0x70777b,.011,0,'road',streetTexture('road','plain'));add(model.gutters,0x434e52,.015,0,'gutter');add(model.grates,0xb0bab9,.018,0,'grates');add(model.curbs,0xe5bd3d,0,.14,'curb');add(model.markings,0xfff9ec,.024,0,'centerline');add(model.crossings,0xfff9ec,.025,0,'crosswalk');
         };
         const addDioramaBase = (pts=[]) => {
           const basePts = rectFromPts(pts);
@@ -1237,7 +1237,7 @@
           const footprintSource = [];
           siteBoundary.forEach(pt => footprintSource.push(pt));
           const totalContours=v219TotalContours();totalContours.flat().forEach(pt=>footprintSource.push(pt));
-          streets.forEach(street => [ ...(street.outerSidewalkPts||[]), ...(street.roadPts||[]), ...(street.sidewalkPts||[]) ].forEach(pt => footprintSource.push(pt)));
+          streets.forEach(street => [ ...(street.outerSidewalkPts||[]), ...(street.roadPts||[]), ...(street.sidewalkPts||[]),...(street.sidewalkExtraContours||[]).flat() ].forEach(pt => footprintSource.push(pt)));
           if(!footprintSource.length) zones.forEach(zone => (zone.pts||[]).forEach(pt => footprintSource.push(pt)));
           const dioramaBase = addDioramaBase(footprintSource);
           if(siteBoundary.length >= 3){
@@ -1246,16 +1246,8 @@
             addOutlineFromPts(siteBoundary, 0xf1e5cf, .046, .78);
           }
           totalContours.forEach(pts=>{const surface=addTopSurfaceFromPts(pts,0xe2cfb3,.006,0xae9069,.98,0);if(surface)surface.userData.totalArea=true;});
-          streets.forEach((street, index) => {
-            ensureStreetVisualDefaults(street);
-            const roadPreset=getStreetSurfacePreset(street.roadType);
-            const sidewalkPreset=getSidewalkSurfacePreset(street.sidewalkType);
-            addStreetBand(street.outerSidewalkPts,{color:0xefe7da,y:.016,outlineColor:0xd2bc98,opacity:.985,order:2+index*.1,texture:streetTexture('sidewalk',street.sidewalkType)});
-            addStreetBand(street.roadPts,{color:roadPreset.fill,y:.011,outlineColor:0xf8efde,opacity:.985,order:2.1+index*.1,texture:streetTexture('road',street.roadType)});
-            addStreetBand(street.sidewalkPts,{color:0xf3ede1,y:.018,outlineColor:0xd2bc98,opacity:.985,order:2.2+index*.1,texture:streetTexture('sidewalk',street.sidewalkType)});
-            addStreetLabel(street, street.roadPts || street.sidewalkPts || street.outerSidewalkPts);
-            addStreetFurniture3D(street);
-          });
+          addStreetNetwork();
+          streets.forEach(street=>{addStreetLabel(street,street.roadPts);addStreetFurniture3D(street);});
           for(const zone of zones){
             const pts=zone.pts||[];if(pts.length<3)continue;
             const zoneColor=new THREE.Color(zone.color||'#2f7b6e');
@@ -1397,7 +1389,7 @@
             if(item&&current&&gesture.groundStart){
               const raw={x:gesture.urbanStartX+current.x-gesture.groundStart.x,y:gesture.urbanStartY+current.y-gesture.groundStart.y};
               const point=appState.editor?.snapEnabled===false?raw:{x:snapGrid(raw.x),y:snapGrid(raw.y)};
-              if([street.sidewalkPts,street.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(point,poly))){
+              if(v220PointOnSidewalk(point,street)){
                 item.x=point.x;item.y=point.y;
                 const group=state.urbanObjects?.get(`${street.id}:${item.id}`);
                 if(group){const cp=coord(point);group.position.x=cp.x;group.position.z=cp.z;}

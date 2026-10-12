@@ -1,6 +1,15 @@
-# WMS Industrial V219 — Área total automática y zócalo
+# WMS Industrial V220 — Calles continuas y veredas editables
 
-Flujo de arquitectura y diorama mejorados sobre V218. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+Calles y veredas mejoradas sobre V219, conservando el flujo de arquitectura y diorama. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+
+## Urbanismo V220
+
+- Perfil de cinco franjas: vereda, canaleta, calzada, canaleta y vereda. Nuevas calles: 2,40 / 0,60 / 6,00 / 0,60 / 2,40 m; las medidas existentes se conservan. El ancho de canaletas es independiente y editable en 2D y 3D.
+- Las calzadas conectadas forman una sola superficie, con brazos que continúan a través del cruce. Los bordillos amarillos y canaletas siguen el borde real; no atraviesan la calzada ni se repiten dentro de la textura. No se dibujan grietas. La línea central y los pasos peatonales se generan como geometría y se interrumpen en el cruce.
+- Encuentros de 90°, diagonales o redondeados. Los acabados de veredas y el mobiliario urbano se conservan. Las vistas 2D y 3D utilizan el mismo modelo de superficies, con huecos y sin diagonales internas entre calles.
+- **Forma de la vereda → Ajustar al contorno del edificio** cubre el espacio exterior entre la vereda y un área con ochava o entrantes. La superficie se recorta contra el área total, calzadas y canaletas.
+- **Editar vértices** permite arrastrar el perímetro, añadir una esquina con doble clic en un lado o con Añadir vértice, y quitar el vértice seleccionado. Admite polígonos cóncavos y movimientos mayores de 2 m; rechaza perímetros que se cruzan. Los vértices manuales se guardan y siguen el traslado del área. Restablecer vértices recupera la forma automática.
+- Deshacer/rehacer y recarga local conservan ajustes de veredas, medidas, ID de calles y mobiliario. Continúan vigentes el área total automática y los zócalos de 20 cm del diorama.
 
 ## Área comercial manual y área total automática
 
@@ -71,9 +80,9 @@ La creación y edición avanzadas siguen disponibles. El nombre visible y el có
 
 Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y error de sincronización. Una respuesta anterior de guardado no marca los cambios nuevos como sincronizados. Se mantienen las comprobaciones del almacenamiento local.
 
-`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V219 y comprueba sintaxis del backend/frontend.
+`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V220 y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` comprueba V219 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. También verifica el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
+`npm run test:ui` comprueba V220 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. También verifica cruces y canaletas en 2D/3D, veredas junto a ochavas, edición de vértices, y el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
 
 ## Alcance
 

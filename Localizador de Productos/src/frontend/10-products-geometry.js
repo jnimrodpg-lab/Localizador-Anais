@@ -562,6 +562,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   function ensureStreetVisualDefaults(street){
     if(!street||typeof street!=='object')return street;
     street.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,street.roadType)?street.roadType:'drain-covered';
+    if(typeof v220Dims==='function'&&street.gutterWidth===undefined)street.gutterWidth=Math.min(60,(Number(street.roadWidth)||600)*.1);
     street.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,street.sidewalkType)?street.sidewalkType:'paver';
     if(!Array.isArray(street.streetFurniture))street.streetFurniture=[];
     const refBounds=polygonBounds(street.outerSidewalkPts?.length?street.outerSidewalkPts:(street.sidewalkPts?.length?street.sidewalkPts:street.roadPts||[]));
@@ -611,6 +612,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   }
   function clearStreetFurniture(street){ if(street) street.streetFurniture=[]; }
   function isValidStreetPolygon(pts){
+    if(typeof v220ValidPolygon==='function')return v220ValidPolygon(pts);
     if(!Array.isArray(pts)||pts.length<3||!pts.every(p=>Number.isFinite(Number(p.x))&&Number.isFinite(Number(p.y))))return false;
     const orient=[];
     for(let i=0;i<pts.length;i++){
@@ -635,8 +637,9 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     });
     return result;
   }
-  function getStreetCornerStyle(){ return String(appState.layout?.meta?.defaultStreetCornerStyle || 'right') === 'diagonal' ? 'diagonal' : 'right'; }
+  function getStreetCornerStyle(){ return typeof v220Corner==='function'?v220Corner(appState.layout?.meta?.defaultStreetCornerStyle):(String(appState.layout?.meta?.defaultStreetCornerStyle || 'right') === 'diagonal' ? 'diagonal' : 'right'); }
   function normalizeStreetDims(source={}, fallback={}){
+    if(typeof v220Dims==='function')return v220Dims(source,fallback);
     const sidewalkWidth = Math.max(20, Number(source.sidewalkWidth ?? fallback.sidewalkWidth ?? 42) || 42);
     const roadWidth = Math.max(26, Number(source.roadWidth ?? fallback.roadWidth ?? 92) || 92);
     return { sidewalkWidth, roadWidth, totalWidth: sidewalkWidth * 2 + roadWidth, side: source.side || fallback.side || '' };
@@ -652,6 +655,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   function rebuildStreetNetwork(){
     ensureLayoutMeta();
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    if(typeof v220RebuildStreetNetwork==='function')return v220RebuildStreetNetwork();
     const network = appState.layout.streets.map(street => ({
       side: street?.side,
       sidewalkWidth: street?.sidewalkWidth,
@@ -675,7 +679,8 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   }
   function setStreetCornerStyle(style='right'){
     ensureLayoutMeta();
-    appState.layout.meta.defaultStreetCornerStyle = String(style) === 'diagonal' ? 'diagonal' : 'right';
+    appState.layout.meta.defaultStreetCornerStyle = typeof v220Corner==='function'?v220Corner(style):(String(style) === 'diagonal' ? 'diagonal' : 'right');
+    if(typeof v220Corner==='function')(appState.layout.streets||[]).forEach(s=>s.cornerStyle=appState.layout.meta.defaultStreetCornerStyle);
     rebuildStreetNetwork();
   }
   function nearestBoundaryEdge(point){
@@ -693,6 +698,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     return list[0]?.side || 'top';
   }
   function buildStreetGeometry(side='top', opts={}){
+    if(typeof v220BuildStreetGeometry==='function')return v220BuildStreetGeometry(side,opts);
     const b = typeof v219UrbanBounds==='function'?v219UrbanBounds():layoutBoundaryBounds();
     const streetDims = normalizeStreetDims(opts, { side });
     const sidewalk = streetDims.sidewalkWidth;

@@ -2322,11 +2322,12 @@
           <div class="layout-prop-title">Calle seleccionada · ${escapeHtml(street.name||street.id)}</div>
           <div class="layout-prop-grid two">
             <label style="grid-column:1/-1">Nombre de la calle<input id="rpStreetName" value="${escapeHtml(street.name||street.id)}"></label>
-            <label>Calzada (cm)<input id="rpStreetRoad" type="number" min="26" max="600" step="1" value="${Math.round(street.roadWidth||92)}"></label>
-            <label>Veredas (cm)<input id="rpStreetWalk" type="number" min="20" max="300" step="1" value="${Math.round(street.sidewalkWidth||42)}"></label>
+            <label>Calzada (cm)<input id="rpStreetRoad" type="number" min="26" max="2400" step="1" value="${Math.round(street.roadWidth||600)}"></label>
+            <label>Veredas (cm)<input id="rpStreetWalk" type="number" min="20" max="1200" step="1" value="${Math.round(street.sidewalkWidth||240)}"></label>
+            <label>Canaletas (cm)<input id="rpStreetGutter" type="number" min="0" max="300" step="1" value="${Math.round(street.gutterWidth??60)}"></label>
             <label>Tipo de calle<select id="rpStreetType">${Object.entries(STREET_SURFACE_PRESETS).map(([v,p])=>`<option value="${v}" ${street.roadType===v?'selected':''}>${p.label}</option>`).join('')}</select></label>
             <label>Tipo de vereda<select id="rpSidewalkType">${Object.entries(SIDEWALK_SURFACE_PRESETS).map(([v,p])=>`<option value="${v}" ${street.sidewalkType===v?'selected':''}>${p.label}</option>`).join('')}</select></label>
-            <label>Esquinas<select id="rpStreetCorner"><option value="right" ${street.cornerStyle!=='diagonal'?'selected':''}>90°</option><option value="diagonal" ${street.cornerStyle==='diagonal'?'selected':''}>Diagonal</option></select></label>
+            <label>Esquinas<select id="rpStreetCorner"><option value="right" ${street.cornerStyle==='right'?'selected':''}>90°</option><option value="round" ${street.cornerStyle==='round'?'selected':''}>Redondeada</option><option value="diagonal" ${street.cornerStyle==='diagonal'?'selected':''}>Diagonal</option></select></label>
             <label>Editar geometría<select id="rpStreetPart"><option value="roadPts" ${appState.editor.streetVertexPart==='roadPts'?'selected':''}>Calzada</option><option value="sidewalkPts" ${appState.editor.streetVertexPart==='sidewalkPts'?'selected':''}>Vereda interior</option><option value="outerSidewalkPts" ${appState.editor.streetVertexPart==='outerSidewalkPts'?'selected':''}>Vereda exterior</option></select></label>
             <label>Mobiliario<input value="${(street.streetFurniture||[]).length ? '1 objeto agrupado' : 'Sin mobiliario'}" disabled></label>
             <label>Lado<input value="${escapeHtml(street.side||'')}" disabled></label>
@@ -2336,6 +2337,7 @@
             <button type="button" class="seg-btn" id="rpStreetApply">Aplicar medidas</button>
             <button type="button" class="seg-btn" id="rpStreetReset">Restablecer vértices</button>
           </div>
+          ${v220SidewalkTools(street)}
           <div class="layout-template-grid" style="margin-top:10px">
             <button type="button" class="seg-btn" id="rpStreetAddUrban">${(street.streetFurniture||[]).length ? 'Reemplazar mobiliario urbano' : '+ Mobiliario urbano'}</button>
             <button type="button" class="seg-btn" id="rpStreetClearFurniture" ${(street.streetFurniture||[]).length?'':'disabled'}>Quitar mobiliario</button>
@@ -2721,24 +2723,26 @@
     if($('#layoutSnapSize')) $('#layoutSnapSize').onchange = e => updateSnapSize(e.target.value);
     if($('#layoutDimFontSize')) $('#layoutDimFontSize').onchange = e => updateDimFont(e.target.value);
     const selectedStreet=(appState.layout?.streets||[]).find(s=>s.id===appState.selectedStreetId)||null;
+    v220BindSidewalkTools();
     if($('#rpStreetName')) $('#rpStreetName').onchange=e=>{if(!selectedStreet)return;const name=String(e.target.value||'').trim();if(!name||name===selectedStreet.name)return;recordHistorySnapshot('structure');selectedStreet.name=name;persistActiveLayout();renderLayoutEditor();};
     if($('#rpStreetPart')) $('#rpStreetPart').onchange=e=>{appState.editor.streetVertexPart=e.target.value;renderLayoutEditor();};
     if($('#rpStreetVertices')) $('#rpStreetVertices').onclick=()=>{appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
     if($('#rpStreetApply')) $('#rpStreetApply').onclick=()=>{
       if(!selectedStreet)return;
       ensureStreetVisualDefaults(selectedStreet);
-      selectedStreet.roadWidth=Math.max(26,Math.min(600,Number($('#rpStreetRoad')?.value)||92));
-      selectedStreet.sidewalkWidth=Math.max(20,Math.min(300,Number($('#rpStreetWalk')?.value)||42));
-      selectedStreet.cornerStyle=$('#rpStreetCorner')?.value==='diagonal'?'diagonal':'right';
+      selectedStreet.roadWidth=Math.max(26,Math.min(2400,Number($('#rpStreetRoad')?.value)||600));
+      selectedStreet.gutterWidth=Math.max(0,Math.min(300,Number($('#rpStreetGutter')?.value)||0));
+      selectedStreet.sidewalkWidth=Math.max(20,Math.min(1200,Number($('#rpStreetWalk')?.value)||240));
+      selectedStreet.cornerStyle=v220Corner($('#rpStreetCorner')?.value);
       selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,$('#rpStreetType')?.value)?$('#rpStreetType').value:'drain-covered';
       selectedStreet.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,$('#rpSidewalkType')?.value)?$('#rpSidewalkType').value:'paver';
       rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
     };
     if($('#rpStreetReset')) $('#rpStreetReset').onclick=()=>{
       if(!selectedStreet)return;
-      selectedStreet.vertexOffsets={};rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
+      selectedStreet.vertexOffsets={};selectedStreet.manualSidewalks={};selectedStreet.fitSidewalkToArea=false;rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
     };
-    if($('#rpStreetType')) $('#rpStreetType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,e.target.value)?e.target.value:'drain-covered'; persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpStreetType')) $('#rpStreetType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,e.target.value)?e.target.value:'drain-covered'; rebuildStreetNetwork();persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpSidewalkType')) $('#rpSidewalkType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,e.target.value)?e.target.value:'paver'; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpStreetAddUrban')) $('#rpStreetAddUrban').onclick=()=>{ if(!selectedStreet)return; const item=setStreetFurnitureUrbanSet(selectedStreet); appState.selectedStreetFurnitureId=item?.id||''; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpUrbanTransform')) $('#rpUrbanTransform').onclick=()=>{
@@ -2746,7 +2750,7 @@
       const item=selectedStreet.streetFurniture[0],u=Math.max(.0001,getScaleCmPerUnit());
       const p={x:Number($('#rpUrbanX')?.value)/u,y:Number($('#rpUrbanY')?.value)/u};
       if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return;
-      if(![selectedStreet.sidewalkPts,selectedStreet.outerSidewalkPts].some(poly=>Array.isArray(poly)&&poly.length>=3&&pointInPoly(p,poly))){showToast('El mobiliario debe ubicarse sobre una vereda.','warning',2200);return;}
+      if(!v220PointOnSidewalk(p,selectedStreet)){showToast('El mobiliario debe ubicarse sobre una vereda.','warning',2200);return;}
       recordHistorySnapshot('structure');
       item.x=isSnapEnabled()?snapGrid(p.x):p.x;item.y=isSnapEnabled()?snapGrid(p.y):p.y;
       item.rotation=Math.max(-360,Math.min(360,Number($('#rpUrbanRotation')?.value)||0));
@@ -3093,7 +3097,7 @@
             ${architectureMode ? (appState.editor.architectureTool==='area'?'<button class="btn primary v80-zone-btn" id="btnAreaPlus">Dibujar área</button>':appState.editor.architectureTool==='zones'?'<button class="btn primary v80-zone-btn" id="btnZonePlus">+ Zona</button>':'<button class="btn primary v80-zone-btn" data-emode="wall">Dibujar muro</button>') : urbanismMode ? '<button class="btn primary v80-zone-btn" id="btnStreetPlus">+ Calle</button>' : '<button class="btn primary v80-zone-btn" data-emode="rack">+ Rack</button>'}
             <select id="layoutBranchSelect" class="seg-btn v80-branch-select">${(appState.admin.branches||[]).map((b,i)=>`<option value="${i}" ${i===getActiveLayoutBranchIndex()?'selected':''}>${escapeHtml(b.name||('Sucursal '+(i+1)))}</option>`).join('')}</select>
             ${rackMode?layoutLevelSelector():''}
-            ${urbanismMode?`<button type="button" class="seg-btn" id="streetCornerToggle">${getStreetCornerStyle()==='diagonal'?'Esquina diagonal':'Esquina 90°'}</button>`:''}
+            ${urbanismMode?`<button type="button" class="seg-btn" id="streetCornerToggle">${getStreetCornerStyle()==='diagonal'?'Esquina diagonal':getStreetCornerStyle()==='round'?'Esquina redondeada':'Esquina 90°'}</button>`:''}
             <span class="v175-unit-label" title="Escala del plano">cm / m</span>
             <button class="seg-btn v80-icon-btn ${isSnapEnabled()?'is-active':''}" data-layout-tag-action="toggle-snap" type="button" aria-pressed="${isSnapEnabled()}" title="Activar o desactivar snap" aria-label="Activar o desactivar snap">⌁</button>
             ${!rackMode?`<button class="seg-btn v80-icon-btn ${appState.editor.orthoEnabled?'is-active':''}" data-layout-tag-action="toggle-ortho" type="button" aria-pressed="${!!appState.editor.orthoEnabled}" title="Ortogonalidad 0° y 90° (F8)">⊥</button>`:''}
@@ -3269,7 +3273,7 @@
       maxY = Math.max(maxY, Number(pt.y || 0));
     });
     (appState.layout?.streets || []).forEach(street => {
-      [...(street.sidewalkPts || []), ...(street.roadPts || [])].forEach(pt => {
+      [...(street.sidewalkPts || []), ...(street.outerSidewalkPts||[]), ...(street.sidewalkExtraContours||[]).flat(), ...(street.roadPts || [])].forEach(pt => {
         minX = Math.min(minX, Number(pt.x || 0));
         minY = Math.min(minY, Number(pt.y || 0));
         maxX = Math.max(maxX, Number(pt.x || 0));
@@ -3551,28 +3555,6 @@
       pat.appendChild(svgEl('path',{d:`M 0 ${tile} V 0 H ${tile}`,fill:'none',stroke:finish.grout,'stroke-width':'1.6',opacity:'.88'}));
       floorDefs.appendChild(pat);
     });
-    const roadPat1=svgEl('pattern',{id:'street-road-drain-covered',patternUnits:'userSpaceOnUse',width:'160',height:'120'});
-    roadPat1.appendChild(svgEl('rect',{width:'160',height:'120',fill:'#bbb3a8'}));
-    roadPat1.appendChild(svgEl('rect',{x:'26',y:'0',width:'108',height:'120',fill:'#b6b0a6'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 0 18 H 160 M 0 102 H 160',stroke:'rgba(255,255,255,.08)','stroke-width':'2'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 30 0 V 120 M 130 0 V 120',stroke:'#f0c447','stroke-width':'4.5',opacity:'.95'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 0 0 H 26 V 120 H 0 Z',fill:'#c9c2b7',stroke:'#8a847b','stroke-width':'1'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 134 0 H 160 V 120 H 134 Z',fill:'#c9c2b7',stroke:'#8a847b','stroke-width':'1'}));
-    for(let yy=8; yy<120; yy+=12){
-      roadPat1.appendChild(svgEl('rect',{x:'6',y:String(yy),width:'14',height:'3.6',rx:'1.2',fill:'#585b5f',opacity:'.92'}));
-      roadPat1.appendChild(svgEl('rect',{x:'140',y:String(yy),width:'14',height:'3.6',rx:'1.2',fill:'#585b5f',opacity:'.92'}));
-    }
-    roadPat1.appendChild(svgEl('path',{d:'M 44 88 C 58 72, 82 98, 100 86',stroke:'rgba(76,72,68,.32)','stroke-width':'2',fill:'none'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 52 38 C 68 34, 74 48, 92 44',stroke:'rgba(255,255,255,.12)','stroke-width':'2',fill:'none'}));
-    roadPat1.appendChild(svgEl('path',{d:'M 38 76 L 58 76 M 38 82 L 58 82 M 38 88 L 58 88',stroke:'rgba(255,255,255,.6)','stroke-width':'2.4'}));
-    floorDefs.appendChild(roadPat1);
-    const roadPat2=svgEl('pattern',{id:'street-road-plain',patternUnits:'userSpaceOnUse',width:'150',height:'120'});
-    roadPat2.appendChild(svgEl('rect',{width:'150',height:'120',fill:'#b7b1a7'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 24 0 V 120 M 126 0 V 120',stroke:'#f0c447','stroke-width':'4'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 0 0 H 150 V 120',fill:'none',stroke:'rgba(120,110,100,.16)','stroke-width':'1'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 14 22 C 32 12, 48 26, 70 20 S 108 26 130 18',stroke:'rgba(255,255,255,.08)','stroke-width':'2',fill:'none'}));
-    roadPat2.appendChild(svgEl('path',{d:'M 24 94 C 52 76, 86 104, 122 92',stroke:'rgba(76,72,68,.24)','stroke-width':'2',fill:'none'}));
-    floorDefs.appendChild(roadPat2);
     const walkPat1=svgEl('pattern',{id:'street-sidewalk-paver',patternUnits:'userSpaceOnUse',width:'56',height:'28'});
     walkPat1.appendChild(svgEl('rect',{width:'56',height:'28',fill:'#bb7860'}));
     walkPat1.appendChild(svgEl('path',{d:'M 0 14 H 56 M 0 0 H 56 M 0 28 H 56',stroke:'rgba(106,63,48,.48)','stroke-width':'1'}));
@@ -3601,44 +3583,19 @@
     }
     const totalContours=v219TotalContours();
     if(totalContours.length)overlayLayer.appendChild(svgEl('path',{d:totalContours.map(pathFromPts).join(' '),fill:'none',stroke:'#448575','stroke-width':'2','stroke-dasharray':'5 4','pointer-events':'none','data-v219-total-boundary':'1'}));
+    v220RenderStreets2D(streetsLayer,svg);
     (appState.layout?.streets || []).forEach(street => {
       const selected = appState.selectedStreetId === street.id;
       const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedStreetFurnitureId=''; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
-      if(Array.isArray(street.outerSidewalkPts) && street.outerSidewalkPts.length >= 4){
-        const sidewalkPresetOuter=getSidewalkSurfacePreset(street.sidewalkType);
-        const sw2 = svgEl('path',{ d:pathFromPts(street.outerSidewalkPts), fill:streetSidewalkFill(street), stroke:selected?'#d2b07a':sidewalkPresetOuter.stroke, 'stroke-width':selected?'1.6':'1.15', opacity:selected?'.99':'.97', 'data-street-id':street.id, 'data-street-part':'outerSidewalkPts', style:'cursor:pointer' });
-        sw2.addEventListener('pointerdown', pickStreet);
-        streetsLayer.appendChild(sw2);
-      }
-      if(Array.isArray(street.roadPts) && street.roadPts.length >= 4){
-        const roadPreset=getStreetSurfacePreset(street.roadType);
-        const road = svgEl('path',{ d:pathFromPts(street.roadPts), fill:streetRoadFill(street), stroke:selected?'#f7f3df':roadPreset.stroke, 'stroke-width':selected?'1.9':'1.25', opacity:selected?'.995':'.96', 'data-street-id':street.id, 'data-street-part':'roadPts', style:'cursor:pointer' });
-        road.addEventListener('pointerdown', pickStreet);
-        streetsLayer.appendChild(road);
-        const xs = street.roadPts.map(pt => Number(pt?.x || 0));
-        const ys = street.roadPts.map(pt => Number(pt?.y || 0));
-        const laneColor=roadPreset.centerLine||'rgba(248,240,222,.9)';
-        const lane = street.side === 'top' || street.side === 'bottom'
-          ? svgEl('line',{ x1:Math.min(...xs)+10, y1:(Math.min(...ys)+Math.max(...ys))/2, x2:Math.max(...xs)-10, y2:(Math.min(...ys)+Math.max(...ys))/2, stroke:laneColor, 'stroke-width':roadPreset.laneDash? '1.25':'2.1', 'stroke-dasharray':roadPreset.laneDash?'12 8':'0', 'vector-effect':'non-scaling-stroke', 'pointer-events':'none', opacity:roadPreset.laneDash?'.9':'.96' })
-          : svgEl('line',{ x1:(Math.min(...xs)+Math.max(...xs))/2, y1:Math.min(...ys)+10, x2:(Math.min(...xs)+Math.max(...xs))/2, y2:Math.max(...ys)-10, stroke:laneColor, 'stroke-width':roadPreset.laneDash?'1.25':'2.1', 'stroke-dasharray':roadPreset.laneDash?'12 8':'0', 'vector-effect':'non-scaling-stroke', 'pointer-events':'none', opacity:roadPreset.laneDash?'.9':'.96' });
-        streetsLayer.appendChild(lane);
-      }
-      if(Array.isArray(street.sidewalkPts) && street.sidewalkPts.length >= 4){
-        const sidewalkPreset=getSidewalkSurfacePreset(street.sidewalkType);
-        const sw = svgEl('path',{ d:pathFromPts(street.sidewalkPts), fill:streetSidewalkFill(street), stroke:selected?'#d2b07a':sidewalkPreset.stroke, 'stroke-width':selected?'1.55':'1.1', opacity:selected?'.99':'.965', 'data-street-id':street.id, 'data-street-part':'sidewalkPts', style:'cursor:pointer' });
-        sw.addEventListener('pointerdown', pickStreet);
-        streetsLayer.appendChild(sw);
-      }
       const labelPts = street.roadPts?.length ? street.roadPts : (street.sidewalkPts?.length ? street.sidewalkPts : street.outerSidewalkPts);
       renderStreetFurniture2D(street, streetsLayer, selected);
-      if(Array.isArray(labelPts) && labelPts.length){
+      if(selected && appState.editor.showLabels!==false && Array.isArray(labelPts) && labelPts.length){
         const c = polygonCentroid(labelPts);
         const roadLabel=getStreetSurfacePreset(street.roadType).label;
         const sideLabel=getSidewalkSurfacePreset(street.sidewalkType).label;
-        const label = `${street.side === 'top' ? 'Calle superior' : street.side === 'bottom' ? 'Calle inferior' : street.side === 'left' ? 'Calle lateral izq.' : 'Calle lateral der.'} · ${street.cornerStyle === 'diagonal' ? 'esquina diagonal' : '90°'} · ${roadLabel} / ${sideLabel}`;
-        const approxW = Math.max(160, label.length * 5.9);
-        streetsLayer.appendChild(svgEl('rect',{ x:c.x - approxW/2, y:c.y - 11, width:approxW, height:22, rx:'11', fill:'rgba(246,241,231,.92)', stroke:selected?'rgba(34,96,82,.88)':'rgba(188,164,127,.88)', 'stroke-width':'1.05', 'pointer-events':'none' }));
-        const txt = svgEl('text',{ x:c.x, y:c.y+4, 'text-anchor':'middle', style:'font-size:10px;font-weight:800;fill:rgba(48,54,60,.95);pointer-events:none' });
+        const label=street.name||'Calle',px=1/(svg.getScreenCTM()?.a||1),approxW=Math.max(90,label.length*6.5)*px;
+        streetsLayer.appendChild(svgEl('rect',{x:c.x-approxW/2,y:c.y-12*px,width:approxW,height:24*px,rx:8*px,fill:'rgba(246,241,231,.92)',stroke:'#448575','stroke-width':px,'pointer-events':'none'}));
+        const txt=svgEl('text',{x:c.x,y:c.y+4*px,'text-anchor':'middle',style:`font-size:${12*px}px;font-weight:700;fill:#30363c;pointer-events:none`});
         txt.textContent = label;
         streetsLayer.appendChild(txt);
       }
@@ -3647,13 +3604,14 @@
     const editedStreet=(appState.layout?.streets||[]).find(street=>street.id===appState.selectedStreetId);
     if(editedStreet && activeLayoutWorkspace()==='urbanism' && appState.editor.streetVerticesVisible){
       const part=['roadPts','sidewalkPts','outerSidewalkPts'].includes(appState.editor.streetVertexPart) ? appState.editor.streetVertexPart : 'roadPts';
+      if(part!=='roadPts')(editedStreet[part]||[]).forEach((a,i)=>{const b=editedStreet[part][(i+1)%editedStreet[part].length],edge=svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'transparent','stroke-width':'12','vector-effect':'non-scaling-stroke','data-v220-sidewalk-edge':i,style:'pointer-events:stroke;cursor:crosshair'});edge.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();const p=projectPointToSegment(svgPoint(e,svg),a,b);v220InsertSidewalkPoint(editedStreet,part,i,{x:p.x,y:p.y});});streetHandleLayer.appendChild(edge);});
       (editedStreet[part]||[]).forEach((pt,i)=>{
         const handle=svgEl('circle',{cx:pt.x,cy:pt.y,r:'8',fill:'#fff8e9',stroke:'#267760','stroke-width':'3',class:'street-vertex-handle',style:'cursor:move;touch-action:none','data-street-vertex':i});
         handle.addEventListener('pointerdown',event=>{
           if(event.button!==0)return;
           event.preventDefault();event.stopPropagation();
           const original={x:pt.x,y:pt.y};
-          const oldOffsets=clone(editedStreet.vertexOffsets||{});
+          const oldOffsets=clone(editedStreet.vertexOffsets||{}),oldManual=clone(editedStreet.manualSidewalks||{}),oldFit=editedStreet.fitSidewalkToArea;appState.editor.streetSelectedVertex=i;
           const historyBefore=snapshotForType('structure');
           let dragged=false;
           const move=e=>{
@@ -3661,16 +3619,18 @@
             const scale=appState.editor?.streetSnapOff?1:getSnapSize();
             const x=Math.round(raw.x/Math.max(1,scale))*Math.max(1,scale);
             const y=Math.round(raw.y/Math.max(1,scale))*Math.max(1,scale);
-            let dx=Math.max(-200,Math.min(200,x-original.x));
-            let dy=Math.max(-200,Math.min(200,y-original.y));
+            let dx=x-original.x;
+            let dy=y-original.y;
             if(appState.editor.orthoEnabled||e.shiftKey){if(Math.abs(dx)>=Math.abs(dy))dy=0;else dx=0;}
             const next=(editedStreet[part]||[]).map((p,j)=>j===i?{x:original.x+dx,y:original.y+dy}:{x:p.x,y:p.y});
             if(!isValidStreetPolygon(next))return;
             editedStreet[part]=next;
+            if(part!=='roadPts')v220StoreSidewalk(editedStreet,part,next);
             editedStreet.vertexOffsets=editedStreet.vertexOffsets||{};
             editedStreet.vertexOffsets[part]=editedStreet.vertexOffsets[part]||{};
             const prev=oldOffsets?.[part]?.[i]||{dx:0,dy:0};
-            editedStreet.vertexOffsets[part][i]={dx:Number(prev.dx||0)+dx,dy:Number(prev.dy||0)+dy};
+            if(part==='roadPts')editedStreet.vertexOffsets[part][i]={dx:Number(prev.dx||0)+dx,dy:Number(prev.dy||0)+dy};
+            renderLayoutViewportOnly();
             handle.setAttribute('cx',next[i].x);handle.setAttribute('cy',next[i].y);
             streetsLayer.querySelectorAll(`[data-street-id="${editedStreet.id}"]`).forEach((shape,k)=>{
               const group=shape.getAttribute('data-street-part');
@@ -3682,10 +3642,10 @@
             window.removeEventListener('pointermove',move);
             window.removeEventListener('pointerup',finish);
             window.removeEventListener('pointercancel',cancel);
-            if(dragged){recordHistorySnapshot('structure',historyBefore);persistActiveLayout();renderLayoutEditor();}
+            if(dragged){recordHistorySnapshot('structure',historyBefore);rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();}
           };
           const cancel=()=>{
-            editedStreet[part][i]=original;editedStreet.vertexOffsets=oldOffsets;
+            editedStreet[part][i]=original;editedStreet.vertexOffsets=oldOffsets;editedStreet.manualSidewalks=oldManual;editedStreet.fitSidewalkToArea=oldFit;
             window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',cancel);
             renderLayoutEditor();
           };
@@ -4779,7 +4739,7 @@
       }
     }
     if($('#btnStreetPlus')){ $('#btnStreetPlus').disabled=!v219CanCreateUrbanism();if($('#btnStreetPlusRail'))$('#btnStreetPlusRail').disabled=$('#btnStreetPlus').disabled;$('#btnStreetPlus').title=v219CanCreateUrbanism()?'Ubicar calle y veredas desde el área total':'Primero dibuja el área comercial y crea sus muros';$('#btnStreetPlus').onclick = () => { if(!isStructureLayoutScreen()||!v219RequireUrbanism()) return; markLayoutManualInteraction(); appState.editor.mode = 'street'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); }; }
-    if($('#streetCornerToggle')) $('#streetCornerToggle').onclick = () => { const next = getStreetCornerStyle() === 'right' ? 'diagonal' : 'right'; setStreetCornerStyle(next); persistActiveLayout(); renderLayoutEditor(); };
+    if($('#streetCornerToggle')) $('#streetCornerToggle').onclick = () => { const next = getStreetCornerStyle() === 'right' ? 'diagonal' : getStreetCornerStyle()==='diagonal'?'round':'right'; setStreetCornerStyle(next); persistActiveLayout(); renderLayoutEditor(); };
     if($('#btnOpeningPlus')) $('#btnOpeningPlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'opening'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
     if($('#btnVertexPlus')) $('#btnVertexPlus').onclick = () => { markLayoutManualInteraction(); insertVertexOnSelectedEdge(); };
     if($('#btnDuplicateRack')) $('#btnDuplicateRack').onclick = () => { if(!isRackDistributionScreen()) return; markLayoutManualInteraction(); duplicateSelectedRack(); };

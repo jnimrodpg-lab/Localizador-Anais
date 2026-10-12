@@ -7769,4 +7769,10 @@ body.theme-light #appRoot.app .layout-type-pill{color:var(--primary)!important}
 #appRoot.app .layout-cad-v80 .wall-draw-help{max-width:calc(100% - 40px);font-size:12px;white-space:normal;pointer-events:none}
 
 #appRoot.app .layout-cad-shell-v80[data-mode=wall] .wall-pro-card{display:none!important}
+/* V217: preserve UI contrast beside the cool diorama background. */
+#appRoot.app .vspace-main{background:var(--surface-1)!important}
+#appRoot.app .vspace-root .vspace-chip{background:var(--surface-2)!important;border-color:var(--line-2)!important;color:var(--ink-soft)!important}
+#appRoot.app .vspace-root .vspace-example-btn{background:var(--surface-2)!important;color:var(--primary)!important;border-color:var(--line-2)!important}
+#appRoot.app .vspace-root .vspace-container-editor{background:var(--surface-2)!important;color:var(--ink)!important;border-color:var(--line)!important}
+#appRoot.app .vspace-container-editor :is(b,label){color:var(--ink)!important}
 

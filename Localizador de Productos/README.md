@@ -1,6 +1,16 @@
-# WMS Industrial V216 — Muros unidos y trazado continuo
+# WMS Industrial V217 — Diorama isométrico
 
-Corrección sobre V215. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+Vista 3D mejorada sobre V216. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+
+## Espacio virtual 3D: diorama V217
+
+- Abre con el modelo completo encuadrado y una orientación isométrica de ejes equivalentes, mirando desde el lado opuesto al preset anterior. Coincide con la orientación solicitada en la segunda captura.
+- La selección previa de un mueble mantiene sus propiedades, pero no cambia automáticamente el encuadre al entrar. «Enfocar», F y doble clic siguen acercando al elemento; «Isométrica» y «Ajustar» recuperan la vista completa.
+- **Diorama** es el modo de muros inicial: oculta los tramos del perímetro del área comercial y conserva los interiores desde todos los ángulos. La clasificación usa el contorno del área, no las zonas virtuales ni la dirección de la cámara. Admite perímetros cóncavos y diagonales, sentidos invertidos y tramos mixtos: solo se recorta visualmente su parte exterior.
+- El botón alterna **Diorama → Muros completos → Sin muros → Diorama**. La arquitectura guardada, sus ID, vínculos, aberturas y la geometría del plano 2D se conservan.
+- Las puertas y ventanas de muros exteriores se ocultan con sus muros. Las aberturas interiores siguen visibles. Los empalmes 3D se calculan con los tramos visibles para evitar picos heredados de un vecino oculto.
+- Fondo gris azulado en tema claro y azul oscuro en tema oscuro; iluminación más moderada para recuperar colores y volumen. Base cálida con canto oscuro y sombra de contacto bajo la maqueta.
+- Cambiar tema actualiza el fondo 3D inmediatamente. Girar la cámara conserva los muros interiores y no reconstruye la geometría en cada giro.
 
 ## Muros: correcciones V216
 
@@ -47,9 +57,9 @@ La creación y edición avanzadas siguen disponibles. El nombre visible y el có
 
 Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y error de sincronización. Una respuesta anterior de guardado no marca los cambios nuevos como sincronizados. Se mantienen las comprobaciones del almacenamiento local.
 
-`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V216 y sintaxis y comprueba sintaxis del backend/frontend.
+`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V217 y sintaxis y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` ejecuta la prueba de interfaz V216. Requiere Playwright/Chromium como dependencia opcional de pruebas; no forma parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Se comprueban jerarquía, creación poligonal del área, creación rectangular/irregular de zonas, vínculos de muros, esquinas nuevas, medidas, historial, independencia de zonas, menú de posición del muro, capas, Más, tres espacios de edición, recarga local y visor 3D. También se verifica la altura completa con cortes abiertos, el cambio entre vértice/lado y los controles a distintos tamaños. También se comprueban el botón principal, encadenado con clics reales, cierre, medida exacta, terminación, perfil de creación, deduplicación de un tramo invertido con extremo compartido, historial y reproducción de muros cortos en 2D/3D. Capturas de QA solo temporales.
+`npm run test:ui` comprueba V217 en navegador: vista isométrica inicial con un mueble previamente seleccionado, exteriores e interiores, puertas/ventanas, temas, base/sombra, rotación, modos de cámara, ciclo de muros y conservación de la geometría guardada. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
 
 ## Alcance
 

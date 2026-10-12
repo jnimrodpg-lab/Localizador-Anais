@@ -1621,11 +1621,11 @@
     const limit=Math.max(24,Number(maxThickness||12)*5.5);
     return pointDist2D(hit,node)<=limit?hit:null;
   }
-  function getWallSlicePolygon(wall,t0=0,t1=1,inflate=1){
+  function getWallSlicePolygon(wall,t0=0,t1=1,inflate=1,neighbors=null){
     const raw=getWallRawSlicePolygon(wall,t0,t1,inflate);
     if(!raw?.poly || wall?.autoZoneEdge)return raw;
     const poly=raw.poly.map(p=>({...p}));let miterLimited=false;
-    const walls=(appState.layout?.walls||[]).filter(w=>w && w.id!==wall.id && !w.autoZoneEdge && wallLength(w)>1);
+    const walls=(neighbors||appState.layout?.walls||[]).filter(w=>w && w.id!==wall.id && !w.autoZoneEdge && wallLength(w)>1);
     const join=(atStart)=>{
       const t=atStart?Number(t0||0):Number(t1??1);
       if(atStart?t>1e-5:t<1-1e-5)return;

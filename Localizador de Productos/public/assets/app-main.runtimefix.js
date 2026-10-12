@@ -11580,11 +11580,11 @@ function getSheetBranchOpenMap(){
     const limit=Math.max(24,Number(maxThickness||12)*5.5);
     return pointDist2D(hit,node)<=limit?hit:null;
   }
-  function getWallSlicePolygon(wall,t0=0,t1=1,inflate=1){
+  function getWallSlicePolygon(wall,t0=0,t1=1,inflate=1,neighbors=null){
     const raw=getWallRawSlicePolygon(wall,t0,t1,inflate);
     if(!raw?.poly || wall?.autoZoneEdge)return raw;
     const poly=raw.poly.map(p=>({...p}));let miterLimited=false;
-    const walls=(appState.layout?.walls||[]).filter(w=>w && w.id!==wall.id && !w.autoZoneEdge && wallLength(w)>1);
+    const walls=(neighbors||appState.layout?.walls||[]).filter(w=>w && w.id!==wall.id && !w.autoZoneEdge && wallLength(w)>1);
     const join=(atStart)=>{
       const t=atStart?Number(t0||0):Number(t1??1);
       if(atStart?t>1e-5:t<1-1e-5)return;
@@ -17083,7 +17083,7 @@ function getSheetBranchOpenMap(){
   }
   function v216JointPieces(walls=appState.layout.walls){
     const nodes=new Map(),key=p=>`${Math.round(p.x*1e5)},${Math.round(p.y*1e5)}`;
-    walls.filter(w=>!w.autoZoneEdge).forEach(w=>{const raw=getWallRawSlicePolygon(w);if(!raw)return;const limited=getWallSlicePolygon(w)?.miterLimited;
+    walls.filter(w=>!w.autoZoneEdge).forEach(w=>{const raw=getWallRawSlicePolygon(w);if(!raw)return;const limited=getWallSlicePolygon(w,0,1,1,walls)?.miterLimited;
       [[raw.a,[raw.poly[0],raw.poly[3]]],[raw.b,[raw.poly[1],raw.poly[2]]]].forEach(([p,ends])=>{const k=key(p);if(!nodes.has(k))nodes.set(k,{ends:[],walls:[],limited:false});const n=nodes.get(k);n.ends.push(...ends);n.walls.push(w);n.limited||=!!limited;});
     });
     return [...nodes.values()].filter(n=>n.walls.length>=3||n.walls.length===2&&n.limited).map(n=>({poly:convexHull2D(n.ends),ids:n.walls.map(w=>w.id),height:Math.min(...n.walls.map(w=>Number(w.height)||290))}));
@@ -17129,6 +17129,32 @@ function getSheetBranchOpenMap(){
     const parts=hit?.object?.userData?.wallParts;if(!parts)return hit?.object?.userData?.wallId||'';
     const p={x:hit.point.x,y:hit.point.z};return parts.find(part=>v216Inside(p,part.poly.map(q=>({x:q.x,y:q.z}))))?.id||hit.object.userData.wallId||'';
   }
+  // V217: display classification follows the commercial area's boundary,
+  // never the virtual zoning or camera direction. Stored walls are unchanged.
+  const V217_ISO_THETA=-Math.PI/4;
+  const V217_ISO_PHI=Math.acos(1/Math.sqrt(3));
+  function v217ExteriorIntervals(wall,boundary){
+    const pts=boundary?.pts||boundary||[];if(pts.length<3)return [];
+    const a={x:Number(wall.x1),y:Number(wall.y1)},dx=Number(wall.x2)-a.x,dy=Number(wall.y2)-a.y,L=Math.hypot(dx,dy);if(!L)return [];
+    const tolerance=Math.max(.08,Math.min(.5,(Number(wall.thickness)||12)*.02)),ranges=[];
+    const parameter=p=>((p.x-a.x)*dx+(p.y-a.y)*dy)/(L*L);
+    const distance=p=>Math.abs((p.x-a.x)*dy-(p.y-a.y)*dx)/L;
+    pts.forEach((p,i)=>{const q=pts[(i+1)%pts.length],edge=Math.hypot(q.x-p.x,q.y-p.y);if(edge<1e-7)return;
+      if(Math.abs(dx*(q.y-p.y)-dy*(q.x-p.x))/(L*edge)>1e-5||distance(p)>tolerance||distance(q)>tolerance)return;
+      const t=parameter(p),u=parameter(q),start=Math.max(0,Math.min(t,u)),end=Math.min(1,Math.max(t,u));if(end-start>1e-7)ranges.push([start,end]);
+    });
+    ranges.sort((a,b)=>a[0]-b[0]);const merged=[];ranges.forEach(r=>{const last=merged.at(-1);if(last&&r[0]<=last[1]+1e-7)last[1]=Math.max(last[1],r[1]);else merged.push(r.slice());});return merged;
+  }
+  function v217VisibleWallParts(walls,boundary,mode='diorama'){
+    if(mode==='none')return [];
+    return walls.flatMap(wall=>{
+      if(mode==='full')return [wall];const outer=v217ExteriorIntervals(wall,boundary),ranges=[];let start=0;
+      outer.forEach(([a,b])=>{if(a-start>1e-7)ranges.push([start,a]);start=Math.max(start,b);});if(1-start>1e-7)ranges.push([start,1]);
+      return ranges.map(([a,b])=>{if(a===0&&b===1)return wall;const dx=wall.x2-wall.x1,dy=wall.y2-wall.y1,L=Math.hypot(dx,dy);return {...wall,x1:wall.x1+dx*a,y1:wall.y1+dy*a,x2:wall.x1+dx*b,y2:wall.y1+dy*b,v217SourceLength:L,v217StartDistance:L*a};});
+    });
+  }
+  function v217WallModeNext(mode){return mode==='diorama'?'full':mode==='full'?'none':'diorama';}
+  function v217WallModeLabel(mode){return mode==='full'?'Muros completos':mode==='none'?'Sin muros':'Diorama';}
   function resetRackPreviewCamera(){
     if(!appState.ui) appState.ui = {};
     appState.ui.rackPreviewCamera = null;
@@ -19719,7 +19745,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     const typelist=Object.entries(VSPACE_TYPES).map(([id,p])=>`<button type="button" class="vspace-catalog-btn" data-vspace-add="${id}" ${canEdit?'':'disabled'}><b>${p.icon}</b><span>${vspaceEsc(p.name)}</span><small>${p.levels} niveles</small></button>`).join('');
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
-      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active">Muros</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
+      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active" title="Diorama: exteriores ocultos, interiores visibles. Pulsa para ver muros completos o esconder todos." aria-label="Cambiar visibilidad de muros: Diorama">Diorama</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
       <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
@@ -19739,7 +19765,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       `;document.head.appendChild(style);
     }
     const root=document.getElementById('vspaceRoot'),canvas=root.querySelector('#vspaceCanvas');
-    const state={root,canvas,selectedId:appState.selectedRackLayoutId||(appState.layout?.racks||[])[0]?.id||'',stackSourceId:'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
+    const state={root,canvas,selectedId:appState.selectedRackLayoutId||(appState.layout?.racks||[])[0]?.id||'',stackSourceId:'',selectedLevel:1,selectedSlot:1,inspectorMode:'furniture',selectedWallId:appState.selectedWallId||'',selectedOpeningId:appState.selectedOpeningId||'',selectedStreetId:appState.selectedStreetId||'',selectedStreetFurnitureId:appState.selectedStreetFurnitureId||'',drawWallStart:null,modified:false,wallVisible:true,wallDisplay:'diorama',move:false,mode:'iso',editMode:'build',destroyed:false,objects:new Map(),architectureMeshes:[]};
     vspaceActive=state;
     const rackAtLevel = r => {
       const level=appState.editor?.visibleRackLevel;
@@ -20203,7 +20229,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       vspaceToast(state.move?'Arrastra un mueble sobre el suelo. Se impedirán las colisiones.':'Modo órbita activado.');
     };
     root.querySelector('[data-vspace-action="toggle-wall"]').onclick=e=>{
-      state.wallVisible=!state.wallVisible;e.currentTarget.classList.toggle('active',state.wallVisible);state.render(true);
+      state.wallDisplay=v217WallModeNext(state.wallDisplay);state.wallVisible=state.wallDisplay!=='none';e.currentTarget.textContent=v217WallModeLabel(state.wallDisplay);e.currentTarget.setAttribute('aria-label','Cambiar visibilidad de muros: '+e.currentTarget.textContent);e.currentTarget.classList.toggle('active',state.wallVisible);state.render(true);
     };
     root.querySelector('[data-vspace-action="sample"]').onclick=()=>{
       if(!canWrite())return;
@@ -20237,7 +20263,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       finally{btn.disabled=false;btn.textContent='Guardar en nube';}
     };
     state.refreshObjects();state.refreshInspector();
-    const destroyBase=()=>{state.destroyed=true;state.releaseFloorTextures?.();window.removeEventListener('keydown',state.stackEscapeHandler);window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
+    const destroyBase=()=>{state.destroyed=true;state.releaseFloorTextures?.();window.removeEventListener('keydown',state.stackEscapeHandler);window.removeEventListener('keydown',state.keyHandler);state.resizeObs?.disconnect();state.themeObs?.disconnect();if(state.raf)cancelAnimationFrame(state.raf);if(state.renderer&&state.scene)disposeThreeScene(state.scene,state.renderer);state.renderer=null;};
     state.destroy=destroyBase;
     (async()=>{
       try{
@@ -20245,14 +20271,14 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
         renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
         renderer.outputColorSpace=THREE.SRGBColorSpace;
-        renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.28;
+        renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
         renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
         if('physicallyCorrectLights' in renderer) renderer.physicallyCorrectLights = true;
-        const scene=new THREE.Scene();scene.background=new THREE.Color(0xf6f3ed);
+        const scene=new THREE.Scene();scene.background=new THREE.Color(document.body.classList.contains('theme-light')?0xd6dde1:0x202b33);
         const camera=new THREE.OrthographicCamera(-5,5,5,-5,.05,260);
-        scene.add(new THREE.HemisphereLight(0xfffaf1,0xb8b2a8,2.35));
-        const fill=new THREE.AmbientLight(0xffffff,.62);scene.add(fill);
-        const sun=new THREE.DirectionalLight(0xffedcf,3.45);
+        scene.add(new THREE.HemisphereLight(0xfffaf1,0x8e9a9d,1.45));
+        const fill=new THREE.AmbientLight(0xffffff,.22);scene.add(fill);
+        const sun=new THREE.DirectionalLight(0xfff4e1,2.25);
         sun.position.set(-5,12,8);sun.castShadow=true;
         sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-32;sun.shadow.camera.right=32;
         sun.shadow.camera.top=32;sun.shadow.camera.bottom=-32;
@@ -20260,7 +20286,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         sun.shadow.radius=4;scene.add(sun);
         const world=new THREE.Group();scene.add(world);state.scene=scene;state.renderer=renderer;state.camera=camera;state.THREE=THREE;state.world=world;
         const raycaster=new THREE.Raycaster(),mouse=new THREE.Vector2(),ground=new THREE.Plane(new THREE.Vector3(0,1,0),0);
-        const orbit={theta:.78,phi:.97,radius:12,target:new THREE.Vector3(0,.8,0)};
+        const orbit={theta:V217_ISO_THETA,phi:V217_ISO_PHI,radius:12,target:new THREE.Vector3(0,.8,0)};
         const updateCam=()=>{
           orbit.phi=vspaceClamp(orbit.phi,.1,1.53);orbit.radius=vspaceClamp(orbit.radius,1.8,80);
           const sin=Math.sin(orbit.phi);camera.position.set(orbit.target.x+Math.sin(orbit.theta)*sin*orbit.radius,orbit.target.y+Math.cos(orbit.phi)*orbit.radius,orbit.target.z+Math.cos(orbit.theta)*sin*orbit.radius);
@@ -20425,15 +20451,18 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const basePts = rectFromPts(pts);
           if(basePts.length < 4) return [];
           const shape = shapeFromLayoutPts(basePts);
-          const base = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.24,bevelEnabled:false}),[
-            meshMat(0xf1e7d6,{metalness:0,roughness:.94}),
-            meshMat(0xcebb9f,{metalness:0,roughness:.98})
+          const base = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.32,bevelEnabled:false}),[
+            meshMat(0xd9c8af,{metalness:0,roughness:.94}),
+            meshMat(0x88715b,{metalness:0,roughness:.98})
           ]);
           base.rotation.x = -Math.PI/2;
-          base.position.y = -.24;
+          base.position.y = -.32;
           base.receiveShadow = true;
           base.castShadow = true;
-          world.add(base);
+          base.userData.dioramaBase=true;world.add(base);
+          const points=basePts.map(coord),width=Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x)),depth=Math.max(...points.map(p=>p.z))-Math.min(...points.map(p=>p.z));
+          const ground=new THREE.Mesh(new THREE.PlaneGeometry(width+4,depth+4),new THREE.ShadowMaterial({color:0x15202a,opacity:.24,transparent:true,depthWrite:false}));
+          ground.rotation.x=-Math.PI/2;ground.position.y=-.325;ground.receiveShadow=true;ground.userData.dioramaShadow=true;world.add(ground);
           addTopSurfaceFromPts(basePts, 0xf7f1e4, .002, 0xe0caaa, .99, 0);
           addOutlineFromPts(basePts, 0xb09068, .026, .98);
           addOutlineFromPts(basePts, 0xf6ead5, .042, .84);
@@ -20492,20 +20521,12 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             state.urbanMeshes.push(group);
           });
         };
-        let wallUnionBands=[];
+        let wallUnionBands=[],visibleWallParts=[];
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
           const scale=getScaleCmPerUnit()/100;
           const dx=Number(wall.x2||0)-Number(wall.x1||0),dy=Number(wall.y2||0)-Number(wall.y1||0);
           const L=Math.hypot(dx,dy);if(L<1)return;
           const selected=wall.id===state.selectedWallId && state.inspectorMode==='architecture';
-          const wallCenter={x:(Number(wall.x1||0)+Number(wall.x2||0))/2,y:(Number(wall.y1||0)+Number(wall.y2||0))/2};
-          const zone=(appState.layout.zones||[]).find(z=>z.id===wall.zoneBoundarySource?.zoneId)||null;
-          const center=zone && zone.pts?.length?{x:zone.pts.reduce((sum,p)=>sum+Number(p.x||0),0)/zone.pts.length,y:zone.pts.reduce((sum,p)=>sum+Number(p.y||0),0)/zone.pts.length}:null;
-          if(center && !selected){
-            const outward=new THREE.Vector2(wallCenter.x-center.x,wallCenter.y-center.y);
-            const cameraFacing=new THREE.Vector2(Math.sin(orbit.theta),Math.cos(orbit.theta));
-            if(outward.dot(cameraFacing)>=0)return; // Corte arquitectónico para no tapar muebles
-          }
           const group=new THREE.Group();
           const pos=coord({x:Number(wall.x1||0),y:Number(wall.y1||0)});
           group.position.set(pos.x,0,pos.z);group.rotation.y=-Math.atan2(dy,dx);
@@ -20516,15 +20537,15 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const faceCenter=(faceOffsets.left-faceOffsets.right)*scale*.5;
           const length=L*scale;
           const color=wall.material==='concrete'?0xc6c7c1:wall.material==='white'?0xf9f7f0:0xf1e8d9;
-          const mat=meshMat(selected?0xd8eadf:color,{metalness:0,roughness:.89,side:THREE.DoubleSide});
+          const mat=meshMat(selected?0x83b4a2:color,{metalness:0,roughness:.89,side:THREE.DoubleSide});
           const lineMat=new THREE.LineBasicMaterial({color:selected?0x398d70:0xc2ae92,transparent:true,opacity:selected?.78:.38});
           const openings=(appState.layout.openings||[]).filter(o=>o.wallId===wall.id).map(o=>{
             const w=Math.min(Math.max(35,Number(o.width||90))*scale,length*.93);
-            const t=vspaceClamp(Number(o.t??.5),.03,.97),c=t*length;
+            const t=vspaceClamp(Number(o.t??.5),.03,.97),c=(t*(wall.v217SourceLength||L)-(wall.v217StartDistance||0))*scale;
             const sill=Math.max(0,Number(o.sill||0))*scale;
             const h=Math.min(Math.max(20,Number(o.height||210))*scale,Math.max(.001,wallHeight-sill));
             return {o,left:Math.max(0,c-w/2),right:Math.min(length,c+w/2),c,w,sill,h};
-          }).sort((a,b)=>a.left-b.left);
+          }).filter(o=>o.c+o.w/2>0&&o.c-o.w/2<length).sort((a,b)=>a.left-b.left);
           const cuts=[0,length,...openings.flatMap(o=>[o.left,o.right])].sort((a,b)=>a-b);
           const breaks=cuts.filter((n,i)=>i===0||Math.abs(n-cuts[i-1])>.001);
           const addWallPiece=(l,r,y0,y1)=>{
@@ -20533,7 +20554,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             // V210: project the joined CAD footprint into this wall's local
             // x/z frame so the virtual designer and layout close on the same
             // bevel/miter points, even at diagonal-to-vertical intersections.
-            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1):null;
+            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1,visibleWallParts):null;
             if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat});return;}
             if(slice?.poly?.length===4){
               const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
@@ -20626,7 +20647,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           world.add(group);state.objects.set(r.id,group);
         };
         const rebuild=()=>{
-          clearWorld();wallUnionBands=[];
+          clearWorld();wallUnionBands=[];visibleWallParts=v217VisibleWallParts(appState.layout.walls||[],appState.layout.meta?.siteBoundary,state.wallDisplay);
           refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
@@ -20661,8 +20682,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           }
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
-            (appState.layout.walls||[]).forEach(w=>buildArchitecturalWall(w));
-            v216JointPieces().forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId));if(host)wallUnionBands.push({poly:j.poly,y0:0,y1:j.height*getScaleCmPerUnit()/100,wallId:host.wallId,material:host.material});});
+            visibleWallParts.forEach(w=>buildArchitecturalWall(w));
+            v216JointPieces(visibleWallParts).forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId));if(host)wallUnionBands.push({poly:j.poly,y0:0,y1:j.height*getScaleCmPerUnit()/100,wallId:host.wallId,material:host.material});});
             v216AddUnionMeshes(THREE,world,wallUnionBands,coord,mesh=>state.architectureMeshes.push(mesh));
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.
@@ -20674,7 +20695,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             grid.material.transparent=true;grid.material.opacity=.12;grid.position.y=.002;world.add(grid);
           }
           (appState.layout.racks||[]).filter(rackAtLevel).forEach(addFurniture);
-          if(state.wallVisible && (appState.layout.zones||[]).length===0){vspaceToast('Dibuja primero el perímetro desde Plano / Estructura.');}
+          if(state.wallVisible && (appState.layout.meta?.siteBoundary?.pts||[]).length<3){vspaceToast('Dibuja primero el perímetro desde Plano / Estructura.');}
           state.requestRender();
         };
         state.requestRender=()=>{
@@ -20682,14 +20703,16 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           state.raf=requestAnimationFrame(()=>{state.raf=0;if(state.destroyed)return;updateCam();renderer.render(scene,camera);});
         };
         state.render=()=>rebuild();
+        state.updateSceneTheme=()=>{scene.background.setHex(document.body.classList.contains('theme-light')?0xd6dde1:0x202b33);state.requestRender();};
+        state.themeObs=new MutationObserver(()=>state.updateSceneTheme());state.themeObs.observe(document.body,{attributes:true,attributeFilter:['class']});
         state.setCamera=mode=>{
           const points=zoneBounds.length?zoneBounds:[{x:mx-300,y:my-200},{x:mx+300,y:my+200}];
           const width=(Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x)))*getScaleCmPerUnit()/100;
           const depth=(Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y)))*getScaleCmPerUnit()/100;
           orbit.radius=vspaceClamp(Math.max(width,depth)*1.48+2.3,4,65);
-          orbit.theta=mode==='front'?0:mode==='top'?.0001:.79;
-          orbit.phi=mode==='top'?.04:mode==='front'?1.26:.97;
-          orbit.target.set(0,.8,0);state.mode=mode;root.querySelector('.vspace-compass').textContent=(mode==='top'?'PLN':mode==='front'?'FRT':'ISO');state.requestRender();
+          orbit.theta=mode==='front'?0:mode==='top'?.0001:V217_ISO_THETA;
+          orbit.phi=mode==='top'?.04:mode==='front'?1.26:V217_ISO_PHI;
+          orbit.target.set(0,.8,0);state.mode=mode;root.querySelectorAll('[data-vspace-cam]').forEach(b=>b.classList.toggle('active',b.dataset.vspaceCam===mode));root.querySelector('.vspace-compass').textContent=(mode==='top'?'PLN':mode==='front'?'FRT':'ISO');state.requestRender();
         };
         state.focusSelected=()=>{
           const r=getRack();if(!r)return;
@@ -20808,7 +20831,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         canvas.addEventListener('pointerup',()=>{
           if(gesture?.mode==='move-urban'&&gesture.moved){vspaceCommit('mobiliario urbano desplazado');state.refreshInspector();}
           if(gesture?.mode==='move'&&gesture.moved){vspaceCommit('mueble desplazado');state.refreshInspector();}
-          if(gesture?.mode==='orbit'&&gesture.moved&&state.wallVisible)state.render(true);
+          // Wall visibility is independent of orbit: no rebuild on rotation.
           gesture=null;
         });
         canvas.addEventListener('pointercancel',()=>{gesture=null;});
@@ -20840,7 +20863,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         };
         state.resizeObs=new ResizeObserver(resize);state.resizeObs.observe(canvas);
         rebuild();state.setCamera('iso');
-        if(state.selectedId && (appState.layout.racks||[]).some(r=>r.id===state.selectedId)) state.focusSelected();
+        // Keep the whole diorama framed on entry. Focus is an explicit action.
         resize();root.querySelector('#vspaceLoading')?.remove();
         vspaceToast('Modelo 3D listo. Mobiliario y Arquitectura comparten las propiedades guardadas con Editar layout.');
       }catch(err){console.error('Vista virtual 3D:',err);const el=root.querySelector('#vspaceLoading');if(el)el.textContent=`No se pudo inicializar la vista 3D: ${err.message||err}. Verifica WebGL y la dependencia Three.js.`;}

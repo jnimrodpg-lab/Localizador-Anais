@@ -40,7 +40,7 @@
   }
   function v216JointPieces(walls=appState.layout.walls){
     const nodes=new Map(),key=p=>`${Math.round(p.x*1e5)},${Math.round(p.y*1e5)}`;
-    walls.filter(w=>!w.autoZoneEdge).forEach(w=>{const raw=getWallRawSlicePolygon(w);if(!raw)return;const limited=getWallSlicePolygon(w)?.miterLimited;
+    walls.filter(w=>!w.autoZoneEdge).forEach(w=>{const raw=getWallRawSlicePolygon(w);if(!raw)return;const limited=getWallSlicePolygon(w,0,1,1,walls)?.miterLimited;
       [[raw.a,[raw.poly[0],raw.poly[3]]],[raw.b,[raw.poly[1],raw.poly[2]]]].forEach(([p,ends])=>{const k=key(p);if(!nodes.has(k))nodes.set(k,{ends:[],walls:[],limited:false});const n=nodes.get(k);n.ends.push(...ends);n.walls.push(w);n.limited||=!!limited;});
     });
     return [...nodes.values()].filter(n=>n.walls.length>=3||n.walls.length===2&&n.limited).map(n=>({poly:convexHull2D(n.ends),ids:n.walls.map(w=>w.id),height:Math.min(...n.walls.map(w=>Number(w.height)||290))}));

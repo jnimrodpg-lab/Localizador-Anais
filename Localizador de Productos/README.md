@@ -1,6 +1,16 @@
-# WMS Industrial V220 — Calles continuas y veredas editables
+# WMS Industrial V221 — Calles por puntos, edición y eliminación
 
-Calles y veredas mejoradas sobre V219, conservando el flujo de arquitectura y diorama. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+Calles y veredas mejoradas sobre V220, conservando el flujo de arquitectura y diorama. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+
+## Calles V221
+
+- **+ Trazar calle** funciona por puntos: primer clic define el inicio, los siguientes crean tramos continuos y Enter / Esc / clic derecho terminan. Clic en el primer punto cierra un circuito. El encuadre deja espacio exterior para empezar a construir. Shift ayuda a 45°/90°; la vista previa muestra el ancho y evita que la calzada invada el área total. El primer clic no deja una calle huérfana.
+- Varias calles pueden trazarse libremente, con diagonales y cambios de dirección. Acercarse al eje o extremo de otra calle facilita la conexión. Los cruces entre ejes generan nodos compartidos e intersecciones T o X según sus brazos reales.
+- **Calle activa** está visible en el inspector. **Editar trazado** permite arrastrar puntos y mover la calle desde el eje azul; los puntos compartidos mantienen la conexión. Añadir / quitar punto y doble clic en un tramo permiten ajustar el recorrido. Las veredas manuales acompañan el cambio del eje.
+- **Eliminar calle** está visible en la barra de Urbanismo y en el inspector 3D. Supr elimina la calle seleccionada; si se seleccionó un grupo de mobiliario, elimina ese grupo. El borrado actualiza calzadas, bordillos, canaletas y cruces y se puede deshacer. No elimina muros, zonas ni el área comercial.
+- Las propiedades de calle siguen visibles en el modo simplificado. Los puntos de edición mantienen un tamaño legible al alejar el plano. En 3D también se puede seleccionar una vía haciendo clic sobre su superficie.
+- **Colocación rápida → Alrededor del local** conserva la creación anterior por lados del área total. Las calles existentes mantienen sus IDs, nombres y dimensiones; Editar trazado las convierte a puntos con historial, conservando sus veredas ajustadas.
+- Los ejes de las calles libres son manuales. Mover el local completo los traslada junto a su contenido; cambiar su contorno recorta las superficies contra el área total, sin inventar un nuevo recorrido. Para cambiar el recorrido, edita los puntos.
 
 ## Urbanismo V220
 
@@ -80,9 +90,9 @@ La creación y edición avanzadas siguen disponibles. El nombre visible y el có
 
 Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y error de sincronización. Una respuesta anterior de guardado no marca los cambios nuevos como sincronizados. Se mantienen las comprobaciones del almacenamiento local.
 
-`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V220 y comprueba sintaxis del backend/frontend.
+`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V221 y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` comprueba V220 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. También verifica cruces y canaletas en 2D/3D, veredas junto a ochavas, edición de vértices, y el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
+`npm run test:ui` comprueba V220 y V221 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. Incluye trazado nativo por puntos, conexiones compartidas, edición del eje, eliminación por botón y Supr, circuitos cerrados y eliminación en 3D. También verifica cruces y canaletas en 2D/3D, veredas junto a ochavas, edición de vértices, y el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
 
 ## Alcance
 

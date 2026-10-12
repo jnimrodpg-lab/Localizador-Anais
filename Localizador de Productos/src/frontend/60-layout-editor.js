@@ -1038,7 +1038,7 @@
     return {x,y,type,label,nodeId};
   }
   function cancelLayoutDrawing({render=true}={}){
-    if(appState.editor)appState.editor.polygonDraft=null;
+    if(appState.editor){appState.editor.polygonDraft=null;appState.editor.streetDraft=null;}
     if(!appState.editor) return;
     appState.editor.rackAlignMode='';appState.editor.rackAlignVertexA=null;appState.editor.rackAlignTargetId='';appState.editor.areaMoveMode=false;
     appState.editor.pendingWallPoint=null;
@@ -1047,7 +1047,7 @@
     appState.editor.wallChainStartNodeId='';
     appState.editor.wallLengthDraft='';
     appState.editor.measureDraft=null;
-    if(['wall','door','opening','measure','zone','polygon'].includes(appState.editor.mode)) appState.editor.mode='select';
+    if(['wall','door','opening','measure','zone','polygon','street','street-path'].includes(appState.editor.mode)) appState.editor.mode='select';
     if(render&&isLayoutWorkspaceScreen())renderLayoutEditor();
   }
   function commitWallLengthFromHud(value){
@@ -1126,6 +1126,7 @@
     appState.editor.wallMergePreview=null; renderLayoutSvg(svg); renderLayoutInspector();
   }
   function deleteLayoutSelection(){
+    if(activeLayoutWorkspace()==='urbanism'&&typeof v221DeleteUrbanSelection==='function')return v221DeleteUrbanSelection();
     if(typeof v213SelectionLocked==='function'&&v213SelectionLocked()){showToast('Desbloquea la capa para eliminar el elemento.','warning');return;}
     const selectedIds=getSelectedRackIds(); const rid=appState.selectedRackLayoutId; const zid=appState.selectedZoneId;
     const oid=appState.selectedOpeningId; const wid=appState.selectedWallId; const mid=appState.editor?.selectedMeasurementId;
@@ -1185,8 +1186,10 @@
     document.addEventListener('keydown', e=>{
       if(!isLayoutWorkspaceScreen()) return;
       const tag=String(e.target?.tagName||'').toLowerCase(); const editing=['input','textarea','select'].includes(tag) || e.target?.isContentEditable;
-      if(e.key==='Escape'){ e.preventDefault(); if(document.getElementById('v213CanvasPopover')){v213ClosePopover();return;} cancelLayoutDrawing(); return; }
+      if(e.key==='Escape'){ e.preventDefault();if(appState.editor.mode==='street-path'){v221FinishStreet();return;} if(document.getElementById('v213CanvasPopover')){v213ClosePopover();return;} cancelLayoutDrawing(); return; }
       if(editing) return;
+      if(appState.editor.mode==='street-path'&&e.key==='Enter'){e.preventDefault();v221FinishStreet();return;}
+      if(appState.editor.mode==='street-path'&&(e.key==='Backspace'||e.key==='Delete')){e.preventDefault();const draft=appState.editor.streetDraft;if((appState.layout.streets||[]).some(s=>s.id===draft?.activeId))undoHistory('structure');else if(draft){draft.seed=null;draft.cursor=null;renderLayoutEditor();}return;}
       if(e.key==='Enter'&&appState.editor.mode==='wall'&&!appState.editor.wallLengthDraft){e.preventDefault();cancelLayoutDrawing();return;}
       if(e.key==='Enter'&&appState.editor.polygonDraft){e.preventDefault();v212FinishPolygon();return;}
       if((e.ctrlKey||e.metaKey) && String(e.key||'').toLowerCase()==='z'){
@@ -1199,7 +1202,7 @@
       }
       if(e.key==='F8' && !isRackDistributionScreen()){e.preventDefault();appState.editor.orthoEnabled=!appState.editor.orthoEnabled;renderLayoutEditor();return;}
       const key=String(e.key||'').toLowerCase();
-      if((e.key==='Delete'||e.key==='Backspace') && !e.ctrlKey && !e.metaKey){e.preventDefault();if(appState.editor.polygonDraft){appState.editor.polygonDraft.pts.pop();renderLayoutEditor();return;}if(appState.editor.architectureTool==='area'){const sel=appState.editor.geometrySelection;if(sel?.type==='vertex')v212Remove('area',sel.index);return;}if(appState.editor.architectureTool==='zones'&&appState.selectedVertex?.idx>=0){v212Remove('zones',appState.selectedVertex.idx);return;}deleteLayoutSelection();return;}
+      if((e.key==='Delete'||e.key==='Backspace') && !e.ctrlKey && !e.metaKey){e.preventDefault();if(appState.editor.polygonDraft){appState.editor.polygonDraft.pts.pop();renderLayoutEditor();return;}if(activeLayoutWorkspace()==='architecture'&&appState.editor.architectureTool==='area'){const sel=appState.editor.geometrySelection;if(sel?.type==='vertex')v212Remove('area',sel.index);return;}if(activeLayoutWorkspace()==='architecture'&&appState.editor.architectureTool==='zones'&&appState.selectedVertex?.idx>=0){v212Remove('zones',appState.selectedVertex.idx);return;}deleteLayoutSelection();return;}
       if((e.ctrlKey||e.metaKey) && key==='c'){ if(copySelectedStructure()) e.preventDefault(); return; }
       if((e.ctrlKey||e.metaKey) && key==='v'){ if(pasteStructureClipboard()) e.preventDefault(); return; }
       if((e.ctrlKey||e.metaKey) && key==='d'){ if(duplicateSelectedStructure()) e.preventDefault(); return; }
@@ -2322,15 +2325,15 @@
           <div class="layout-prop-title">Calle seleccionada · ${escapeHtml(street.name||street.id)}</div>
           <div class="layout-prop-grid two">
             <label style="grid-column:1/-1">Nombre de la calle<input id="rpStreetName" value="${escapeHtml(street.name||street.id)}"></label>
-            <label>Calzada (cm)<input id="rpStreetRoad" type="number" min="26" max="2400" step="1" value="${Math.round(street.roadWidth||600)}"></label>
-            <label>Veredas (cm)<input id="rpStreetWalk" type="number" min="20" max="1200" step="1" value="${Math.round(street.sidewalkWidth||240)}"></label>
-            <label>Canaletas (cm)<input id="rpStreetGutter" type="number" min="0" max="300" step="1" value="${Math.round(street.gutterWidth??60)}"></label>
+            <label>Calzada (cm)<input id="rpStreetRoad" type="number" min="26" max="2400" step="1" value="${Math.round((street.roadWidth||600)*getScaleCmPerUnit())}"></label>
+            <label>Veredas (cm)<input id="rpStreetWalk" type="number" min="20" max="1200" step="1" value="${Math.round((street.sidewalkWidth||240)*getScaleCmPerUnit())}"></label>
+            <label>Canaletas (cm)<input id="rpStreetGutter" type="number" min="0" max="300" step="1" value="${Math.round((street.gutterWidth??60)*getScaleCmPerUnit())}"></label>
             <label>Tipo de calle<select id="rpStreetType">${Object.entries(STREET_SURFACE_PRESETS).map(([v,p])=>`<option value="${v}" ${street.roadType===v?'selected':''}>${p.label}</option>`).join('')}</select></label>
             <label>Tipo de vereda<select id="rpSidewalkType">${Object.entries(SIDEWALK_SURFACE_PRESETS).map(([v,p])=>`<option value="${v}" ${street.sidewalkType===v?'selected':''}>${p.label}</option>`).join('')}</select></label>
             <label>Esquinas<select id="rpStreetCorner"><option value="right" ${street.cornerStyle==='right'?'selected':''}>90°</option><option value="round" ${street.cornerStyle==='round'?'selected':''}>Redondeada</option><option value="diagonal" ${street.cornerStyle==='diagonal'?'selected':''}>Diagonal</option></select></label>
             <label>Editar geometría<select id="rpStreetPart"><option value="roadPts" ${appState.editor.streetVertexPart==='roadPts'?'selected':''}>Calzada</option><option value="sidewalkPts" ${appState.editor.streetVertexPart==='sidewalkPts'?'selected':''}>Vereda interior</option><option value="outerSidewalkPts" ${appState.editor.streetVertexPart==='outerSidewalkPts'?'selected':''}>Vereda exterior</option></select></label>
             <label>Mobiliario<input value="${(street.streetFurniture||[]).length ? '1 objeto agrupado' : 'Sin mobiliario'}" disabled></label>
-            <label>Lado<input value="${escapeHtml(street.side||'')}" disabled></label>
+            <label>Lado<input value="${escapeHtml(street.creation==='path'?'Por puntos':street.side||'')}" disabled></label>
           </div>
           <div class="layout-template-grid" style="margin-top:10px">
             <button type="button" class="seg-btn" id="rpStreetVertices">${appState.editor.streetVerticesVisible?'Ocultar vértices':'Editar vértices'}</button>
@@ -2599,7 +2602,7 @@
     (layout.walls||[]).forEach(w=>{const old=wallsById.get(w.id);if(old){w.x1=Number(old.x1||0)+dx;w.y1=Number(old.y1||0)+dy;w.x2=Number(old.x2||0)+dx;w.y2=Number(old.y2||0)+dy;}});
     (layout.racks||[]).forEach(r=>{const old=racksById.get(r.id);if(old){r.x=Number(old.x||0)+dx;r.y=Number(old.y||0)+dy;}});
     (layout.measurements||[]).forEach(m=>{const old=measuresById.get(m.id);if(!old)return;for(const field of ['a','b','p1','p2','start','end'])if(m[field]&&old[field]){m[field].x=Number(old[field].x||0)+dx;m[field].y=Number(old[field].y||0)+dy;}for(const field of ['x','x1','x2','y','y1','y2'])if(Number.isFinite(Number(old[field])))m[field]=Number(old[field])+((field[0]==='x')?dx:dy);});
-    (layout.streets||[]).forEach(st=>{const old=streetsById.get(st.id);if(!old)return;for(const field of ['roadPts','sidewalkPts','outerSidewalkPts'])movePoints(st[field],old[field]);(st.streetFurniture||[]).forEach(it=>{const oi=(old.streetFurniture||[]).find(n=>n.id===it.id);if(oi){it.x=Number(oi.x||0)+dx;it.y=Number(oi.y||0)+dy;}});});
+    (layout.streets||[]).forEach(st=>{const old=streetsById.get(st.id);if(!old)return;for(const field of ['roadPts','sidewalkPts','outerSidewalkPts','axisPts'])movePoints(st[field],old[field]);(st.streetFurniture||[]).forEach(it=>{const oi=(old.streetFurniture||[]).find(n=>n.id===it.id);if(oi){it.x=Number(oi.x||0)+dx;it.y=Number(oi.y||0)+dy;}});});
   }
   function v206MoveAreaBy(dx,dy){
     if(typeof v213LayerLocked==='function'&&['zones','walls','openings','racks'].some(v213LayerLocked)){showToast('Desbloquea las capas antes de trasladar el área con todo su contenido.','warning');return;}
@@ -2726,24 +2729,20 @@
     v220BindSidewalkTools();
     if($('#rpStreetName')) $('#rpStreetName').onchange=e=>{if(!selectedStreet)return;const name=String(e.target.value||'').trim();if(!name||name===selectedStreet.name)return;recordHistorySnapshot('structure');selectedStreet.name=name;persistActiveLayout();renderLayoutEditor();};
     if($('#rpStreetPart')) $('#rpStreetPart').onchange=e=>{appState.editor.streetVertexPart=e.target.value;renderLayoutEditor();};
-    if($('#rpStreetVertices')) $('#rpStreetVertices').onclick=()=>{appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
+    if($('#rpStreetVertices')) $('#rpStreetVertices').onclick=()=>{appState.editor.streetAxisVisible=false;appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
     if($('#rpStreetApply')) $('#rpStreetApply').onclick=()=>{
-      if(!selectedStreet)return;
-      ensureStreetVisualDefaults(selectedStreet);
-      selectedStreet.roadWidth=Math.max(26,Math.min(2400,Number($('#rpStreetRoad')?.value)||600));
-      selectedStreet.gutterWidth=Math.max(0,Math.min(300,Number($('#rpStreetGutter')?.value)||0));
-      selectedStreet.sidewalkWidth=Math.max(20,Math.min(1200,Number($('#rpStreetWalk')?.value)||240));
-      selectedStreet.cornerStyle=v220Corner($('#rpStreetCorner')?.value);
-      selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,$('#rpStreetType')?.value)?$('#rpStreetType').value:'drain-covered';
-      selectedStreet.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,$('#rpSidewalkType')?.value)?$('#rpSidewalkType').value:'paver';
-      rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
+      if(!selectedStreet)return;const cm=Math.max(.0001,getScaleCmPerUnit());
+      const values={roadWidth:Math.max(26,Math.min(2400,Number($('#rpStreetRoad')?.value)||600))/cm,gutterWidth:Math.max(0,Math.min(300,Number($('#rpStreetGutter')?.value)||0))/cm,sidewalkWidth:Math.max(20,Math.min(1200,Number($('#rpStreetWalk')?.value)||240))/cm,cornerStyle:v220Corner($('#rpStreetCorner')?.value),roadType:Object.hasOwn(STREET_SURFACE_PRESETS,$('#rpStreetType')?.value)?$('#rpStreetType').value:'drain-covered',sidewalkType:Object.hasOwn(SIDEWALK_SURFACE_PRESETS,$('#rpSidewalkType')?.value)?$('#rpSidewalkType').value:'paver'};
+      if(typeof v221ApplyStreetProfile==='function'){if(!v221ApplyStreetProfile(selectedStreet,values))return;}else{recordHistorySnapshot('structure');Object.assign(selectedStreet,values);}
+      rebuildStreetNetwork();persistActiveLayout('medidas de calle');renderLayoutEditor();
     };
     if($('#rpStreetReset')) $('#rpStreetReset').onclick=()=>{
       if(!selectedStreet)return;
+      recordHistorySnapshot('structure');
       selectedStreet.vertexOffsets={};selectedStreet.manualSidewalks={};selectedStreet.fitSidewalkToArea=false;rebuildStreetNetwork();persistActiveLayout();renderLayoutEditor();
     };
-    if($('#rpStreetType')) $('#rpStreetType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,e.target.value)?e.target.value:'drain-covered'; rebuildStreetNetwork();persistActiveLayout(); renderLayoutEditor(); };
-    if($('#rpSidewalkType')) $('#rpSidewalkType').onchange=e=>{ if(!selectedStreet)return; ensureStreetVisualDefaults(selectedStreet); selectedStreet.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,e.target.value)?e.target.value:'paver'; persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpStreetType')) $('#rpStreetType').onchange=e=>{ if(!selectedStreet)return;recordHistorySnapshot('structure'); ensureStreetVisualDefaults(selectedStreet); selectedStreet.roadType=Object.hasOwn(STREET_SURFACE_PRESETS,e.target.value)?e.target.value:'drain-covered'; rebuildStreetNetwork();persistActiveLayout(); renderLayoutEditor(); };
+    if($('#rpSidewalkType')) $('#rpSidewalkType').onchange=e=>{ if(!selectedStreet)return;recordHistorySnapshot('structure'); ensureStreetVisualDefaults(selectedStreet); selectedStreet.sidewalkType=Object.hasOwn(SIDEWALK_SURFACE_PRESETS,e.target.value)?e.target.value:'paver'; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpStreetAddUrban')) $('#rpStreetAddUrban').onclick=()=>{ if(!selectedStreet)return; const item=setStreetFurnitureUrbanSet(selectedStreet); appState.selectedStreetFurnitureId=item?.id||''; persistActiveLayout(); renderLayoutEditor(); };
     if($('#rpUrbanTransform')) $('#rpUrbanTransform').onclick=()=>{
       if(!selectedStreet?.streetFurniture?.length)return;
@@ -3168,7 +3167,9 @@
     // Finalize toolbar geometry before calculating SVG coordinates and fitting.
     v214SimplifyEditor();
     v215RedesignEditor();
+    if(typeof v221EnhanceEditor==='function')v221EnhanceEditor();
     const svg = $('#layoutSvg');
+    svg.setAttribute('tabindex','0');svg.setAttribute('aria-label','Plano editable: selecciona un elemento para editarlo.');
     const currentBox = appState.editor.viewBox || { x:0, y:0, w:900, h:620 };
     if(!appState.editor.viewBoxInitialized){
       fitLayoutViewBox();
@@ -3189,7 +3190,7 @@
     bindLayoutToolbar();
     document.querySelectorAll('[data-architecture-tool]').forEach(btn=>btn.onclick=()=>v212SetMode(btn.dataset.architectureTool));
     ensureLayoutKeyboardBindings();
-    const wallLengthInput=$('#wallLengthInput'); if(wallLengthInput){ wallLengthInput.oninput=e=>{ appState.editor.wallLengthDraft=e.target.value; }; wallLengthInput.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); commitWallLengthFromHud(e.currentTarget.value); } if(e.key==='Escape'){ e.preventDefault(); cancelLayoutDrawing(); } }; }
+    const wallLengthInput=$('#wallLengthInput'); if(wallLengthInput){ wallLengthInput.oninput=e=>{ appState.editor.wallLengthDraft=e.target.value; }; wallLengthInput.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); commitWallLengthFromHud(e.currentTarget.value); } if(e.key==='Escape'){ e.preventDefault();if(appState.editor.mode==='street-path'){v221FinishStreet();return;} cancelLayoutDrawing(); } }; }
     document.querySelectorAll('[data-tool-proxy]').forEach(btn => {
       btn.onclick = () => { const target = document.getElementById(btn.getAttribute('data-tool-proxy')); if(target) target.click(); };
     });
@@ -3197,6 +3198,7 @@
     v213BindUx();
     v214SimplifyEditor();
     v215RedesignEditor();
+    if(typeof v221EnhanceEditor==='function')v221EnhanceEditor();
     requestAnimationFrame(() => {
       const scroller = document.querySelector('#layoutRightPanel .layout-right-scroll');
       if(scroller) scroller.scrollTop = appState.editor?.rightPanelScrollTop ?? __layoutRightScrollBefore ?? 0;
@@ -3590,7 +3592,7 @@
       const labelPts = street.roadPts?.length ? street.roadPts : (street.sidewalkPts?.length ? street.sidewalkPts : street.outerSidewalkPts);
       renderStreetFurniture2D(street, streetsLayer, selected);
       if(selected && appState.editor.showLabels!==false && Array.isArray(labelPts) && labelPts.length){
-        const c = polygonCentroid(labelPts);
+        const c = street.creation==='path'&&street.axisPts?.length?street.axisPts[Math.floor((street.axisPts.length-1)/2)]:polygonCentroid(labelPts);
         const roadLabel=getStreetSurfacePreset(street.roadType).label;
         const sideLabel=getSidewalkSurfacePreset(street.sidewalkType).label;
         const label=street.name||'Calle',px=1/(svg.getScreenCTM()?.a||1),approxW=Math.max(90,label.length*6.5)*px;
@@ -3603,10 +3605,11 @@
     v212RenderGeometryOverlay(svg,overlayLayer);
     const editedStreet=(appState.layout?.streets||[]).find(street=>street.id===appState.selectedStreetId);
     if(editedStreet && activeLayoutWorkspace()==='urbanism' && appState.editor.streetVerticesVisible){
+      if(editedStreet.creation==='path'&&appState.editor.streetVertexPart==='roadPts')appState.editor.streetVertexPart='sidewalkPts';
       const part=['roadPts','sidewalkPts','outerSidewalkPts'].includes(appState.editor.streetVertexPart) ? appState.editor.streetVertexPart : 'roadPts';
       if(part!=='roadPts')(editedStreet[part]||[]).forEach((a,i)=>{const b=editedStreet[part][(i+1)%editedStreet[part].length],edge=svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'transparent','stroke-width':'12','vector-effect':'non-scaling-stroke','data-v220-sidewalk-edge':i,style:'pointer-events:stroke;cursor:crosshair'});edge.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();const p=projectPointToSegment(svgPoint(e,svg),a,b);v220InsertSidewalkPoint(editedStreet,part,i,{x:p.x,y:p.y});});streetHandleLayer.appendChild(edge);});
       (editedStreet[part]||[]).forEach((pt,i)=>{
-        const handle=svgEl('circle',{cx:pt.x,cy:pt.y,r:'8',fill:'#fff8e9',stroke:'#267760','stroke-width':'3',class:'street-vertex-handle',style:'cursor:move;touch-action:none','data-street-vertex':i});
+        const handle=svgEl('circle',{cx:pt.x,cy:pt.y,r:8/Math.max(.001,svg.getScreenCTM()?.a||1),fill:'#fff8e9',stroke:'#267760','stroke-width':'2','vector-effect':'non-scaling-stroke',class:'street-vertex-handle',style:'cursor:move;touch-action:none','data-street-vertex':i});
         handle.addEventListener('pointerdown',event=>{
           if(event.button!==0)return;
           event.preventDefault();event.stopPropagation();
@@ -4435,6 +4438,7 @@
     svg.onpointerleave = stopEditorDrag;
     if(typeof v214RenderAreaWallTargets==='function')v214RenderAreaWallTargets(svg);
     v213RenderCanvas(svg);
+    if(typeof v221BindCanvas==='function')v221BindCanvas(svg);
   }
 
 
@@ -4667,7 +4671,7 @@
     const changeStreet=id=>{appState.selectedStreetId=id;appState.editor.mode='select';renderLayoutEditor();};
     if($('#v200StreetSelect'))$('#v200StreetSelect').onchange=e=>changeStreet(e.target.value);
     if($('#v200DrawStreet')){ $('#v200DrawStreet').disabled=!v219CanCreateUrbanism();$('#v200DrawStreet').onclick=()=>{if(!v219RequireUrbanism())return;appState.editor.mode='street';renderLayoutEditor();}; }
-    const streetHandles=()=>{appState.editor.mode='select';appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
+    const streetHandles=()=>{appState.editor.mode='select';appState.editor.streetAxisVisible=false;appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
     if($('#v200ShowStreetHandles'))$('#v200ShowStreetHandles').onclick=streetHandles;
     if($('#v200StreetHandlesRail'))$('#v200StreetHandlesRail').onclick=streetHandles;
     if($('#v200RackSelect'))$('#v200RackSelect').onchange=e=>{const rack=findRackById(e.target.value);if(!rack)return;appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;renderLayoutEditor();};
@@ -5293,6 +5297,7 @@
 
   function handleLayoutMove(e){
     const svg = $('#layoutSvg'); const p = svgPoint(e, svg);
+    if(typeof v221PreviewStreet==='function'&&v221PreviewStreet(e,svg))return;
     if(isRackDistributionScreen() && appState.editor?.pendingFurnitureModelId && !appState.editor?.dragging){
       const ghost=svg?.querySelector('#pendingFurnitureGhost');
       const model=rackModel(appState.editor.pendingFurnitureModelId);

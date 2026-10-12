@@ -655,6 +655,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   function rebuildStreetNetwork(){
     ensureLayoutMeta();
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
+    if(typeof v221RebuildStreetNetwork==='function')return v221RebuildStreetNetwork();
     if(typeof v220RebuildStreetNetwork==='function')return v220RebuildStreetNetwork();
     const network = appState.layout.streets.map(street => ({
       side: street?.side,

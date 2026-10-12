@@ -1,5 +1,5 @@
 {
-  "version": "220",
+  "version": "221",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -20,11 +20,12 @@
     "69-camera-cut-v218.js",
     "69-total-area-v219.js",
     "69-streets-v220.js",
+    "69-street-paths-v221.js",
     "70-rack-editor.js",
     "74-isometric-furniture.js",
     "75-virtual-space.js",
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V220: calles continuas, cruces reales, canaletas independientes y veredas con perímetro editable"
+  "notes": "V221: calles por puntos, ejes editables, cruces T/X y eliminación en 2D/3D"
 }

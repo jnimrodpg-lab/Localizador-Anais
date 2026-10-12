@@ -482,7 +482,7 @@
           <label class="vspace-field">Veredas (cm)<input id="vsUrbanSidewalkWidth" type="number" min="20" max="1200" value="${Math.round(Number(selected.sidewalkWidth||240)*u)}" ${lock}></label></div>
           <label class="vspace-field">Canaletas (cm)<input id="vsUrbanGutterWidth" type="number" min="0" max="300" value="${Math.round(Number(selected.gutterWidth||0)*u)}" ${lock}></label>
           <label class="vspace-field">Tipo de esquina<select id="vsUrbanCorner" ${lock}><option value="right" ${selected.cornerStyle==='right'?'selected':''}>90°</option><option value="round" ${selected.cornerStyle==='round'?'selected':''}>Redondeada</option><option value="diagonal" ${selected.cornerStyle==='diagonal'?'selected':''}>Diagonal / ochava</option></select></label>
-          <button type="button" class="vspace-primary" id="vsUrbanApply" ${lock}>Aplicar a la calle</button>
+          <button type="button" class="vspace-primary" id="vsUrbanApply" ${lock}>Aplicar a la calle</button><button type="button" class="v221-delete" id="vsUrbanDeleteStreet" ${lock}>Eliminar calle</button>
           <div class="vspace-arch-subtitle">Mobiliario urbano (grupo único)</div>
           <button type="button" id="vsUrbanAdd" ${lock}>${urban?'Reemplazar conjunto':'Añadir conjunto'}</button>
           ${urban?`<div class="vspace-grid-2"><label class="vspace-field">X plano (cm)<input type="number" id="vsUrbanX" value="${Math.round(Number(urban.x||0)*u)}" ${lock}></label>
@@ -493,15 +493,13 @@
       host.querySelector('#vsUrbanUndo')?.addEventListener('click',()=>{if(!canWrite())return;undoHistory('structure');state.refreshInspector();state.render?.(true);});
       host.querySelector('#vsUrbanRedo')?.addEventListener('click',()=>{if(!canWrite())return;redoHistory('structure');state.refreshInspector();state.render?.(true);});
       host.querySelectorAll('[data-vs-street]').forEach(btn=>btn.onclick=()=>{state.selectedStreetId=btn.dataset.vsStreet;appState.selectedStreetId=btn.dataset.vsStreet;state.selectedStreetFurnitureId='';state.refreshInspector();state.render?.(true);});
+      host.querySelector('#vsUrbanDeleteStreet')?.addEventListener('click',()=>{if(!canWrite()||!selected)return;if(v221DeleteStreet(selected.id,{render:false})){state.selectedStreetId='';state.selectedStreetFurnitureId='';state.refreshInspector();state.render?.(true);}});
       host.querySelector('#vsUrbanApply')?.addEventListener('click',()=>{
         if(!canWrite()||!selected)return;
         const nextRoad=safeArchNum(host.querySelector('#vsUrbanRoadWidth')?.value,26,2400,600)/u;
         const nextWalk=safeArchNum(host.querySelector('#vsUrbanSidewalkWidth')?.value,20,1200,240)/u;
-        recordHistorySnapshot('structure');
-        selected.roadType=host.querySelector('#vsUrbanRoadType')?.value in STREET_SURFACE_PRESETS ? host.querySelector('#vsUrbanRoadType').value : 'drain-covered';
-        selected.sidewalkType=host.querySelector('#vsUrbanWalkType')?.value in SIDEWALK_SURFACE_PRESETS ? host.querySelector('#vsUrbanWalkType').value : 'paver';
-        selected.roadWidth=nextRoad;selected.sidewalkWidth=nextWalk;selected.gutterWidth=safeArchNum(host.querySelector('#vsUrbanGutterWidth')?.value,0,300,60)/u;
-        selected.cornerStyle=v220Corner(host.querySelector('#vsUrbanCorner')?.value);
+        const values={roadType:host.querySelector('#vsUrbanRoadType')?.value in STREET_SURFACE_PRESETS?host.querySelector('#vsUrbanRoadType').value:'drain-covered',sidewalkType:host.querySelector('#vsUrbanWalkType')?.value in SIDEWALK_SURFACE_PRESETS?host.querySelector('#vsUrbanWalkType').value:'paver',roadWidth:nextRoad,sidewalkWidth:nextWalk,gutterWidth:safeArchNum(host.querySelector('#vsUrbanGutterWidth')?.value,0,300,60)/u,cornerStyle:v220Corner(host.querySelector('#vsUrbanCorner')?.value)};
+        if(!v221ApplyStreetProfile(selected,values))return;
         rebuildStreetNetwork();vspaceCommit(`calle ${selected.id}`);state.refreshInspector();
       });
       host.querySelector('#vsUrbanAdd')?.addEventListener('click',()=>{
@@ -1329,6 +1327,7 @@
             let obj=hit.object;while(obj&&!obj.userData?.streetFurnitureId)obj=obj.parent;
             if(obj?.userData?.streetFurnitureId)return {streetId:obj.userData.streetId,furnitureId:obj.userData.streetFurnitureId};
           }
+          const surfaces=world.children.filter(m=>m.userData?.streetSurface);const surface=raycaster.intersectObjects(surfaces,false)[0];if(surface){const id=v221PickStreet(invCoord(surface.point));if(id)return {streetId:id,furnitureId:''};}
           return null;
         };
         const groundPoint=e=>{

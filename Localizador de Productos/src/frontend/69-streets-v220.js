@@ -37,7 +37,7 @@
   function v220RebuildStreetNetwork(){
     const layout=appState.layout,b=v219UrbanBounds(),network=layout.streets.map(s=>({...s}));
     layout.streets=layout.streets.map(street=>{
-      if(!street?.side)return street;
+      if(!street?.side||street.creation==='path')return street;
       const geo=applyStreetVertexOffsets(street,v220BuildStreetGeometry(street.side,{...street,network,bounds:b}));
       for(const part of ['sidewalkPts','outerSidewalkPts']){
         if(street.manualSidewalks?.[part])geo[part]=street.manualSidewalks[part].map(p=>({x:p.x+b.minX,y:p.y+b.minY}));
@@ -119,7 +119,7 @@
     const scene=v220StreetScene();return scene.walks.some(w=>w.rings.reduce((inside,p)=>inside+(v216Inside(point,p)?(v216SignedArea(p)>0?1:-1):0),0)>0)&&(!street||[street.sidewalkPts,street.outerSidewalkPts,...(street.sidewalkExtraContours||[])].some(p=>p?.length>=3&&v216Inside(point,p)));
   }
   function v220RenderStreets2D(layer,svg){
-    const scene=v220StreetScene(),pick=e=>{if(activeLayoutWorkspace()!=='urbanism'||appState.editor.mode!=='select')return;e.stopPropagation();appState.selectedStreetId=v220StreetAt(svgPoint(e,svg));appState.selectedStreetFurnitureId='';renderLayoutEditor();};
+    const scene=v220StreetScene(),pick=e=>{if(activeLayoutWorkspace()!=='urbanism'||appState.editor.mode!=='select')return;e.stopPropagation();const id=v220StreetAt(svgPoint(e,svg));if(typeof v221SelectStreet==='function'){v221SelectStreet(id);return;}appState.selectedStreetId=id;appState.selectedStreetFurnitureId='';renderLayoutEditor();};
     const add=(rings,fill,kind)=>{if(!rings.length)return;const p=svgEl('path',{d:v220RingsPath(rings),fill,'fill-rule':'evenodd','data-v220-street-surface':kind,style:'cursor:pointer'});p.addEventListener('pointerdown',pick);layer.appendChild(p);};
     // The grate bars are separate positive rings; nonzero keeps overlaps filled.
     scene.walks.forEach(w=>add(w.rings,`url(#street-sidewalk-${w.finish})`,'sidewalk'));
@@ -137,7 +137,7 @@
   }
   function v220BindSidewalkTools(){
     const street=appState.layout.streets.find(s=>s.id===appState.selectedStreetId);
-    document.getElementById('v220FitSidewalk')?.addEventListener('click',()=>{if(!street)return;recordHistorySnapshot('structure');street.fitSidewalkToArea=true;if(street.manualSidewalks)delete street.manualSidewalks.sidewalkPts;if(street.vertexOffsets)delete street.vertexOffsets.sidewalkPts;rebuildStreetNetwork();appState.editor.streetVertexPart='sidewalkPts';appState.editor.streetVerticesVisible=true;persistActiveLayout('vereda ajustada al contorno');renderLayoutEditor();});
+    document.getElementById('v220FitSidewalk')?.addEventListener('click',()=>{if(!street)return;recordHistorySnapshot('structure');appState.editor.streetAxisVisible=false;street.fitSidewalkToArea=true;if(street.manualSidewalks)delete street.manualSidewalks.sidewalkPts;if(street.vertexOffsets)delete street.vertexOffsets.sidewalkPts;rebuildStreetNetwork();appState.editor.streetVertexPart='sidewalkPts';appState.editor.streetVerticesVisible=true;persistActiveLayout('vereda ajustada al contorno');renderLayoutEditor();});
     document.getElementById('v220AddStreetVertex')?.addEventListener('click',()=>v220ChangeSidewalkVertex(true));document.getElementById('v220RemoveStreetVertex')?.addEventListener('click',()=>v220ChangeSidewalkVertex(false));
   }
   function v220StreetGeometry(THREE,rings,mapper,depth=0){

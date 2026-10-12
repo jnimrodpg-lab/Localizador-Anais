@@ -1,2 +1,2 @@
-// Compatibility entry: V218 replaces V217's fixed cut with the camera cut.
-import './test-v218-ui.mjs';
+// Compatibility entry: the current 3D and gross-area checks are in V219.
+import './test-v219-ui.mjs';

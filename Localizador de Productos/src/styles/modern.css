@@ -893,3 +893,8 @@ body.theme-light #appRoot.app .layout-type-pill{color:var(--primary)!important}
  body[data-screen=virtual] #appRoot.app>.sidebar,
  body[data-screen=virtual] #appRoot.app>.content-panel{grid-row:1!important;height:100%!important;min-height:0!important}
 }
+/* V219: read-only footprint information, without additional editing tools. */
+#appRoot.app .v219-total-summary{margin:8px 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+#appRoot.app .v219-total-summary strong{display:block;font-size:21px;color:var(--primary);margin:5px 0}
+#appRoot.app .v219-total-summary strong small{font-size:12px;font-weight:500;color:var(--ink-soft)}
+#appRoot.app .v219-total-summary p{font-size:12px;line-height:1.45;color:var(--ink-soft);margin:6px 0 0}

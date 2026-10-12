@@ -2227,7 +2227,7 @@
     const zoneTools=architectureMode && zone && appState.editor.architectureTool==='zones' && !appState.selectedWallId && !appState.selectedOpeningId;
     const zoneRacks=zoneTools?(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length:0;
     const metricsV209=architectureMode?v209AreaMetrics():null;
-    const areaDashboard=architectureMode?`<section class="layout-v209-area-summary"><div class="layout-prop-title">Área interior útil · local comercial</div><div class="layout-v209-stats"><div><strong>${metricsV209.total.toFixed(2)}</strong><small>m² totales</small></div><div><strong>${metricsV209.assigned.toFixed(2)}</strong><small>m² zonificados</small></div><div><strong>${metricsV209.unassigned.toFixed(2)}</strong><small>m² libres</small></div></div><p class="tiny muted">${metricsV209.count} zonas virtuales · los muros son elementos físicos del área; dividir zonas no crea paredes.</p>${metricsV209.invalid?`<p class="tiny layout-v209-warning">${metricsV209.invalid} zona(s) heredadas necesitan ajuste: fuera del área, superposición o geometría inválida. No se han eliminado ni movido.</p>`:''}</section>`:'';
+    const areaDashboard=architectureMode?`<section class="layout-v209-area-summary"><div class="layout-prop-title">Área interior útil · local comercial</div><div class="layout-v209-stats"><div><strong>${metricsV209.total.toFixed(2)}</strong><small>m² comerciales</small></div><div><strong>${metricsV209.assigned.toFixed(2)}</strong><small>m² zonificados</small></div><div><strong>${metricsV209.unassigned.toFixed(2)}</strong><small>m² libres</small></div></div><p class="tiny muted">${metricsV209.count} zonas virtuales · los muros son elementos físicos del área; dividir zonas no crea paredes.</p>${metricsV209.invalid?`<p class="tiny layout-v209-warning">${metricsV209.invalid} zona(s) heredadas necesitan ajuste: fuera del área, superposición o geometría inválida. No se han eliminado ni movido.</p>`:''}</section>`:'';
     const zoneList=architectureMode && appState.editor.architectureTool==='zones' ? `<section class="v211-zone-manager" aria-label="Gestor de zonas virtuales"><div class="layout-prop-title">Zonas virtuales · ${appState.layout.zones.length}</div><p class="tiny muted">Selecciona una zona por su color. Sus límites se editan en el plano; las paredes no se modifican.</p><div class="v211-zone-list">${appState.layout.zones.map(z=>`<button type="button" data-v211-zone="${escapeHtml(z.id)}" class="v211-zone-item ${z.id===appState.selectedZoneId?'active':''}"><span class="v211-zone-chip" style="background:${escapeHtml(z.color||'#72b58b')}"></span><b>${escapeHtml(z.name||z.id)}</b><small>${escapeHtml(z.id)}</small></button>`).join('')}</div>${v211OrphanRackCount()>0?`<div class="v211-orphans"><b>${v211OrphanRackCount()} rack(s) sin zona</b><div class="layout-prop-grid two"><select id="v211OrphanTarget"><option value="">Elegir destino</option>${appState.layout.zones.map(z=>`<option value="${escapeHtml(z.id)}">${escapeHtml(z.name||z.id)}</option>`).join('')}</select><button class="seg-btn" type="button" id="v211ReassignRacks">Reasignar</button></div></div>`:''}</section>`:'';
     const quickZone=zoneTools?`<section class="layout-v207-context-card" aria-label="Acciones de zona">
         <div class="layout-v207-zone-title"><span class="layout-v207-zone-dot" style="background:${escapeHtml(zone.color||'#4a896e')}"></span><div><strong>${escapeHtml(zone.name||zone.id)}</strong><small>${escapeHtml(zone.id)} · ${zoneRacks} racks vinculados</small></div></div>
@@ -2243,7 +2243,8 @@
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
         ${!zoneTools?`<div class="layout-v207-selection"><span>Seleccionado</span><strong>${escapeHtml(summary.title)}</strong></div>`:''}
         ${architectureMode?v214CreationMarkup()+v212GeometryMarkup():''}
-        ${areaDashboard?layoutFold('metrics','Superficie del local',areaDashboard,false,'Total · zonificada · libre'):''}
+        ${!rackMode?v219TotalAreaMarkup():''}
+        ${areaDashboard?layoutFold('metrics','Superficie comercial',areaDashboard,false,'Comercial · zonificada · libre'):''}
         ${zoneList}
         ${quickZone?layoutFold('zoneActions','Acciones de zona',quickZone,false,'Convertir · centrar · eliminar'):''}
         ${rackMode && rack ? modularStackCard(rack) : ''}
@@ -3598,6 +3599,8 @@
       head.appendChild(tx);
       areaLayer.appendChild(head);
     }
+    const totalContours=v219TotalContours();
+    if(totalContours.length)overlayLayer.appendChild(svgEl('path',{d:totalContours.map(pathFromPts).join(' '),fill:'none',stroke:'#448575','stroke-width':'2','stroke-dasharray':'5 4','pointer-events':'none','data-v219-total-boundary':'1'}));
     (appState.layout?.streets || []).forEach(street => {
       const selected = appState.selectedStreetId === street.id;
       const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedStreetFurnitureId=''; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
@@ -4703,7 +4706,7 @@
     });
     const changeStreet=id=>{appState.selectedStreetId=id;appState.editor.mode='select';renderLayoutEditor();};
     if($('#v200StreetSelect'))$('#v200StreetSelect').onchange=e=>changeStreet(e.target.value);
-    if($('#v200DrawStreet'))$('#v200DrawStreet').onclick=()=>{appState.editor.mode='street';renderLayoutEditor();};
+    if($('#v200DrawStreet')){ $('#v200DrawStreet').disabled=!v219CanCreateUrbanism();$('#v200DrawStreet').onclick=()=>{if(!v219RequireUrbanism())return;appState.editor.mode='street';renderLayoutEditor();}; }
     const streetHandles=()=>{appState.editor.mode='select';appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
     if($('#v200ShowStreetHandles'))$('#v200ShowStreetHandles').onclick=streetHandles;
     if($('#v200StreetHandlesRail'))$('#v200StreetHandlesRail').onclick=streetHandles;
@@ -4775,7 +4778,7 @@
         if(saveBtn?.parentNode){ saveBtn.parentNode.insertBefore(styleWrap, saveBtn); saveBtn.parentNode.insertBefore(streetBtn, styleWrap); }
       }
     }
-    if($('#btnStreetPlus')) $('#btnStreetPlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'street'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
+    if($('#btnStreetPlus')){ $('#btnStreetPlus').disabled=!v219CanCreateUrbanism();if($('#btnStreetPlusRail'))$('#btnStreetPlusRail').disabled=$('#btnStreetPlus').disabled;$('#btnStreetPlus').title=v219CanCreateUrbanism()?'Ubicar calle y veredas desde el área total':'Primero dibuja el área comercial y crea sus muros';$('#btnStreetPlus').onclick = () => { if(!isStructureLayoutScreen()||!v219RequireUrbanism()) return; markLayoutManualInteraction(); appState.editor.mode = 'street'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); }; }
     if($('#streetCornerToggle')) $('#streetCornerToggle').onclick = () => { const next = getStreetCornerStyle() === 'right' ? 'diagonal' : 'right'; setStreetCornerStyle(next); persistActiveLayout(); renderLayoutEditor(); };
     if($('#btnOpeningPlus')) $('#btnOpeningPlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'opening'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
     if($('#btnVertexPlus')) $('#btnVertexPlus').onclick = () => { markLayoutManualInteraction(); insertVertexOnSelectedEdge(); };
@@ -5005,6 +5008,7 @@
     }
     if(appState.editor.mode === 'street' && isStructureLayoutScreen()){
       ensureLayoutMeta();
+      if(!v219RequireUrbanism())return;
       const street = addStreetFromPoint(p, { cornerStyle:getStreetCornerStyle() });
       appState.selectedStreetId = street?.id || '';
       appState.editor.mode = 'select';

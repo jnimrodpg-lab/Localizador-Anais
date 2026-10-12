@@ -494,6 +494,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     });
     if(!appState.layout.meta.defaultStreetCornerStyle) appState.layout.meta.defaultStreetCornerStyle = 'right';
     if(typeof v214EnsureHierarchy==='function')v214EnsureHierarchy(appState.layout);
+    if(typeof v219RefreshTotalArea==='function')v219RefreshTotalArea();
     return appState.layout.meta;
   }
   function pathFromPts(pts=[]){ return (pts || []).map((pt,i) => `${i===0?'M':'L'} ${Number(pt?.x || 0)} ${Number(pt?.y || 0)}`).join(' ') + ' Z'; }
@@ -678,7 +679,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     rebuildStreetNetwork();
   }
   function nearestBoundaryEdge(point){
-    const b = layoutBoundaryBounds();
+    const b = typeof v219UrbanBounds==='function'?v219UrbanBounds():layoutBoundaryBounds();
     const dTop = Math.abs(Number(point?.y || 0) - b.minY);
     const dBottom = Math.abs(Number(point?.y || 0) - b.maxY);
     const dLeft = Math.abs(Number(point?.x || 0) - b.minX);
@@ -692,7 +693,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     return list[0]?.side || 'top';
   }
   function buildStreetGeometry(side='top', opts={}){
-    const b = layoutBoundaryBounds();
+    const b = typeof v219UrbanBounds==='function'?v219UrbanBounds():layoutBoundaryBounds();
     const streetDims = normalizeStreetDims(opts, { side });
     const sidewalk = streetDims.sidewalkWidth;
     const road = streetDims.roadWidth;
@@ -777,6 +778,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   }
   function addStreetFromPoint(point, opts={}){
     ensureLayoutMeta();
+    if(typeof v219RequireUrbanism==='function'&&!v219RequireUrbanism())return null;
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
     const side = opts.side || nearestBoundaryEdge(point);
     const existing = appState.layout.streets.find(s => s.side === side);

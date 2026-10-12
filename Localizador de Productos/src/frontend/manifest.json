@@ -1,5 +1,5 @@
 {
-  "version": "218",
+  "version": "219",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -18,11 +18,12 @@
     "67-wall-union-v216.js",
     "68-diorama-v217.js",
     "69-camera-cut-v218.js",
+    "69-total-area-v219.js",
     "70-rack-editor.js",
     "74-isometric-furniture.js",
     "75-virtual-space.js",
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V218: diorama dinámico según cara interior hacia cámara, divisiones interiores permanentes y uniones/aberturas ajustadas a muros visibles"
+  "notes": "V219: área total automática a partir del área comercial y los muros, urbanismo vinculado y corte dinámico con zócalo de 20 cm"
 }

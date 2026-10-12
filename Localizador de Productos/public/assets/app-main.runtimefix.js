@@ -1514,6 +1514,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     });
     if(!appState.layout.meta.defaultStreetCornerStyle) appState.layout.meta.defaultStreetCornerStyle = 'right';
     if(typeof v214EnsureHierarchy==='function')v214EnsureHierarchy(appState.layout);
+    if(typeof v219RefreshTotalArea==='function')v219RefreshTotalArea();
     return appState.layout.meta;
   }
   function pathFromPts(pts=[]){ return (pts || []).map((pt,i) => `${i===0?'M':'L'} ${Number(pt?.x || 0)} ${Number(pt?.y || 0)}`).join(' ') + ' Z'; }
@@ -1698,7 +1699,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     rebuildStreetNetwork();
   }
   function nearestBoundaryEdge(point){
-    const b = layoutBoundaryBounds();
+    const b = typeof v219UrbanBounds==='function'?v219UrbanBounds():layoutBoundaryBounds();
     const dTop = Math.abs(Number(point?.y || 0) - b.minY);
     const dBottom = Math.abs(Number(point?.y || 0) - b.maxY);
     const dLeft = Math.abs(Number(point?.x || 0) - b.minX);
@@ -1712,7 +1713,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     return list[0]?.side || 'top';
   }
   function buildStreetGeometry(side='top', opts={}){
-    const b = layoutBoundaryBounds();
+    const b = typeof v219UrbanBounds==='function'?v219UrbanBounds():layoutBoundaryBounds();
     const streetDims = normalizeStreetDims(opts, { side });
     const sidewalk = streetDims.sidewalkWidth;
     const road = streetDims.roadWidth;
@@ -1797,6 +1798,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
   }
   function addStreetFromPoint(point, opts={}){
     ensureLayoutMeta();
+    if(typeof v219RequireUrbanism==='function'&&!v219RequireUrbanism())return null;
     if(!Array.isArray(appState.layout.streets)) appState.layout.streets = [];
     const side = opts.side || nearestBoundaryEdge(point);
     const existing = appState.layout.streets.find(s => s.side === side);
@@ -12186,7 +12188,7 @@ function getSheetBranchOpenMap(){
     const zoneTools=architectureMode && zone && appState.editor.architectureTool==='zones' && !appState.selectedWallId && !appState.selectedOpeningId;
     const zoneRacks=zoneTools?(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length:0;
     const metricsV209=architectureMode?v209AreaMetrics():null;
-    const areaDashboard=architectureMode?`<section class="layout-v209-area-summary"><div class="layout-prop-title">Área interior útil · local comercial</div><div class="layout-v209-stats"><div><strong>${metricsV209.total.toFixed(2)}</strong><small>m² totales</small></div><div><strong>${metricsV209.assigned.toFixed(2)}</strong><small>m² zonificados</small></div><div><strong>${metricsV209.unassigned.toFixed(2)}</strong><small>m² libres</small></div></div><p class="tiny muted">${metricsV209.count} zonas virtuales · los muros son elementos físicos del área; dividir zonas no crea paredes.</p>${metricsV209.invalid?`<p class="tiny layout-v209-warning">${metricsV209.invalid} zona(s) heredadas necesitan ajuste: fuera del área, superposición o geometría inválida. No se han eliminado ni movido.</p>`:''}</section>`:'';
+    const areaDashboard=architectureMode?`<section class="layout-v209-area-summary"><div class="layout-prop-title">Área interior útil · local comercial</div><div class="layout-v209-stats"><div><strong>${metricsV209.total.toFixed(2)}</strong><small>m² comerciales</small></div><div><strong>${metricsV209.assigned.toFixed(2)}</strong><small>m² zonificados</small></div><div><strong>${metricsV209.unassigned.toFixed(2)}</strong><small>m² libres</small></div></div><p class="tiny muted">${metricsV209.count} zonas virtuales · los muros son elementos físicos del área; dividir zonas no crea paredes.</p>${metricsV209.invalid?`<p class="tiny layout-v209-warning">${metricsV209.invalid} zona(s) heredadas necesitan ajuste: fuera del área, superposición o geometría inválida. No se han eliminado ni movido.</p>`:''}</section>`:'';
     const zoneList=architectureMode && appState.editor.architectureTool==='zones' ? `<section class="v211-zone-manager" aria-label="Gestor de zonas virtuales"><div class="layout-prop-title">Zonas virtuales · ${appState.layout.zones.length}</div><p class="tiny muted">Selecciona una zona por su color. Sus límites se editan en el plano; las paredes no se modifican.</p><div class="v211-zone-list">${appState.layout.zones.map(z=>`<button type="button" data-v211-zone="${escapeHtml(z.id)}" class="v211-zone-item ${z.id===appState.selectedZoneId?'active':''}"><span class="v211-zone-chip" style="background:${escapeHtml(z.color||'#72b58b')}"></span><b>${escapeHtml(z.name||z.id)}</b><small>${escapeHtml(z.id)}</small></button>`).join('')}</div>${v211OrphanRackCount()>0?`<div class="v211-orphans"><b>${v211OrphanRackCount()} rack(s) sin zona</b><div class="layout-prop-grid two"><select id="v211OrphanTarget"><option value="">Elegir destino</option>${appState.layout.zones.map(z=>`<option value="${escapeHtml(z.id)}">${escapeHtml(z.name||z.id)}</option>`).join('')}</select><button class="seg-btn" type="button" id="v211ReassignRacks">Reasignar</button></div></div>`:''}</section>`:'';
     const quickZone=zoneTools?`<section class="layout-v207-context-card" aria-label="Acciones de zona">
         <div class="layout-v207-zone-title"><span class="layout-v207-zone-dot" style="background:${escapeHtml(zone.color||'#4a896e')}"></span><div><strong>${escapeHtml(zone.name||zone.id)}</strong><small>${escapeHtml(zone.id)} · ${zoneRacks} racks vinculados</small></div></div>
@@ -12202,7 +12204,8 @@ function getSheetBranchOpenMap(){
       <div class="layout-right-scroll ${appState.editor.beginnerMode ? 'beginner-scroll' : ''}">
         ${!zoneTools?`<div class="layout-v207-selection"><span>Seleccionado</span><strong>${escapeHtml(summary.title)}</strong></div>`:''}
         ${architectureMode?v214CreationMarkup()+v212GeometryMarkup():''}
-        ${areaDashboard?layoutFold('metrics','Superficie del local',areaDashboard,false,'Total · zonificada · libre'):''}
+        ${!rackMode?v219TotalAreaMarkup():''}
+        ${areaDashboard?layoutFold('metrics','Superficie comercial',areaDashboard,false,'Comercial · zonificada · libre'):''}
         ${zoneList}
         ${quickZone?layoutFold('zoneActions','Acciones de zona',quickZone,false,'Convertir · centrar · eliminar'):''}
         ${rackMode && rack ? modularStackCard(rack) : ''}
@@ -13557,6 +13560,8 @@ function getSheetBranchOpenMap(){
       head.appendChild(tx);
       areaLayer.appendChild(head);
     }
+    const totalContours=v219TotalContours();
+    if(totalContours.length)overlayLayer.appendChild(svgEl('path',{d:totalContours.map(pathFromPts).join(' '),fill:'none',stroke:'#448575','stroke-width':'2','stroke-dasharray':'5 4','pointer-events':'none','data-v219-total-boundary':'1'}));
     (appState.layout?.streets || []).forEach(street => {
       const selected = appState.selectedStreetId === street.id;
       const pickStreet = evt => { evt.stopPropagation(); appState.selectedStreetId = street.id; appState.selectedStreetFurnitureId=''; appState.selectedZoneId=''; appState.selectedWallId=''; appState.selectedOpeningId=''; appState.selectedRackLayoutId=''; renderLayoutEditor(); };
@@ -14662,7 +14667,7 @@ function getSheetBranchOpenMap(){
     });
     const changeStreet=id=>{appState.selectedStreetId=id;appState.editor.mode='select';renderLayoutEditor();};
     if($('#v200StreetSelect'))$('#v200StreetSelect').onchange=e=>changeStreet(e.target.value);
-    if($('#v200DrawStreet'))$('#v200DrawStreet').onclick=()=>{appState.editor.mode='street';renderLayoutEditor();};
+    if($('#v200DrawStreet')){ $('#v200DrawStreet').disabled=!v219CanCreateUrbanism();$('#v200DrawStreet').onclick=()=>{if(!v219RequireUrbanism())return;appState.editor.mode='street';renderLayoutEditor();}; }
     const streetHandles=()=>{appState.editor.mode='select';appState.editor.streetVerticesVisible=!appState.editor.streetVerticesVisible;renderLayoutEditor();};
     if($('#v200ShowStreetHandles'))$('#v200ShowStreetHandles').onclick=streetHandles;
     if($('#v200StreetHandlesRail'))$('#v200StreetHandlesRail').onclick=streetHandles;
@@ -14734,7 +14739,7 @@ function getSheetBranchOpenMap(){
         if(saveBtn?.parentNode){ saveBtn.parentNode.insertBefore(styleWrap, saveBtn); saveBtn.parentNode.insertBefore(streetBtn, styleWrap); }
       }
     }
-    if($('#btnStreetPlus')) $('#btnStreetPlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'street'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
+    if($('#btnStreetPlus')){ $('#btnStreetPlus').disabled=!v219CanCreateUrbanism();if($('#btnStreetPlusRail'))$('#btnStreetPlusRail').disabled=$('#btnStreetPlus').disabled;$('#btnStreetPlus').title=v219CanCreateUrbanism()?'Ubicar calle y veredas desde el área total':'Primero dibuja el área comercial y crea sus muros';$('#btnStreetPlus').onclick = () => { if(!isStructureLayoutScreen()||!v219RequireUrbanism()) return; markLayoutManualInteraction(); appState.editor.mode = 'street'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); }; }
     if($('#streetCornerToggle')) $('#streetCornerToggle').onclick = () => { const next = getStreetCornerStyle() === 'right' ? 'diagonal' : 'right'; setStreetCornerStyle(next); persistActiveLayout(); renderLayoutEditor(); };
     if($('#btnOpeningPlus')) $('#btnOpeningPlus').onclick = () => { if(!isStructureLayoutScreen()) return; markLayoutManualInteraction(); appState.editor.mode = 'opening'; appState.editor.pendingWallPoint = null; renderLayoutEditor(); };
     if($('#btnVertexPlus')) $('#btnVertexPlus').onclick = () => { markLayoutManualInteraction(); insertVertexOnSelectedEdge(); };
@@ -14964,6 +14969,7 @@ function getSheetBranchOpenMap(){
     }
     if(appState.editor.mode === 'street' && isStructureLayoutScreen()){
       ensureLayoutMeta();
+      if(!v219RequireUrbanism())return;
       const street = addStreetFromPoint(p, { cornerStyle:getStreetCornerStyle() });
       appState.selectedStreetId = street?.id || '';
       appState.editor.mode = 'select';
@@ -17103,7 +17109,8 @@ function getSheetBranchOpenMap(){
       return visibleParts.filter(p=>p.id===wall.id).flatMap(part=>{
         const len=wallLength(part);if(len<1e-7)return [];
         const start=part.v217StartDistance||0,a=Math.max(0,(center-half-start)/len),b=Math.min(1,(center+half-start)/len);
-        if(b<=a)return [];const slice=getWallRawSlicePolygon(part,a,b,1);return slice?[{...band,poly:slice.poly}]:[];
+        if(b<=a)return [];const top=part.v219Cutaway?Math.min(band.y1,v219WallRenderHeight(part,getScaleCmPerUnit())):band.y1;
+        if(top<=band.y0)return [];const slice=getWallRawSlicePolygon(part,a,b,1);return slice?[{...band,y1:top,poly:slice.poly}]:[];
       });
     });
   }
@@ -17130,7 +17137,7 @@ function getSheetBranchOpenMap(){
         const shape=make(r,THREE.Shape);holes.filter(h=>v216Inside(h[0],r)&&!outers.some(o=>o!==r&&Math.abs(v216SignedArea(o))<Math.abs(v216SignedArea(r))&&v216Inside(h[0],o))).forEach(h=>shape.holes.push(make(h,THREE.Path)));
         const geo=new THREE.ExtrudeGeometry(shape,{depth:y1-y0,bevelEnabled:false,curveSegments:1,steps:1});geo.rotateX(-Math.PI/2);geo.translate(0,y0,0);
         const mesh=new THREE.Mesh(geo,parts[0].material);mesh.castShadow=mesh.receiveShadow=true;
-        mesh.userData={entityType:'wall',wallId:parts[0].wallId,wallIds:[...new Set(parts.map(b=>b.wallId))],wallUnion:true,wallParts:parts.map(b=>({id:b.wallId,poly:b.poly.map(mapper)}))};host.add(mesh);register(mesh);
+        mesh.userData={entityType:'wall',wallId:parts[0].wallId,wallIds:[...new Set(parts.map(b=>b.wallId))],wallUnion:true,wallParts:parts.map(b=>({id:b.wallId,poly:b.poly.map(mapper),cutaway:!!b.cutaway}))};host.add(mesh);register(mesh);
       });covered=covered.concat(parts.map(b=>b.poly));
       }
     }
@@ -17200,6 +17207,74 @@ function getSheetBranchOpenMap(){
       return ranges.map(([a,b])=>{if(a===0&&b===1)return wall;const ax=Number(wall.x1),ay=Number(wall.y1),dx=Number(wall.x2)-ax,dy=Number(wall.y2)-ay,L=Math.hypot(dx,dy);return {...wall,x1:ax+dx*a,y1:ay+dy*a,x2:ax+dx*b,y2:ay+dy*b,v217SourceLength:L,v217StartDistance:L*a};});
     });
     return {parts,visibility:next,signature:JSON.stringify(parts.map(w=>[w.id,w.x1,w.y1,w.x2,w.y2,w.v217StartDistance||0,w.v217SourceLength||0]))};
+  }
+  // V219: a derived gross footprint. The manually edited commercial area
+  // remains the source for zones and the anchors of physical walls.
+  const v219TotalAreaCache=new WeakMap();
+  let v219RefreshingStreets=false;
+  function v219ComputeTotalArea(layout){
+    const pts=(layout?.meta?.siteBoundary?.pts||[]).map(p=>({x:Number(p.x),y:Number(p.y)}));
+    const walls=(layout?.walls||[]).filter(w=>[w.x1,w.y1,w.x2,w.y2].every(v=>Number.isFinite(Number(v)))&&wallLength(w)>=1);
+    if(pts.length<3||pts.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y))||Math.abs(v216SignedArea(pts))<1e-7||!walls.length)return null;
+    const polys=[pts,...walls.map(w=>getWallSlicePolygon(w,0,1,1,walls)?.poly).filter(Boolean),...v216JointPieces(walls).map(j=>j.poly)];
+    const contours=v216Union(polys).filter(p=>v216SignedArea(p)>0).sort((a,b)=>v216SignedArea(b)-v216SignedArea(a));
+    if(!contours.length)return null;
+    return {id:'AREA-TOTAL',name:'Área total',automatic:true,pts:contours[0],contours};
+  }
+  function v219SyncTotalArea(layout=appState.layout){
+    if(!layout?.meta)return null;
+    const key=JSON.stringify([(layout.meta.siteBoundary?.pts||[]).map(p=>[p.x,p.y]),(layout.walls||[]).map(w=>[w.id,w.x1,w.y1,w.x2,w.y2,w.thickness,w.placement,w.referenceOutwardSign,w.side,w.autoZoneEdge,w.zoneId,w.edgeIndex]),(layout.zones||[]).filter(z=>(layout.walls||[]).some(w=>w.autoZoneEdge&&w.zoneId===z.id)).map(z=>z.pts)]);
+    let entry=v219TotalAreaCache.get(layout);
+    if(!entry||entry.key!==key){entry={key,boundary:v219ComputeTotalArea(layout),streetKey:entry?.streetKey};v219TotalAreaCache.set(layout,entry);}
+    if(entry.boundary)layout.meta.totalBoundary=entry.boundary;else delete layout.meta.totalBoundary;
+    return entry.boundary;
+  }
+  function v219RefreshTotalArea(){
+    const layout=appState.layout,boundary=v219SyncTotalArea(layout),entry=v219TotalAreaCache.get(layout);
+    if(!entry||entry.streetKey===entry.key||v219RefreshingStreets)return boundary;
+    // Update streets once per changed physical footprint, including migration.
+    // Reentrant ensureLayoutMeta calls from the street builder are harmless.
+    entry.streetKey=entry.key;
+    if(boundary&&(layout.streets||[]).length){
+      v219RefreshingStreets=true;
+      try{rebuildStreetNetwork();}finally{v219RefreshingStreets=false;}
+    }
+    return boundary;
+  }
+  function v219TotalContours(layout=appState.layout){const b=v219SyncTotalArea(layout);return b?.contours||[];}
+  function v219UrbanBounds(){
+    const pts=v219TotalContours().flat();
+    if(!pts.length)return layoutBoundaryBounds();
+    const minX=Math.min(...pts.map(p=>p.x)),maxX=Math.max(...pts.map(p=>p.x)),minY=Math.min(...pts.map(p=>p.y)),maxY=Math.max(...pts.map(p=>p.y));
+    return {minX,maxX,minY,maxY,w:maxX-minX,h:maxY-minY};
+  }
+  function v219CanCreateUrbanism(){return !!v219SyncTotalArea();}
+  function v219RequireUrbanism(){
+    if(v219CanCreateUrbanism())return true;
+    showToast('Dibuja el área comercial y crea sus muros. El área total se generará automáticamente para ubicar calles y veredas.','warning',4200);return false;
+  }
+  function v219TotalAreaMarkup(){
+    const total=v219SyncTotalArea(),scale=getScaleCmPerUnit()/100;
+    const area=total?total.contours.reduce((s,p)=>s+v216SignedArea(p),0)*scale*scale:0;
+    return `<section class="v219-total-summary" aria-label="Área total automática"><div class="layout-prop-title">Área total · automática</div>${total?`<strong>${area.toFixed(2)} <small>m²</small></strong><p>Incluye el área comercial y el espesor de los muros. Calles y veredas usan este límite exterior.</p>`:'<p>Crea los muros del área comercial para generar el área total y habilitar calles y veredas.</p>'}</section>`;
+  }
+
+  const V219_CUT_HEIGHT=.20;
+  function v219WallRenderHeight(wall,scaleCmPerUnit=1){
+    const height=Math.max(100,Number(wall.height)||290)*scaleCmPerUnit/100;
+    return wall.v219Cutaway?Math.min(V219_CUT_HEIGHT,height):height;
+  }
+  function v219CutWallParts(walls,boundary,mode='diorama',towardCamera={x:-1,y:1,z:1},previous=new Map()){
+    const full=v218VisibleWallParts(walls,boundary,mode,towardCamera,previous);
+    if(mode!=='diorama')return {...full,fullParts:full.parts};
+    const lows=walls.flatMap(wall=>{
+      const length=wallLength(wall);if(length<1)return [];
+      const spans=full.parts.filter(p=>p.id===wall.id).map(p=>[(p.v217StartDistance||0)/length,((p.v217StartDistance||0)+wallLength(p))/length]).sort((a,b)=>a[0]-b[0]);
+      let start=0;const hidden=[];
+      spans.forEach(([a,b])=>{if(a-start>1e-7)hidden.push([start,a]);start=Math.max(start,b);});if(1-start>1e-7)hidden.push([start,1]);
+      return hidden.map(([a,b])=>({...wall,x1:Number(wall.x1)+(Number(wall.x2)-Number(wall.x1))*a,y1:Number(wall.y1)+(Number(wall.y2)-Number(wall.y1))*a,x2:Number(wall.x1)+(Number(wall.x2)-Number(wall.x1))*b,y2:Number(wall.y1)+(Number(wall.y2)-Number(wall.y1))*b,v217SourceLength:length,v217StartDistance:length*a,v219Cutaway:true}));
+    });
+    return {...full,fullParts:full.parts,parts:[...full.parts,...lows],signature:full.signature+'|plinth20'};
   }
   function resetRackPreviewCamera(){
     if(!appState.ui) appState.ui = {};
@@ -19791,7 +19866,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     const typelist=Object.entries(VSPACE_TYPES).map(([id,p])=>`<button type="button" class="vspace-catalog-btn" data-vspace-add="${id}" ${canEdit?'':'disabled'}><b>${p.icon}</b><span>${vspaceEsc(p.name)}</span><small>${p.levels} niveles</small></button>`).join('');
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
-      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active" title="Diorama dinámico: muestra la cara interior de los muros exteriores según la cámara. Las divisiones interiores permanecen visibles. Pulsa para ver muros completos o esconder todos." aria-label="Cambiar visibilidad de muros: Diorama">Diorama</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
+      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active" title="Diorama dinámico: conserva un zócalo de 20 cm al ver la cara exterior y la altura completa al ver la cara interior. Las divisiones interiores permanecen visibles. Pulsa para ver muros completos o esconder todos." aria-label="Cambiar visibilidad de muros: Diorama">Diorama</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
       <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
@@ -19880,6 +19955,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
       (appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>pts.push(p)));
       const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
       sitePts.forEach(p=>pts.push(p));
+      v219TotalContours().flat().forEach(p=>pts.push(p));
       (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>pts.push(p)));
       if(!pts.length)(appState.layout.racks||[]).forEach(r=>pts.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
       return pts;
@@ -20567,11 +20643,11 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             state.urbanMeshes.push(group);
           });
         };
-        let wallUnionBands=[],visibleWallParts=[],cutVisibility=new Map(),visibleWallSignature='',renderingFrame=false;
+        let wallUnionBands=[],visibleWallParts=[],wallHeightLevels=[],cutVisibility=new Map(),visibleWallSignature='',renderingFrame=false;
         const towardCamera=new THREE.Vector3();
         const resolveWallCut=()=>{
           camera.getWorldDirection(towardCamera).negate();
-          const result=v218VisibleWallParts(appState.layout.walls||[],appState.layout.meta?.siteBoundary,state.wallDisplay,towardCamera,cutVisibility);
+          const result=v219CutWallParts(appState.layout.walls||[],appState.layout.meta?.siteBoundary,state.wallDisplay,towardCamera,cutVisibility);
           cutVisibility=result.visibility;return result;
         };
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
@@ -20582,8 +20658,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const group=new THREE.Group();
           const pos=coord({x:Number(wall.x1||0),y:Number(wall.y1||0)});
           group.position.set(pos.x,0,pos.z);group.rotation.y=-Math.atan2(dy,dx);
-          group.userData={wallId:wall.id,entityType:'wall'};
-          const wallHeight=Math.max(100,Number(wall.height||290))*scale;
+          group.userData={wallId:wall.id,entityType:'wall',cutaway:!!wall.v219Cutaway};
+          const wallHeight=v219WallRenderHeight(wall,getScaleCmPerUnit());
           const thickness=Math.max(4,Number(wall.thickness||12))*scale;
           const faceOffsets=getWallFaceOffsets(wall);
           const faceCenter=(faceOffsets.left-faceOffsets.right)*scale*.5;
@@ -20596,19 +20672,22 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             const w=Math.max(40,Number(segment?.width||o.width||90))*scale;
             const t=Number(segment?.t??o.t??.5),c=(t*(wall.v217SourceLength||L)-(wall.v217StartDistance||0))*scale;
             const sill=Math.max(0,Number(o.sill||0))*scale;
-            const h=Math.min(Math.max(20,Number(o.height||210))*scale,Math.max(.001,wallHeight-sill));
+            const h=Math.max(20,Number(o.height||210))*scale;
             return {o,left:Math.max(0,c-w/2),right:Math.min(length,c+w/2),c,w,sill,h};
-          }).filter(o=>o.c+o.w/2>0&&o.c-o.w/2<length).sort((a,b)=>a.left-b.left);
+          }).filter(o=>o.c+o.w/2>0&&o.c-o.w/2<length&&o.sill<wallHeight-1e-7).sort((a,b)=>a.left-b.left);
           const cuts=[0,length,...openings.flatMap(o=>[o.left,o.right])].sort((a,b)=>a-b);
           const breaks=cuts.filter((n,i)=>i===0||Math.abs(n-cuts[i-1])>.001);
           const addWallPiece=(l,r,y0,y1)=>{
             if(r-l<.008||y1-y0<.008)return;
+            const split=wallHeightLevels.find(h=>h>y0+1e-7&&h<y1-1e-7);
+            if(split!==undefined){addWallPiece(l,r,y0,split);addWallPiece(l,r,split,y1);return;}
             let geo=null,position=null;
             // V210: project the joined CAD footprint into this wall's local
             // x/z frame so the virtual designer and layout close on the same
             // bevel/miter points, even at diagonal-to-vertical intersections.
-            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1,visibleWallParts):null;
-            if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat});return;}
+            const neighbors=visibleWallParts.filter(p=>v219WallRenderHeight(p,getScaleCmPerUnit())>=y1-1e-7);
+            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1,neighbors):null;
+            if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat,cutaway:!!wall.v219Cutaway});return;}
             if(slice?.poly?.length===4){
               const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
               const ax=Number(wall.x1||0),ay=Number(wall.y1||0);
@@ -20638,9 +20717,10 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const glassMat=meshMat(0xadc9c5,{metalness:.08,roughness:.18,transparent:true,opacity:.33,depthWrite:false,side:THREE.DoubleSide});
           const addTrim=(o,cx,cy,w,h,d,material)=>{
             const half=Math.max(.012,w)/2,left=Math.max(0,cx-half),right=Math.min(length,cx+half);
-            if(right-left<.001)return null;
-            const mesh=new THREE.Mesh(new THREE.BoxGeometry(right-left,Math.max(.012,h),Math.max(.015,d)),material);
-            mesh.position.set((left+right)/2,cy,faceCenter);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
+            const halfH=Math.max(.012,h)/2,bottom=Math.max(0,cy-halfH),top=Math.min(wallHeight,cy+halfH);
+            if(right-left<.001||top-bottom<.001)return null;
+            const mesh=new THREE.Mesh(new THREE.BoxGeometry(right-left,top-bottom,Math.max(.015,d)),material);
+            mesh.position.set((left+right)/2,(bottom+top)/2,faceCenter);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
             mesh.userData={openingId:o.id,wallId:wall.id,entityType:'opening'};
             group.add(mesh);state.architectureMeshes.push(mesh);
             return mesh;
@@ -20703,12 +20783,14 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         };
         const rebuild=()=>{
           clearWorld();wallUnionBands=[];const cut=resolveWallCut();visibleWallParts=cut.parts;visibleWallSignature=cut.signature;
+          wallHeightLevels=[...new Set([0,...visibleWallParts.map(p=>v219WallRenderHeight(p,getScaleCmPerUnit()))])].sort((a,b)=>a-b);
           refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
           const streets = Array.isArray(appState.layout?.streets) ? appState.layout.streets : [];
           const footprintSource = [];
           siteBoundary.forEach(pt => footprintSource.push(pt));
+          const totalContours=v219TotalContours();totalContours.flat().forEach(pt=>footprintSource.push(pt));
           streets.forEach(street => [ ...(street.outerSidewalkPts||[]), ...(street.roadPts||[]), ...(street.sidewalkPts||[]) ].forEach(pt => footprintSource.push(pt)));
           if(!footprintSource.length) zones.forEach(zone => (zone.pts||[]).forEach(pt => footprintSource.push(pt)));
           const dioramaBase = addDioramaBase(footprintSource);
@@ -20717,6 +20799,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             addOutlineFromPts(siteBoundary, 0xae9069, .032, .96);
             addOutlineFromPts(siteBoundary, 0xf1e5cf, .046, .78);
           }
+          totalContours.forEach(pts=>{const surface=addTopSurfaceFromPts(pts,0xe2cfb3,.006,0xae9069,.98,0);if(surface)surface.userData.totalArea=true;});
           streets.forEach((street, index) => {
             ensureStreetVisualDefaults(street);
             const roadPreset=getStreetSurfacePreset(street.roadType);
@@ -20738,7 +20821,11 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
             visibleWallParts.forEach(w=>buildArchitecturalWall(w));
-            v216JointPieces(visibleWallParts).forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId));if(host)wallUnionBands.push({poly:j.poly,y0:0,y1:j.height*getScaleCmPerUnit()/100,wallId:host.wallId,material:host.material});});
+            const levels=wallHeightLevels;
+            for(let i=0;i<levels.length-1;i++){
+              const y0=levels[i],y1=levels[i+1],neighbors=visibleWallParts.filter(p=>v219WallRenderHeight(p,getScaleCmPerUnit())>=y1-1e-7);
+              v216JointPieces(neighbors).forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId)&&b.y0<=y0+1e-7&&b.y1>=y1-1e-7);if(host)wallUnionBands.push({poly:j.poly,y0,y1,wallId:host.wallId,material:host.material,cutaway:!!host.cutaway});});
+            }
             v216AddUnionMeshes(THREE,world,wallUnionBands,coord,mesh=>state.architectureMeshes.push(mesh),{walls:visibleWallParts});
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.

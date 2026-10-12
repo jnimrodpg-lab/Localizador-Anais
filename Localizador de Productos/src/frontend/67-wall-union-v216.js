@@ -60,7 +60,8 @@
       return visibleParts.filter(p=>p.id===wall.id).flatMap(part=>{
         const len=wallLength(part);if(len<1e-7)return [];
         const start=part.v217StartDistance||0,a=Math.max(0,(center-half-start)/len),b=Math.min(1,(center+half-start)/len);
-        if(b<=a)return [];const slice=getWallRawSlicePolygon(part,a,b,1);return slice?[{...band,poly:slice.poly}]:[];
+        if(b<=a)return [];const top=part.v219Cutaway?Math.min(band.y1,v219WallRenderHeight(part,getScaleCmPerUnit())):band.y1;
+        if(top<=band.y0)return [];const slice=getWallRawSlicePolygon(part,a,b,1);return slice?[{...band,y1:top,poly:slice.poly}]:[];
       });
     });
   }
@@ -87,7 +88,7 @@
         const shape=make(r,THREE.Shape);holes.filter(h=>v216Inside(h[0],r)&&!outers.some(o=>o!==r&&Math.abs(v216SignedArea(o))<Math.abs(v216SignedArea(r))&&v216Inside(h[0],o))).forEach(h=>shape.holes.push(make(h,THREE.Path)));
         const geo=new THREE.ExtrudeGeometry(shape,{depth:y1-y0,bevelEnabled:false,curveSegments:1,steps:1});geo.rotateX(-Math.PI/2);geo.translate(0,y0,0);
         const mesh=new THREE.Mesh(geo,parts[0].material);mesh.castShadow=mesh.receiveShadow=true;
-        mesh.userData={entityType:'wall',wallId:parts[0].wallId,wallIds:[...new Set(parts.map(b=>b.wallId))],wallUnion:true,wallParts:parts.map(b=>({id:b.wallId,poly:b.poly.map(mapper)}))};host.add(mesh);register(mesh);
+        mesh.userData={entityType:'wall',wallId:parts[0].wallId,wallIds:[...new Set(parts.map(b=>b.wallId))],wallUnion:true,wallParts:parts.map(b=>({id:b.wallId,poly:b.poly.map(mapper),cutaway:!!b.cutaway}))};host.add(mesh);register(mesh);
       });covered=covered.concat(parts.map(b=>b.poly));
       }
     }

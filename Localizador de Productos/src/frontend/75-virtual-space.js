@@ -312,7 +312,7 @@
     const typelist=Object.entries(VSPACE_TYPES).map(([id,p])=>`<button type="button" class="vspace-catalog-btn" data-vspace-add="${id}" ${canEdit?'':'disabled'}><b>${p.icon}</b><span>${vspaceEsc(p.name)}</span><small>${p.levels} niveles</small></button>`).join('');
     contentWrap.innerHTML=`<div class="vspace-root" id="vspaceRoot" data-edit-mode="build">
       <div class="vspace-toolbar"><div class="vspace-toolbar-heading"><strong>Espacio virtual 3D</strong><div class="vspace-toolbar-meta"><span class="vspace-chip" id="vspaceBranch">Sucursal activa</span><span class="vspace-chip" id="vspaceStats">—</span><span class="vspace-edit-note" id="vspaceModeHint">Modo construir: agrega y organiza mobiliario.</span></div></div>
-      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active" title="Diorama dinámico: muestra la cara interior de los muros exteriores según la cámara. Las divisiones interiores permanecen visibles. Pulsa para ver muros completos o esconder todos." aria-label="Cambiar visibilidad de muros: Diorama">Diorama</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
+      <div class="vspace-toolbar-right"><div class="vspace-v200-filter" role="group" aria-label="Filtrar niveles de muebles"><span>Altura</span><button type="button" data-vspace-rack-height="all" class="active" aria-pressed="true">Todos</button><button type="button" data-vspace-rack-height="0">N1</button><button type="button" data-vspace-rack-height="1">N2</button><button type="button" data-vspace-rack-height="2">N3</button></div><div class="vspace-mode-switch"><button data-vspace-mode="build" class="active">Construir</button><button data-vspace-mode="place">Ubicar</button><button data-vspace-mode="explore">Explorar</button></div><button data-vspace-cam="iso" class="active">Isométrica</button><button data-vspace-cam="top">Planta</button><button data-vspace-cam="front">Frontal</button><button data-vspace-action="fit">Ajustar</button><button data-vspace-action="focus">Enfocar</button><button data-vspace-action="toggle-wall" class="active" title="Diorama dinámico: conserva un zócalo de 20 cm al ver la cara exterior y la altura completa al ver la cara interior. Las divisiones interiores permanecen visibles. Pulsa para ver muros completos o esconder todos." aria-label="Cambiar visibilidad de muros: Diorama">Diorama</button><button data-vspace-action="move" ${canEdit?'':'disabled'}>Mover: OFF</button><button type="button" data-vspace-action="stack" ${canEdit?'':'disabled'} title="Selecciona el mueble superior y después el inferior">Colocar encima</button><button data-vspace-action="save" class="vspace-save" ${canEdit?'':'disabled'}>Guardar en nube</button></div></div>
       <div class="vspace-main"><aside class="vspace-left"><div class="vspace-sidebar-section" data-vs-section="library"><h4>Biblioteca 3D</h4><p>Agrega estanterías, vitrinas, cajoneras o contenedores desde este panel.</p><div class="vspace-catalog">${typelist}</div><div class="vspace-saved-models"><strong>Muebles creados</strong><label for="vspaceSavedModel">Modelo guardado</label><select id="vspaceSavedModel"><option value="">Selecciona un modelo</option>${(appState.models||[]).filter(m=>m?.furniture?.enabled).map(m=>`<option value="${vspaceEsc(m.id)}">${vspaceEsc(m.name||m.id)}</option>`).join('')}</select><button id="vspaceAddSavedModel" ${canEdit?'':'disabled'}>Añadir al espacio 3D</button></div><button class="vspace-example-btn" data-vspace-action="sample" ${canEdit?'':'disabled'}>✧ Preparar ambiente de ejemplo</button></div>
       <div class="vspace-sidebar-section" data-vs-section="search"><h4>Buscar producto / SKU</h4><div class="vspace-search"><input id="vspaceFindSku" placeholder="SKU, nombre o barras…" autocomplete="off"><button data-vspace-action="find">⌕</button></div><div class="vspace-hits" id="vspaceHits"></div></div>
       <div class="vspace-sidebar-section" data-vs-section="objects"><h4>Muebles ubicados</h4><div id="vspaceObjects" class="vspace-object-list"></div></div></aside>
@@ -401,6 +401,7 @@
       (appState.layout.zones||[]).forEach(z=>(z.pts||[]).forEach(p=>pts.push(p)));
       const sitePts = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
       sitePts.forEach(p=>pts.push(p));
+      v219TotalContours().flat().forEach(p=>pts.push(p));
       (appState.layout.streets||[]).forEach(s=>[...(s.sidewalkPts||[]),...(s.roadPts||[]),...(s.outerSidewalkPts||[])].forEach(p=>pts.push(p)));
       if(!pts.length)(appState.layout.racks||[]).forEach(r=>pts.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y+r.h}));
       return pts;
@@ -1088,11 +1089,11 @@
             state.urbanMeshes.push(group);
           });
         };
-        let wallUnionBands=[],visibleWallParts=[],cutVisibility=new Map(),visibleWallSignature='',renderingFrame=false;
+        let wallUnionBands=[],visibleWallParts=[],wallHeightLevels=[],cutVisibility=new Map(),visibleWallSignature='',renderingFrame=false;
         const towardCamera=new THREE.Vector3();
         const resolveWallCut=()=>{
           camera.getWorldDirection(towardCamera).negate();
-          const result=v218VisibleWallParts(appState.layout.walls||[],appState.layout.meta?.siteBoundary,state.wallDisplay,towardCamera,cutVisibility);
+          const result=v219CutWallParts(appState.layout.walls||[],appState.layout.meta?.siteBoundary,state.wallDisplay,towardCamera,cutVisibility);
           cutVisibility=result.visibility;return result;
         };
         const buildArchitecturalWall=(wall,zoneCenters=[])=>{
@@ -1103,8 +1104,8 @@
           const group=new THREE.Group();
           const pos=coord({x:Number(wall.x1||0),y:Number(wall.y1||0)});
           group.position.set(pos.x,0,pos.z);group.rotation.y=-Math.atan2(dy,dx);
-          group.userData={wallId:wall.id,entityType:'wall'};
-          const wallHeight=Math.max(100,Number(wall.height||290))*scale;
+          group.userData={wallId:wall.id,entityType:'wall',cutaway:!!wall.v219Cutaway};
+          const wallHeight=v219WallRenderHeight(wall,getScaleCmPerUnit());
           const thickness=Math.max(4,Number(wall.thickness||12))*scale;
           const faceOffsets=getWallFaceOffsets(wall);
           const faceCenter=(faceOffsets.left-faceOffsets.right)*scale*.5;
@@ -1117,19 +1118,22 @@
             const w=Math.max(40,Number(segment?.width||o.width||90))*scale;
             const t=Number(segment?.t??o.t??.5),c=(t*(wall.v217SourceLength||L)-(wall.v217StartDistance||0))*scale;
             const sill=Math.max(0,Number(o.sill||0))*scale;
-            const h=Math.min(Math.max(20,Number(o.height||210))*scale,Math.max(.001,wallHeight-sill));
+            const h=Math.max(20,Number(o.height||210))*scale;
             return {o,left:Math.max(0,c-w/2),right:Math.min(length,c+w/2),c,w,sill,h};
-          }).filter(o=>o.c+o.w/2>0&&o.c-o.w/2<length).sort((a,b)=>a.left-b.left);
+          }).filter(o=>o.c+o.w/2>0&&o.c-o.w/2<length&&o.sill<wallHeight-1e-7).sort((a,b)=>a.left-b.left);
           const cuts=[0,length,...openings.flatMap(o=>[o.left,o.right])].sort((a,b)=>a-b);
           const breaks=cuts.filter((n,i)=>i===0||Math.abs(n-cuts[i-1])>.001);
           const addWallPiece=(l,r,y0,y1)=>{
             if(r-l<.008||y1-y0<.008)return;
+            const split=wallHeightLevels.find(h=>h>y0+1e-7&&h<y1-1e-7);
+            if(split!==undefined){addWallPiece(l,r,y0,split);addWallPiece(l,r,split,y1);return;}
             let geo=null,position=null;
             // V210: project the joined CAD footprint into this wall's local
             // x/z frame so the virtual designer and layout close on the same
             // bevel/miter points, even at diagonal-to-vertical intersections.
-            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1,visibleWallParts):null;
-            if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat});return;}
+            const neighbors=visibleWallParts.filter(p=>v219WallRenderHeight(p,getScaleCmPerUnit())>=y1-1e-7);
+            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1,neighbors):null;
+            if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat,cutaway:!!wall.v219Cutaway});return;}
             if(slice?.poly?.length===4){
               const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
               const ax=Number(wall.x1||0),ay=Number(wall.y1||0);
@@ -1159,9 +1163,10 @@
           const glassMat=meshMat(0xadc9c5,{metalness:.08,roughness:.18,transparent:true,opacity:.33,depthWrite:false,side:THREE.DoubleSide});
           const addTrim=(o,cx,cy,w,h,d,material)=>{
             const half=Math.max(.012,w)/2,left=Math.max(0,cx-half),right=Math.min(length,cx+half);
-            if(right-left<.001)return null;
-            const mesh=new THREE.Mesh(new THREE.BoxGeometry(right-left,Math.max(.012,h),Math.max(.015,d)),material);
-            mesh.position.set((left+right)/2,cy,faceCenter);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
+            const halfH=Math.max(.012,h)/2,bottom=Math.max(0,cy-halfH),top=Math.min(wallHeight,cy+halfH);
+            if(right-left<.001||top-bottom<.001)return null;
+            const mesh=new THREE.Mesh(new THREE.BoxGeometry(right-left,top-bottom,Math.max(.015,d)),material);
+            mesh.position.set((left+right)/2,(bottom+top)/2,faceCenter);mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
             mesh.userData={openingId:o.id,wallId:wall.id,entityType:'opening'};
             group.add(mesh);state.architectureMeshes.push(mesh);
             return mesh;
@@ -1224,12 +1229,14 @@
         };
         const rebuild=()=>{
           clearWorld();wallUnionBands=[];const cut=resolveWallCut();visibleWallParts=cut.parts;visibleWallSignature=cut.signature;
+          wallHeightLevels=[...new Set([0,...visibleWallParts.map(p=>v219WallRenderHeight(p,getScaleCmPerUnit()))])].sort((a,b)=>a-b);
           refreshSceneFrame();
           const zones=appState.layout.zones||[];
           const siteBoundary = Array.isArray(appState.layout?.meta?.siteBoundary?.pts) ? appState.layout.meta.siteBoundary.pts : [];
           const streets = Array.isArray(appState.layout?.streets) ? appState.layout.streets : [];
           const footprintSource = [];
           siteBoundary.forEach(pt => footprintSource.push(pt));
+          const totalContours=v219TotalContours();totalContours.flat().forEach(pt=>footprintSource.push(pt));
           streets.forEach(street => [ ...(street.outerSidewalkPts||[]), ...(street.roadPts||[]), ...(street.sidewalkPts||[]) ].forEach(pt => footprintSource.push(pt)));
           if(!footprintSource.length) zones.forEach(zone => (zone.pts||[]).forEach(pt => footprintSource.push(pt)));
           const dioramaBase = addDioramaBase(footprintSource);
@@ -1238,6 +1245,7 @@
             addOutlineFromPts(siteBoundary, 0xae9069, .032, .96);
             addOutlineFromPts(siteBoundary, 0xf1e5cf, .046, .78);
           }
+          totalContours.forEach(pts=>{const surface=addTopSurfaceFromPts(pts,0xe2cfb3,.006,0xae9069,.98,0);if(surface)surface.userData.totalArea=true;});
           streets.forEach((street, index) => {
             ensureStreetVisualDefaults(street);
             const roadPreset=getStreetSurfacePreset(street.roadType);
@@ -1259,7 +1267,11 @@
           state.architectureMeshes=[];state.urbanMeshes=[];state.urbanObjects=new Map();
           if(state.wallVisible){
             visibleWallParts.forEach(w=>buildArchitecturalWall(w));
-            v216JointPieces(visibleWallParts).forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId));if(host)wallUnionBands.push({poly:j.poly,y0:0,y1:j.height*getScaleCmPerUnit()/100,wallId:host.wallId,material:host.material});});
+            const levels=wallHeightLevels;
+            for(let i=0;i<levels.length-1;i++){
+              const y0=levels[i],y1=levels[i+1],neighbors=visibleWallParts.filter(p=>v219WallRenderHeight(p,getScaleCmPerUnit())>=y1-1e-7);
+              v216JointPieces(neighbors).forEach(j=>{const host=wallUnionBands.find(b=>j.ids.includes(b.wallId)&&b.y0<=y0+1e-7&&b.y1>=y1-1e-7);if(host)wallUnionBands.push({poly:j.poly,y0,y1,wallId:host.wallId,material:host.material,cutaway:!!host.cutaway});});
+            }
             v216AddUnionMeshes(THREE,world,wallUnionBands,coord,mesh=>state.architectureMeshes.push(mesh),{walls:visibleWallParts});
           }
           // Small unobtrusive measurement grid, enabled over the entire editing area.

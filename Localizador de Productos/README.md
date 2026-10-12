@@ -1,16 +1,27 @@
-# WMS Industrial V218 — Diorama dinámico
+# WMS Industrial V219 — Área total automática y zócalo
 
-Vista 3D corregida sobre V217. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+Flujo de arquitectura y diorama mejorados sobre V218. Conserva Arquitectura, Urbanismo, Distribución, biblioteca, mobiliario y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
 
-## Espacio virtual 3D: corte según la cámara V218
+## Área comercial manual y área total automática
+
+1. Dibuja el **Área comercial** manualmente con el mismo editor de vértices. Sigue siendo el contorno maestro para sus muros y las zonas virtuales.
+2. Al crear los muros se calcula el **Área total**: unión del área comercial con la huella física de todos los muros, incluidos espesores, posiciones Adentro/Centro/Afuera y encuentros. No sustituye el polígono comercial ni necesita otro dibujo. Conserva entrantes y contornos separados; no rellena un contorno convexo inventado entre ellos.
+3. El contorno total aparece con una línea verde discontinua y su superficie se informa en el inspector. El botón **+ Calle** se habilita cuando existen área comercial y muros. Calles y veredas parten de los límites exteriores del área total, usando las cuatro orientaciones del editor existente.
+
+Cambiar el área, los extremos, el espesor o la posición de los muros recalcula la huella y ajusta las calles existentes. Conserva sus IDs, nombres, acabados, mobiliario y ajustes manuales de vértices. El área total se guarda con el plano y se regenera al recargar, deshacer o rehacer. Si se elimina el último muro, se retira el área total derivada y se deshabilita crear nuevas calles; las calles existentes se conservan.
+
+La base y el encuadre del diorama incluyen el área total y las calles para que el espesor exterior de los muros quede apoyado sobre la maqueta.
+
+## Espacio virtual 3D: corte según la cámara con zócalo de 20 cm
 
 - Abre con el modelo completo encuadrado y una orientación isométrica de ejes equivalentes, mirando desde el lado opuesto al preset anterior. Coincide con la orientación solicitada en la segunda captura.
 - La selección previa de un mueble mantiene sus propiedades, pero no cambia automáticamente el encuadre al entrar. «Enfocar», F y doble clic siguen acercando al elemento; «Isométrica» y «Ajustar» recuperan la vista completa.
-- **Diorama** es el modo de muros inicial: cada tramo del perímetro comercial aparece cuando su cara interior mira hacia la cámara y desaparece cuando se mira desde su cara exterior. Al girar, cambia el corte de la maqueta: se abren los muros de primer plano y se conservan los del fondo. Las divisiones interiores siempre permanecen visibles.
+- **Diorama** es el modo de muros inicial: cada tramo del perímetro comercial conserva su altura completa cuando su cara interior mira hacia la cámara y se reduce visualmente a un **zócalo de 20 cm** cuando se mira desde su cara exterior. Al girar, cambia el corte de la maqueta: se abren los muros de primer plano dejando visible su huella y se conservan los del fondo. Las divisiones interiores siempre permanecen visibles.
 - La normal interior se obtiene del contorno del área, con independencia del sentido de sus vértices o de los extremos del muro. La comparación usa la dirección de la cámara ortográfica; desplazar o acercar la vista no cambia qué lado se ve. Admite perímetros cóncavos y diagonales y tramos mixtos: se recorta solo la porción exterior que corresponda.
 - Una pequeña tolerancia angular estabiliza el cambio cuando un muro queda de canto. En vista Planta se conserva el perímetro completo para leer su huella.
 - El botón alterna **Diorama → Muros completos → Sin muros → Diorama**. La arquitectura guardada, sus ID, vínculos, aberturas y la geometría del plano 2D se conservan.
-- Las puertas, ventanas y sombras se ocultan y reaparecen con su muro. Las aberturas interiores siguen visibles. El corte se resuelve antes de calcular empalmes y superficies unidas; los vecinos ocultos no dejan puntas ni huecos sobre otros muros. Los huecos, marcos y vidrios de un tramo mixto se limitan a su parte visible.
+- Las ventanas situadas sobre los 20 cm se ocultan con la parte alta del muro; sus huecos no perforan las paredes vecinas. Las puertas mantienen su paso abierto a través del zócalo. Marcos, vidrios y sombras se recortan a la altura visible. Las aberturas interiores siguen visibles. Los empalmes se calculan por franjas de altura: el encuentro del zócalo no prolonga la parte alta de una pared vecina.
+- Los 20 cm son una altura física constante aunque cambie la escala del plano. No modifica la altura guardada ni el espesor o los vínculos de los muros. «Muros completos» recupera las alturas originales; «Sin muros» oculta también los zócalos.
 - Fondo gris azulado en tema claro y azul oscuro en tema oscuro; iluminación más moderada para recuperar colores y volumen. Base cálida con canto oscuro y sombra de contacto bajo la maqueta.
 - Cambiar tema actualiza el fondo 3D inmediatamente. El corte se evalúa durante el arrastre y solo reconstruye la escena cuando cambia el conjunto de tramos visibles. La arquitectura guardada permanece intacta.
 - El visor mantiene su altura al reducir la ventana a 1280 px; se retiran de esta pantalla las filas heredadas del antiguo diseño de cuatro paneles.
@@ -60,9 +71,9 @@ La creación y edición avanzadas siguen disponibles. El nombre visible y el có
 
 Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sincronizar, sincronizando, guardado en servidor y error de sincronización. Una respuesta anterior de guardado no marca los cambios nuevos como sincronizados. Se mantienen las comprobaciones del almacenamiento local.
 
-`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V218 y comprueba sintaxis del backend/frontend.
+`npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V219 y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` comprueba V218 en navegador: vista isométrica inicial con un mueble previamente seleccionado, cambio de caras exteriores durante una rotación completa, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y conservación de la geometría guardada. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
+`npm run test:ui` comprueba V219 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. También verifica el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
 
 ## Alcance
 

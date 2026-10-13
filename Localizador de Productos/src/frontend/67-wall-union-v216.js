@@ -74,7 +74,7 @@
   }
   function v216AddUnionMeshes(THREE,host,bands,mapper,register,options={}){
     if(!bands.length)return;
-    const voids=v216OpeningVoids(options.walls||null);
+    const voids=options.voids||v216OpeningVoids(options.walls||null);
     const levels=[...new Set([...bands,...voids].flatMap(b=>[b.y0,b.y1]))].sort((a,b)=>a-b);
     for(let i=0;i<levels.length-1;i++){
       const y0=levels[i],y1=levels[i+1],mid=(y0+y1)/2;if(y1-y0<1e-7)continue;

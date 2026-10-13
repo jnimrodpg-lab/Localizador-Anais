@@ -1,5 +1,5 @@
 {
-  "version": "224",
+  "version": "225",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -24,10 +24,11 @@
     "70-rack-editor.js",
     "71-furniture-sync-v222.js",
     "72-library-ui-v222.js",
+    "73-spatial-consistency-v225.js",
     "74-isometric-furniture.js",
     "75-virtual-space.js",
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V224: fondo posterior 2D/3D fijo, contornos rectos, snap entre aristas con separación 0 cm, SAT con giro, guía previa. Conserva editor amplio V223."
+  "notes": "V225: nomenclatura automática por zona con IDs estables, colisiones por volumen físico y vanos compartidos 2D/3D; conserva snap V224 y editor amplio V223."
 }

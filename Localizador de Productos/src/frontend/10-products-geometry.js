@@ -259,7 +259,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       const nextZoneId = zoneIdRemap.get(zid) || (isStorageZoneLike(zid) ? 'ALM' : '');
       if(nextZoneId === 'ALM'){
         r.zoneId = 'ALM';
-        r.id = String(r.id || '').replace(/^[A-Z0-9]+-E/i, 'ALM-E');
+        if(typeof v225SyncRackCodes!=='function')r.id = String(r.id || '').replace(/^[A-Z0-9]+-E/i, 'ALM-E');
       }
     });
 
@@ -340,7 +340,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
         zoneRacks.forEach(r => {
           const m = String(r.id || '').match(/-E(\d+)$/i);
           const num = Math.max(1, parseInt(m?.[1] || '1', 10) || 1);
-          if(num > maxRack) r.__drop = true;
+          if(num > maxRack && !(typeof v225SyncRackCodes==='function'&&r.nomenclatureZoneId)) r.__drop = true;
         });
         layout.racks = layout.racks.filter(r => !r.__drop);
         const autoModelId = ensureAutoRackModel(maxLevel, maxSlot, zoneRacks[0]?.modelId || 'std_4');
@@ -351,6 +351,8 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
             rack = { id:rackId, zoneId, x:0, y:0, w:84, h:46, rot:0, modelId:autoModelId, front:'auto', baseHeight:0, rackHeight:238 };
             layout.racks.push(rack);
           }
+          // Una ubicación de producto conserva su clave interna al cambiar de zona.
+          if(typeof v225SyncRackCodes==='function'&&rack.nomenclatureZoneId&&rack.zoneId!==zoneId&&layout.zones.some(z=>z.id===rack.zoneId))continue;
           rack.zoneId = zoneId;
           rack.modelId = autoModelId;
           rack.rackHeight = Math.max(120, Number(rackModel(autoModelId)?.height || rack.rackHeight || 238));
@@ -840,7 +842,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const lowA=Number(a.baseHeight||0),lowB=Number(b.baseHeight||0);
     const highA=lowA+Number(a.rackHeight||a.virtual?.height||rackModel(a.modelId)?.height||200);
     const highB=lowB+Number(b.rackHeight||b.virtual?.height||rackModel(b.modelId)?.height||200);
-    return highA>lowB+0.001&&highB>lowA+0.001;
+    return highA>lowB+.02&&highB>lowA+.02;
   }
   // Separating Axis Theorem para rectángulos rotados. La igualdad en una cara
   // NO es colisión: permite encuentro exacto con separación de 0 cm.
@@ -2299,8 +2301,10 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     renderLayoutEditor();
   }
   function nextRackId(zoneId){
-    const vals = appState.layout.racks.filter(r => r.zoneId === zoneId).map(r => parseInt((r.id.match(/-E(\d+)/)||[])[1] || '0', 10));
-    return `${zoneId}-E${(Math.max(0,...vals)+1)}`;
+    const racks=appState.layout.racks||[],prefix=String(zoneId)+'-E',taken=new Set(racks.map(r=>String(r.id)));
+    const vals=racks.flatMap(r=>[r.id,r.zoneId===zoneId?(typeof v222RackCode==='function'?v222RackCode(r):r.displayCode||r.id):'']).filter(id=>String(id).startsWith(prefix)).map(id=>Number(String(id).slice(prefix.length))||0);
+    let next=Math.max(0,...vals)+1;while(taken.has(`${zoneId}-E${next}`))next++;
+    return `${zoneId}-E${next}`;
   }
   function nextZoneId(){
     const nums = appState.layout.zones
@@ -2483,6 +2487,7 @@ const DEFAULT_GRID_SIZE = 2;
     return Math.max(0, parseInt(rack?.stackLevel || 0, 10) || 0);
   }
   function racksCanOverlapByLevel(a, b){
+    if(typeof v225RackWallHits==='function')return !rackVerticalOverlap(a,b);
     // La única superposición permitida es entre intervalos verticales separados.
     const aMin=Number(a?.baseHeight||0),bMin=Number(b?.baseHeight||0);
     const aMax=aMin+Math.max(1,Number(a?.rackHeight||a?.virtual?.height||rackModel(a?.modelId)?.height||200));
@@ -2684,6 +2689,7 @@ const DEFAULT_GRID_SIZE = 2;
   }
 
   function ensureRackProps(){
+    if(typeof v225SyncRackCodes==='function'&&!appState.editor.dragging)v225SyncRackCodes();
     if(appState.editor.racksVisible !== false) appState.layout.racks.forEach(r => {
       r.rot = normalizeAngle(r.rot || 0);
       const model = rackModel(r.modelId);

@@ -268,18 +268,22 @@
     racks.forEach(r=>{ const z=findZoneById(r.zoneId); if(!z||!rackFullyInsideZone(r,z))issues.push({type:'outside',severity:'error',rackIds:[r.id],message:`${r.id}: fuera de su zona.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}}); });
     for(let i=0;i<racks.length;i++) for(let j=i+1;j<racks.length;j++){
       const a=racks[i],b=racks[j]; if(racksCanOverlapByLevel(a,b))continue; const pa=rackCorners(a),pb=rackCorners(b);
-      if(v117PolyOverlap(pa,pb)) issues.push({type:'rack-collision',severity:'error',rackIds:[a.id,b.id],message:`${a.id} y ${b.id}: colisión entre racks.`,point:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}});
+      if(typeof rackContoursOverlap==='function'?rackContoursOverlap(a,b,.02/Math.max(.0001,sc)):v117PolyOverlap(pa,pb)) issues.push({type:'rack-collision',severity:'error',rackIds:[a.id,b.id],message:`${a.id} y ${b.id}: colisión entre racks.`,point:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}});
       else { const gap=v117RackAisleGap(a,b); if(gap!==null&&gap>=0&&gap<minAisle)issues.push({type:'aisle',severity:'warning',rackIds:[a.id,b.id],message:`Pasillo ${Math.round(gap*sc)} cm entre ${a.id} y ${b.id} (mín. ${Math.round(minAisleCm)} cm).`,point:{x:(a.x+a.w/2+b.x+b.w/2)/2,y:(a.y+a.h/2+b.y+b.h/2)/2}}); }
     }
-    const wallPolys=walls.map(w=>({wall:w,poly:getWallSlicePolygon(w,0,1,1)?.poly||[]}));
-    racks.forEach(r=>{const rp=rackCorners(r); wallPolys.forEach(x=>{if(x.poly.length&&v117PolyOverlap(rp,x.poly))issues.push({type:'wall-collision',severity:'error',rackIds:[r.id],wallId:x.wall.id,message:`${r.id}: invade el muro ${x.wall.id}.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}});});});
+    if(typeof v225RackWallHits==='function'){
+      racks.forEach(r=>v225RackWallHits(r).forEach(id=>issues.push({type:'wall-collision',severity:'error',rackIds:[r.id],wallId:id,message:`${v222RackCode(r)}: invade el muro ${id}.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}})));
+    }else{
+      const wallPolys=walls.map(w=>({wall:w,poly:getWallSlicePolygon(w,0,1,1)?.poly||[]}));
+      racks.forEach(r=>{const rp=rackCorners(r);wallPolys.forEach(x=>{if(x.poly.length&&v117PolyOverlap(rp,x.poly))issues.push({type:'wall-collision',severity:'error',rackIds:[r.id],wallId:x.wall.id,message:`${r.id}: invade el muro ${x.wall.id}.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}});});});
+    }
     const doors=(appState.layout.openings||[]).filter(o=>normalizeOpeningType(o.type)==='door');
     doors.forEach(o=>{const w=findWallById(o.wallId);if(!w)return;const poly=v117DoorClearancePolygon(o,w,minAisle*.72);if(!poly)return;racks.forEach(r=>{if(v117PolyOverlap(rackCorners(r),poly))issues.push({type:'door-clearance',severity:'warning',rackIds:[r.id],openingId:o.id,message:`${r.id}: bloquea el despeje de la puerta ${o.id}.`,point:getOpeningSegment(o,w)?.center});});});
     return issues.slice(0,300);
   }
   function v117RunValidation({quiet=false}={}){ appState.editor.validationIssues=v117OperationalIssues(); appState.editor.validationAt=Date.now(); if(!quiet)showToast(appState.editor.validationIssues.length?`${appState.editor.validationIssues.length} incidencia(s) detectada(s).`:'Layout operativo sin incidencias.',appState.editor.validationIssues.length?'warning':'success',2600); return appState.editor.validationIssues; }
-  function v117ConflictRackIds(){ return new Set((appState.editor?.validationIssues||[]).flatMap(i=>i.rackIds||[])); }
-  function v117ConflictWallIds(){ return new Set((appState.editor?.validationIssues||[]).map(i=>i.wallId).filter(Boolean)); }
+  function v117ConflictRackIds(){ return new Set((appState.editor?.validationIssues||[]).filter(i=>i.severity==='error').flatMap(i=>i.rackIds||[])); }
+  function v117ConflictWallIds(){ return new Set((appState.editor?.validationIssues||[]).filter(i=>i.severity==='error').map(i=>i.wallId).filter(Boolean)); }
   function v117FocusIssue(index){
     const issue=(appState.editor?.validationIssues||[])[Number(index)]; if(!issue)return;
     if(issue.rackIds?.length)setSelectedRackIds(issue.rackIds); if(issue.wallId)appState.selectedWallId=issue.wallId;

@@ -3,8 +3,8 @@ function v222RackPropertiesMarkup(rack,model,fp,modelOptions){
   const dims=v222Dimensions(rack),custom=['width','depth','height'].some(key=>rack.furnitureOverrides?.[key]!=null);
   return `<section class="layout-prop-card v222-rack-properties"><div class="layout-prop-title">Mueble seleccionado</div><small class="v222-rack-model-label">${escapeHtml(model?.name||'Modelo de mobiliario')}</small><div class="layout-prop-grid two">
     <label style="grid-column:1/-1">Nombre del mueble<input id="rpRackName" maxlength="80" value="${escapeHtml(v222RackName(rack))}" placeholder="Ej. Exhibidor de herramientas"></label>
-    <label style="grid-column:1/-1">Nomenclatura<input id="rpRackDisplayCode" maxlength="80" value="${escapeHtml(v222RackCode(rack))}" placeholder="Ej. A-01-R03"></label>
-    <small class="v222-code-hint" style="grid-column:1/-1">Si el código ya existe, se intercambia con ese mueble.</small>
+    <label style="grid-column:1/-1">Nomenclatura<input id="rpRackDisplayCode" maxlength="80" value="${escapeHtml(v222RackCode(rack))}" placeholder="Ej. Z3-E5"></label>
+    <small class="v222-code-hint" style="grid-column:1/-1">El prefijo sigue la zona. Un código repetido en esa zona intercambia los números.</small>
     <label>Ancho (cm)<input id="rpRackWidth" type="number" min="30" step=".1" value="${round1(dims.width)}"></label><label>Profundidad (cm)<input id="rpRackDepth" type="number" min="20" step=".1" value="${round1(dims.depth)}"></label>
     <label>Altura (cm)<input id="rpRackHeight" type="number" min="60" step=".1" value="${round1(dims.height)}"></label><label>NPT desde piso (cm)<input id="rpRackNpt" type="number" min="0" max="20000" step="1" value="${round1(rack.baseHeight||0)}"></label>
     </div><div class="v222-rack-measures"><small>${custom?'Medidas particulares de este mueble':'Medidas vinculadas al modelo'}</small>${custom?'<button class="seg-btn v222-reset-dimensions" id="rpRackResetDimensions">Usar medidas del modelo</button>':''}</div>

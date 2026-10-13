@@ -1,6 +1,18 @@
-# WMS Industrial V224 — Geometría real y snap entre mobiliario
+# WMS Industrial V225 — Nomenclatura por zona y encuentros físicos
 
 Medidas y geometría coherentes entre Biblioteca de racks, Crear mobiliario 3D, Editar layout y Diseñar espacio 3D. Conserva Arquitectura, Urbanismo, Distribución, calles por puntos, diorama, apilamiento y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+
+## Correcciones V225 — zonas y encuentros de muros con muebles
+
+- **Nomenclatura por zona:** un rack situado en Z3 usa `Z3-E5`; al pasar a Z2 cambia a `Z2-E5`. El prefijo identifica la zona actual y el sufijo del rack se conserva. Se corrigen los prefijos antiguos al cargar. El centro del mueble determina la zona durante el movimiento; si sale de todas las zonas mantiene su vínculo lógico y muestra el aviso de límite.
+- **Códigos únicos:** si `Z2-E5` está ocupado, el rack que llega recibe el siguiente número disponible. El cambio automático conserva el código del mueble existente. La edición manual permite cambiar el número o sufijo; repetir un código de la misma zona intercambia ambas nomenclaturas con una sola operación de historial.
+- **Identidad estable:** el ID interno, modelos, nombres, SKU, ubicaciones de productos y contenido del ejemplar se conservan. Los nuevos racks no reutilizan IDs de muebles que se hayan trasladado a otra zona. El movimiento individual, en grupo o con módulos superiores, la reclasificación y la recarga actualizan la nomenclatura.
+- **Contacto físico:** tocar una cara del muro no es traslape. La validación considera la rotación real del mueble, espesor y posición Adentro/Centro/Afuera del muro, encuentros de esquinas, vanos, antepechos, dinteles y altura NPT. Un mueble ubicado dentro de un vano libre no colisiona con una pared ficticia.
+- **Geometría compartida:** el espacio virtual 3D y la validación construyen las mismas franjas de muro y huecos. El visor 3D secundario usa ancho y profundidad físicos, sin volver a girar las medidas de la caja envolvente; también conserva medidas particulares, tableros, pendientes y NPT.
+- **Alertas actuales:** el rojo se actualiza durante la edición y se retira cuando desaparece la interferencia. Los avisos de pasillo no pintan el mueble como una colisión. El modo libre permite conservar una posición con interferencia; el modo estricto y la edición de posición 3D la rechazan.
+- **Alineación a caras:** «Hacer paralelo a muro» calcula la separación desde su cara física, en lugar de su eje. El snap a caras de muro admite contacto exacto de 0 cm, también en diagonales. Se conserva el snap entre muebles de V224.
+- **Diorama:** el zócalo de 20 cm sigue siendo un corte visual. La ocupación física usa la altura completa guardada del muro, independientemente del ángulo de cámara; «Muros completos» permite comprobar ese encuentro.
+- `scripts/test-v225.mjs` comprueba nomenclaturas, códigos repetidos, IDs, productos, grupos, historial, recarga, encuentros en 36 combinaciones de ángulo/escala/posición, vanos y volumen real de Three.js. `scripts/test-v225-ui.mjs` verifica movimientos nativos en 2D/3D, grupos, colores, historial, geometría de ambos visores y recarga completa en navegador.
 
 ## Correcciones V224 — contornos y fondo posterior
 
@@ -119,7 +131,7 @@ Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sin
 
 `npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V222 y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` comprueba V220, V221, V222 y V223 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. Incluye trazado nativo por puntos, conexiones compartidas, edición del eje, eliminación por botón y Supr, circuitos cerrados y eliminación en 3D. También verifica cruces y canaletas en 2D/3D, veredas junto a ochavas, edición de vértices, y el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
+`npm run test:ui` comprueba V220, V221, V222, V223 y V225 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. Incluye trazado nativo por puntos, conexiones compartidas, edición del eje, eliminación por botón y Supr, circuitos cerrados y eliminación en 3D. También verifica cruces y canaletas en 2D/3D, veredas junto a ochavas, edición de vértices, y el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
 
 ## Alcance
 

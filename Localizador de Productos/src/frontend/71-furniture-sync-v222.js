@@ -26,9 +26,10 @@ function v222RackName(rack){
   const model=v222ModelFor(rack),source=rack?.furnitureSource;
   return String(rack?.name||(source?.name&&rack?.virtualName===source.name?model?.name:rack?.virtualName)||model?.name||rack?.id||'Mueble');
 }
-function v222RackCode(rack){ return String(rack?.displayCode||rack?.id||''); }
+function v222RackCode(rack){ return typeof v225RackCode==='function'?v225RackCode(rack):String(rack?.displayCode||rack?.id||''); }
 function v222CodeKey(value){ return String(value||'').normalize('NFKC').trim().toLocaleUpperCase('es'); }
 function v222CodePlan(rack,value){
+  if(typeof v225CodePlan==='function')return v225CodePlan(rack,value);
   const next=String(value??'').trim().slice(0,80),current=v222RackCode(rack);
   if(!next)return {ok:false,msg:'La nomenclatura no puede quedar vacía.'};
   const others=(appState.layout?.racks||[]).filter(r=>r.id!==rack.id);
@@ -40,6 +41,10 @@ function v222ApplyCodePlan(rack,plan){
   if(!plan.ok||!plan.changed)return;
   if(plan.other)plan.other.displayCode=plan.current;
   rack.displayCode=plan.next;
+  if(typeof v225CodeZone==='function'){
+    const zone=v225CodeZone(rack);if(zone)rack.nomenclatureZoneId=zone.id;
+    if(plan.other){const otherZone=v225CodeZone(plan.other);if(otherZone)plan.other.nomenclatureZoneId=otherZone.id;}
+  }
 }
 function v222PrepareRackCopy(copy,source){
   const taken=new Set((appState.layout?.racks||[]).filter(r=>r.id!==copy.id).map(r=>v222CodeKey(v222RackCode(r))));let code=String(copy.id),suffix=1;while(taken.has(v222CodeKey(code)))code=String(copy.id)+'-'+suffix++;
@@ -84,6 +89,7 @@ function v222SynchronizeModels({persist=true}={}){
     }
     const layouts=[appState.layout,...Object.values(appState.branchLayouts||{})].filter(Boolean),seen=new Set();
     for(const layout of layouts){if(seen.has(layout))continue;seen.add(layout);for(const rack of layout.racks||[])changed=v222SyncRack(rack,layout)||changed;
+      if(typeof v225SyncRackCodes==='function')changed=v225SyncRackCodes(layout)||changed;
       for(let pass=0;pass<Math.min(12,(layout.racks||[]).length);pass++){let moved=false;for(const rack of layout.racks||[]){if(!rack.stackedOnId)continue;const support=layout.racks.find(r=>r.id===rack.stackedOnId);if(!support)continue;const top=Number(support.baseHeight||0)+v222Dimensions(support).height;if(Math.abs(Number(rack.baseHeight||0)-top)>.01){rack.baseHeight=top;moved=true;changed=true;}}if(!moved)break;}
     }
     if(persist&&changed&&appState.layout){

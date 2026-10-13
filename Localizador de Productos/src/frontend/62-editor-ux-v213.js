@@ -25,7 +25,7 @@
     return null;
   }
   function v213SelectionTitle(){
-    if(isRackDistributionScreen()){const r=findRackById(appState.selectedRackLayoutId);return r?`Editando rack: ${r.displayCode||r.id}`:'Selecciona un rack';}
+    if(isRackDistributionScreen()){const r=findRackById(appState.selectedRackLayoutId);return r?`Editando rack: ${v222RackCode(r)}`:'Selecciona un rack';}
     if(activeLayoutWorkspace()!=='architecture')return 'Edición de calles y veredas';
     const opening=findOpeningById(appState.selectedOpeningId),wall=findWallById(appState.selectedWallId);
     if(opening)return `Editando abertura: ${opening.id}`;

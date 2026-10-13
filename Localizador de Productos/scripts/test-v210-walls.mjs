@@ -63,6 +63,9 @@ assert.ok(joint.every((v,i)=>pointDistance(v,plain[i])<.0001),'T junction should
 console.log('✓ T junction fallback');
 for(const file of ['50-viewer-3d.js','75-virtual-space.js']){
  const txt=fs.readFileSync(new URL('../src/frontend/'+file,import.meta.url),'utf8');
- assert.match(txt,/getWallSlicePolygon\(/,`${file} must share the same footprint`);
+ if(txt.includes('v225WallBandsFor(')){
+   const shared=fs.readFileSync(new URL('../src/frontend/73-spatial-consistency-v225.js',import.meta.url),'utf8');
+   assert.match(shared,/getWallSlicePolygon\(/,'The shared band builder must use the CAD footprint');
+ }else assert.match(txt,/getWallSlicePolygon\(/,`${file} must share the same footprint`);
 }
 console.log('V210: CAD paired-face miters, all placement modes, orientation reversals, doors and T junctions OK.');

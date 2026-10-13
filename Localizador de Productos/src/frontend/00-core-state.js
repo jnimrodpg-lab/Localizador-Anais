@@ -905,6 +905,7 @@
       // V211: restaurar también la clasificación de los racks sin alterar sus
       // IDs, SKU, modelos, posiciones ni el resto de los datos de distribución.
       snapshot.rackZoneLinks = (snapshot.racks || []).map(r=>[r.id,r.zoneId||'']);
+      if(typeof v225SyncRackCodes==='function')snapshot.rackNomenclatureLinks=(snapshot.racks||[]).map(r=>[r.id,{displayCode:r.displayCode,nomenclatureZoneId:r.nomenclatureZoneId}]);
       delete snapshot.racks;
       return snapshot;
     }
@@ -942,7 +943,9 @@
       const currentZones = Array.isArray(currentLayout.zones) ? currentLayout.zones : [];
       const nextStructure = clone(payload || {});
       const savedLinks = Array.isArray(nextStructure.rackZoneLinks) ? new Map(nextStructure.rackZoneLinks) : null;
-      delete nextStructure.rackZoneLinks;
+      const savedCodes=Array.isArray(nextStructure.rackNomenclatureLinks)?new Map(nextStructure.rackNomenclatureLinks):null;
+      delete nextStructure.rackZoneLinks;delete nextStructure.rackNomenclatureLinks;
+      if(savedCodes)currentRacks.forEach(r=>{const saved=savedCodes.get(r.id);if(saved)for(const key of ['displayCode','nomenclatureZoneId']){if(saved[key]===undefined)delete r[key];else r[key]=saved[key];}});
       if(savedLinks){
         currentRacks.forEach(rack=>{if(savedLinks.has(rack.id))rack.zoneId=savedLinks.get(rack.id)||'';});
       }else{

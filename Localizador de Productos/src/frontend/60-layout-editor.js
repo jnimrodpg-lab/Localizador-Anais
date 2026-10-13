@@ -1996,7 +1996,7 @@
         <p class="tiny muted" style="margin:0">Acerca dos caras: el snap alinea sus aristas reales, ajusta giros próximos (máx. 7°), conserva la cara posterior y respeta la separación seleccionada (0 cm = contacto). La guía verde anticipa el resultado. Ctrl ignora temporalmente el snap.</p>
         <p class="tiny muted" style="margin:0">Libre: puedes mover fuera de zonas pequeñas sin que el rack regrese. Se advierten las interferencias sin bloquear. Desactívalo para exigir cabida y ausencia de colisiones. El snap general se mantiene independiente. Ctrl mientras arrastras: ignorar snap.</p>
       </div>
-      <div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(r.displayCode||r.id)} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
+      <div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(v222RackCode(r))} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
   }
 
   function layoutSelectedSummary(){
@@ -2007,7 +2007,7 @@
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
     if(isRackDistributionScreen()){
-      if(rack) return { type:'rack', title:rack.displayCode||rack.id, subtitle:`${rack.zoneId} · ${escapeHtml(v222RackName(rack))}` };
+      if(rack) return { type:'rack', title:v222RackCode(rack), subtitle:`${rack.zoneId} · ${escapeHtml(v222RackName(rack))}` };
       if(zone) return { type:'none', title:'Selecciona un rack', subtitle:`Zona ${zone.name||zone.id} · ${(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length} racks disponibles` };
       return { type:'none', title:'Sin rack seleccionado', subtitle:'Selecciona o agrega un rack; la estructura está bloqueada' };
     }
@@ -2524,7 +2524,7 @@
     // Prioridad: cara completa -> punto individual -> rejilla. Un contacto
     // entre aristas no puede ser sustituido después por un punto cercano.
     if(snapping && appState.editor?.distributionEdgeSnap===true){
-      const edgeMatch=v224SnapRackEdges(n,opts.ignoreRackIds||[]);
+      const edgeMatch=v224SnapRackEdges(n,opts.ignoreRackIds||[])||(typeof v225SnapRackWalls==='function'?v225SnapRackWalls(n,opts.ignoreRackIds||[]):null);
       if(edgeMatch){
         Object.assign(n,{x:edgeMatch.rack.x,y:edgeMatch.rack.y,w:edgeMatch.rack.w,h:edgeMatch.rack.h,rot:edgeMatch.rack.rot});
         setRackSnapPreview({type:edgeMatch.kind,strength:'hard',
@@ -2538,7 +2538,10 @@
       const points=[],segments=[],vertexPoints=[];
       const addEdges=pts=>{(pts||[]).forEach((pt,i)=>{const q=pts[(i+1)%pts.length];points.push(pt);vertexPoints.push(pt);if(q && pts.length>1){segments.push([pt,q]);points.push({x:(pt.x+q.x)/2,y:(pt.y+q.y)/2});}});};
       (appState.layout?.zones||[]).forEach(zone=>addEdges(zone.pts||[]));
-      (appState.layout?.wallNodes||[]).forEach(pt=>{points.push(pt);vertexPoints.push(pt);});
+      // V225: capturar las caras del muro, sin atraer el mueble a su eje interior.
+      if(typeof v225WallFaceForRack==='function'){
+        (appState.layout?.walls||[]).forEach(w=>{const face=v225WallFaceForRack(w,n);if(face){points.push(face.a,face.b);vertexPoints.push(face.a,face.b);segments.push([face.a,face.b]);}});
+      }else (appState.layout?.wallNodes||[]).forEach(pt=>{points.push(pt);vertexPoints.push(pt);});
       (appState.layout?.racks||[]).filter(r=>r.id!==rack.id&&!opts.ignoreRackIds?.includes(r.id)).forEach(other=>{
         addEdges(rackCorners(other));
         points.push({x:other.x+other.w/2,y:other.y+other.h/2});
@@ -2589,6 +2592,8 @@
     return n;
   }
   function distributionRackInterference(rack,ignoreIds=[]){
+    const walls=typeof v225RackWallHits==='function'?v225RackWallHits(rack):[];
+    if(walls.length)return `El mueble invade el muro ${walls[0]}.`;
     const host=distributionHostForRack(rack);
     if(!host||!rackFullyInsideZone(rack,host))return 'El rack queda parcial o totalmente fuera de la zona; puedes ajustarlo después.';
     const ignored=new Set([rack.id,...ignoreIds]);
@@ -2598,6 +2603,7 @@
   }
   function distributionCanCommit(rack,ignoreIds=[]){
     if(distributionIsFreeMove())return true;
+    if(typeof v225RackWallHits==='function'&&v225RackWallHits(rack).length)return false;
     const host=distributionHostForRack(rack);
     if(!host||!rackFullyInsideZone(rack,host))return false;
     const ignored=new Set([rack.id,...ignoreIds]);
@@ -2609,6 +2615,10 @@
   function v206AlignRackToSegment(a,b,reference='muro'){
     const rack=findRackById(appState.editor?.rackAlignTargetId||appState.selectedRackLayoutId);
     if(!rack){showToast('Selecciona primero el rack que deseas alinear.','warning',2600);return false;}
+    if(reference==='muro'&&typeof v225WallFaceForRack==='function'){
+      const wall=(appState.layout.walls||[]).find(w=>Math.min(pointDist2D(a,{x:w.x1,y:w.y1})+pointDist2D(b,{x:w.x2,y:w.y2}),pointDist2D(b,{x:w.x1,y:w.y1})+pointDist2D(a,{x:w.x2,y:w.y2}))<.001);
+      const face=wall&&v225WallFaceForRack(wall,rack);if(face){a=face.a;b=face.b;}
+    }
     const vx=Number(b?.x)-Number(a?.x),vy=Number(b?.y)-Number(a?.y);
     const len=Math.hypot(vx,vy);if(!Number.isFinite(len)||len<1){showToast('Se necesitan dos puntos distintos para alinear.','warning',2200);return false;}
     const baseAngle=normalizeAngle(Math.atan2(vy,vx)*180/Math.PI);
@@ -3518,6 +3528,7 @@
     svg = svg || document.getElementById('layoutSvg') || document.getElementById('layout-svg');
     if(!svg) return;
     if(typeof v128RebuildSharedWallRegistry === 'function') v128RebuildSharedWallRegistry();
+    if(typeof v225RefreshValidation==='function')v225RefreshValidation();
     appState.editor.view = 'ortho';
     svg.innerHTML = '';
     svg.style.setProperty('--layout-dim-font-size', `${getDimFontSize()}px`);
@@ -4362,7 +4373,7 @@
         x:0,y:4,class:'ortho-label','text-anchor':'middle','dominant-baseline':'middle',
         style:'pointer-events:none', transform:`rotate(${-normalizeAngle(r.rot||0)})`
       });
-      t.textContent=v222RackCode(r);const rackTitle=svgEl('title');rackTitle.textContent=`${v222RackCode(r)} · ${v222RackName(r)}`;g.appendChild(rackTitle);
+      t.textContent=v222RackCode(r);const rackTitle=svgEl('title');rackTitle.textContent=[`${v222RackCode(r)} · ${v222RackName(r)}`,...(appState.editor.validationIssues||[]).filter(i=>i.rackIds?.includes(r.id)).map(i=>i.message)].join('\n');g.appendChild(rackTitle);
       const baseHVal = Math.round(Number(r.baseHeight || 0));
       const levelBadge = svgEl('g',{transform:`translate(${-visualW/2 + 18} ${-visualH/2 + 10})`,style:'pointer-events:none'});
       levelBadge.appendChild(svgEl('rect',{x:-18,y:-12,width:36,height:18,rx:'9',fill:'rgba(8,18,30,.95)',stroke:'#56d2ff','stroke-width':'1'}));

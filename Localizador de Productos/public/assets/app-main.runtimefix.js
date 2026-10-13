@@ -905,6 +905,7 @@
       // V211: restaurar también la clasificación de los racks sin alterar sus
       // IDs, SKU, modelos, posiciones ni el resto de los datos de distribución.
       snapshot.rackZoneLinks = (snapshot.racks || []).map(r=>[r.id,r.zoneId||'']);
+      if(typeof v225SyncRackCodes==='function')snapshot.rackNomenclatureLinks=(snapshot.racks||[]).map(r=>[r.id,{displayCode:r.displayCode,nomenclatureZoneId:r.nomenclatureZoneId}]);
       delete snapshot.racks;
       return snapshot;
     }
@@ -942,7 +943,9 @@
       const currentZones = Array.isArray(currentLayout.zones) ? currentLayout.zones : [];
       const nextStructure = clone(payload || {});
       const savedLinks = Array.isArray(nextStructure.rackZoneLinks) ? new Map(nextStructure.rackZoneLinks) : null;
-      delete nextStructure.rackZoneLinks;
+      const savedCodes=Array.isArray(nextStructure.rackNomenclatureLinks)?new Map(nextStructure.rackNomenclatureLinks):null;
+      delete nextStructure.rackZoneLinks;delete nextStructure.rackNomenclatureLinks;
+      if(savedCodes)currentRacks.forEach(r=>{const saved=savedCodes.get(r.id);if(saved)for(const key of ['displayCode','nomenclatureZoneId']){if(saved[key]===undefined)delete r[key];else r[key]=saved[key];}});
       if(savedLinks){
         currentRacks.forEach(rack=>{if(savedLinks.has(rack.id))rack.zoneId=savedLinks.get(rack.id)||'';});
       }else{
@@ -1279,7 +1282,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       const nextZoneId = zoneIdRemap.get(zid) || (isStorageZoneLike(zid) ? 'ALM' : '');
       if(nextZoneId === 'ALM'){
         r.zoneId = 'ALM';
-        r.id = String(r.id || '').replace(/^[A-Z0-9]+-E/i, 'ALM-E');
+        if(typeof v225SyncRackCodes!=='function')r.id = String(r.id || '').replace(/^[A-Z0-9]+-E/i, 'ALM-E');
       }
     });
 
@@ -1360,7 +1363,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
         zoneRacks.forEach(r => {
           const m = String(r.id || '').match(/-E(\d+)$/i);
           const num = Math.max(1, parseInt(m?.[1] || '1', 10) || 1);
-          if(num > maxRack) r.__drop = true;
+          if(num > maxRack && !(typeof v225SyncRackCodes==='function'&&r.nomenclatureZoneId)) r.__drop = true;
         });
         layout.racks = layout.racks.filter(r => !r.__drop);
         const autoModelId = ensureAutoRackModel(maxLevel, maxSlot, zoneRacks[0]?.modelId || 'std_4');
@@ -1371,6 +1374,8 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
             rack = { id:rackId, zoneId, x:0, y:0, w:84, h:46, rot:0, modelId:autoModelId, front:'auto', baseHeight:0, rackHeight:238 };
             layout.racks.push(rack);
           }
+          // Una ubicación de producto conserva su clave interna al cambiar de zona.
+          if(typeof v225SyncRackCodes==='function'&&rack.nomenclatureZoneId&&rack.zoneId!==zoneId&&layout.zones.some(z=>z.id===rack.zoneId))continue;
           rack.zoneId = zoneId;
           rack.modelId = autoModelId;
           rack.rackHeight = Math.max(120, Number(rackModel(autoModelId)?.height || rack.rackHeight || 238));
@@ -1860,7 +1865,7 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     const lowA=Number(a.baseHeight||0),lowB=Number(b.baseHeight||0);
     const highA=lowA+Number(a.rackHeight||a.virtual?.height||rackModel(a.modelId)?.height||200);
     const highB=lowB+Number(b.rackHeight||b.virtual?.height||rackModel(b.modelId)?.height||200);
-    return highA>lowB+0.001&&highB>lowA+0.001;
+    return highA>lowB+.02&&highB>lowA+.02;
   }
   // Separating Axis Theorem para rectángulos rotados. La igualdad en una cara
   // NO es colisión: permite encuentro exacto con separación de 0 cm.
@@ -3319,8 +3324,10 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
     renderLayoutEditor();
   }
   function nextRackId(zoneId){
-    const vals = appState.layout.racks.filter(r => r.zoneId === zoneId).map(r => parseInt((r.id.match(/-E(\d+)/)||[])[1] || '0', 10));
-    return `${zoneId}-E${(Math.max(0,...vals)+1)}`;
+    const racks=appState.layout.racks||[],prefix=String(zoneId)+'-E',taken=new Set(racks.map(r=>String(r.id)));
+    const vals=racks.flatMap(r=>[r.id,r.zoneId===zoneId?(typeof v222RackCode==='function'?v222RackCode(r):r.displayCode||r.id):'']).filter(id=>String(id).startsWith(prefix)).map(id=>Number(String(id).slice(prefix.length))||0);
+    let next=Math.max(0,...vals)+1;while(taken.has(`${zoneId}-E${next}`))next++;
+    return `${zoneId}-E${next}`;
   }
   function nextZoneId(){
     const nums = appState.layout.zones
@@ -3503,6 +3510,7 @@ const DEFAULT_GRID_SIZE = 2;
     return Math.max(0, parseInt(rack?.stackLevel || 0, 10) || 0);
   }
   function racksCanOverlapByLevel(a, b){
+    if(typeof v225RackWallHits==='function')return !rackVerticalOverlap(a,b);
     // La única superposición permitida es entre intervalos verticales separados.
     const aMin=Number(a?.baseHeight||0),bMin=Number(b?.baseHeight||0);
     const aMax=aMin+Math.max(1,Number(a?.rackHeight||a?.virtual?.height||rackModel(a?.modelId)?.height||200));
@@ -3704,6 +3712,7 @@ const DEFAULT_GRID_SIZE = 2;
   }
 
   function ensureRackProps(){
+    if(typeof v225SyncRackCodes==='function'&&!appState.editor.dragging)v225SyncRackCodes();
     if(appState.editor.racksVisible !== false) appState.layout.racks.forEach(r => {
       r.rot = normalizeAngle(r.rot || 0);
       const model = rackModel(r.modelId);
@@ -4173,6 +4182,8 @@ const DEFAULT_GRID_SIZE = 2;
     if(!appState.branchLayouts) appState.branchLayouts = {};
     normalizeLayoutSectionState();
     ensureLayoutMeta();
+    if(typeof v225SyncRackCodes==='function')v225SyncRackCodes(appState.layout,{reassign:!bucket?.isApplying});
+    if(typeof v225RefreshValidation==='function')v225RefreshValidation();
     if(!bucket?.isApplying){recordHistorySnapshot(historyType);if(typeof snapshotForType==='function'){bucket.operationLabels=bucket.operationLabels||{};const key=JSON.stringify(snapshotForType(historyType));if(operation!=='cambio'||!bucket.operationLabels[key])bucket.operationLabels[key]=operation;const retained=new Set([...bucket.undoStack,...bucket.redoStack]);Object.keys(bucket.operationLabels).forEach(key=>{if(!retained.has(key))delete bucket.operationLabels[key];});}}
     appState.branchLayouts[idx] = clone(appState.layout);
     const saved=saveBranchLayouts();
@@ -4192,6 +4203,7 @@ const DEFAULT_GRID_SIZE = 2;
     appState.editor.dragging = null;
     appState.editor.mode = 'select';
     ensureRackProps();
+    if(typeof v225SyncRackCodes==='function')v225SyncRackCodes(appState.layout,{reassign:true});
   }
   function setLayoutBranch(branchIndex){
     persistActiveLayout();
@@ -4459,13 +4471,13 @@ const DEFAULT_GRID_SIZE = 2;
   }
   function renameRackByZone(rack, zoneId, seq){
     rack.zoneId = zoneId;
-    rack.id = `${zoneId}-E${seq}`;
+    if(typeof v225SyncRackCodes==='function'){rack.displayCode=`${zoneId}-E${seq}`;rack.nomenclatureZoneId=zoneId;}else rack.id = `${zoneId}-E${seq}`;
   }
   function assignRackToZone(rack, zoneId){
     if(!rack || !zoneId) return;
     if(rack.zoneId === zoneId && String(rack.id||'').startsWith(`${zoneId}-E`)) return;
     rack.zoneId = zoneId;
-    rack.id = nextRackId(zoneId);
+    if(typeof v225SyncRackCodes==='function')v225SyncRackCodes();else rack.id = nextRackId(zoneId);
   }
   function normalizeZoneAndRackIds(){
     const zones = appState.layout.zones || [];
@@ -4488,7 +4500,7 @@ const DEFAULT_GRID_SIZE = 2;
     (appState.layout.racks||[]).forEach(r=>{
       if(!r) return;
       if(zoneRemap.has(String(r.zoneId || '').toUpperCase())) r.zoneId = zoneRemap.get(String(r.zoneId || '').toUpperCase());
-      if(appState.layout.meta?.zoneSemantics!=='virtual' && r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
+      if(typeof v225SyncRackCodes!=='function' && appState.layout.meta?.zoneSemantics!=='virtual' && r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
         const est = parseInt((String(r.id || '').match(/-E(\d+)/i)||[])[1] || '1', 10) || 1;
         r.id = `ALM-E${est}`;
       }
@@ -7291,9 +7303,10 @@ function getSheetBranchOpenMap(){
       const getWallOpeningsForSegment = (seg, rawLengthUnits) => {
         const wallOpenings = (appState.layout?.openings || []).filter(o => o.wallId === seg.id);
         return wallOpenings.map(o => {
-          const width = Math.max(40, Math.min(rawLengthUnits * .86, Number(o.width || (o.type === 'window' ? 120 : 90)) || 90));
+          const source=seg.raw||(appState.layout.walls||[]).find(w=>w.id===seg.id),segment=source?getOpeningSegment(o,source):null;
+          const width = Math.max(40, Number(segment?.width||o.width||(o.type==='window'?120:90)));
           const half = (width / 2) / Math.max(1, rawLengthUnits);
-          const t = Math.max(half, Math.min(1-half, Number(o.t || .5)));
+          const t = Number(segment?.t??Math.max(half, Math.min(1-half, Number(o.t || .5))));
           const type = normalizeOpeningType(o.type);
           const def = openingDefaultForType(type);
           const sillUnits = (type==='door' || type==='gate') ? 0 : Math.max(0, Number(o.sill ?? def.sill) || 0);
@@ -7449,31 +7462,12 @@ function getSheetBranchOpenMap(){
           const glassMat = new THREE.MeshStandardMaterial({ color:0x8feaff, transparent:true, opacity:appState.ui?.nav3DArchitectural ? .46 : .32, roughness:.18, metalness:.04, side:THREE.DoubleSide, depthWrite:false });
           const leafMat = new THREE.MeshStandardMaterial({ color:0x9aa8b4, transparent:true, opacity:appState.ui?.nav3DArchitectural ? .62 : .46, roughness:.55, metalness:.08, side:THREE.DoubleSide });
           const openings = getWallOpeningsForSegment(seg, rawLengthUnits);
-          if(openings.length){
-            let cursor = 0;
-            openings.forEach(o => {
-              const safeT0 = Math.max(cursor, o.t0);
-              const safeT1 = Math.max(safeT0, o.t1);
-              if(safeT0 > cursor + .004){
-                addWallMesh(group, makeWallBandGeometry(seg, cursor, safeT0, 0, height, thicknessUnits), wallMat, isActive, seg.id);
-              }
-              const sill = Math.max(0, Number(o.sillUnits || 0) * hScale);
-              const openingTop = Math.min(height, Math.max(.08, (Number(o.sillUnits || 0) + Number(o.heightUnits || 210)) * hScale));
-              if(sill > .035){
-                addWallMesh(group, makeWallBandGeometry(seg, safeT0, safeT1, 0, Math.min(sill, height), thicknessUnits), wallMat, isActive, seg.id);
-              }
-              if(openingTop < height - .035){
-                addWallMesh(group, makeWallBandGeometry(seg, safeT0, safeT1, openingTop, height, thicknessUnits), wallMat, isActive, seg.id);
-              }
-              // v112: el hueco sigue siendo vacío real; se agrega únicamente marco arquitectónico opcional.
-              addOpeningFrame3D(group, seg, o, rawLengthUnits, height, thicknessUnits, isActive);
-              cursor = Math.max(cursor, safeT1);
-            });
-            if(cursor < .996){
-              addWallMesh(group, makeWallBandGeometry(seg, cursor, 1, 0, height, thicknessUnits), wallMat, isActive, seg.id);
-            }
-            addArchitecturalBaseboards(group,seg,openings,thicknessUnits,isActive);
-            return;
+          if(typeof v225WallBandsFor==='function'&&seg.raw){
+            const fullParts=segments.map(s=>s.raw).filter(Boolean),levels=[...new Set([0,...fullParts.map(w=>v219WallRenderHeight(w,getScaleCmPerUnit()))])].sort((a,b)=>a-b);
+            const ratio=100*hScale/getScaleCmPerUnit();
+            v225WallBandsFor(seg.raw,fullParts,levels).forEach(b=>{const y0=b.y0*ratio,y1=Math.min(height,b.y1*ratio);if(y1>y0)v216ViewerBands.push({...b,y0,y1,material:wallMat});});
+            openings.forEach(o=>addOpeningFrame3D(group,seg,o,rawLengthUnits,height,thicknessUnits,isActive));
+            addArchitecturalBaseboards(group,seg,openings,thicknessUnits,isActive);return;
           }
           const joinedPoly = !seg.autoZoneEdge && seg.raw && typeof getWallSlicePolygon==='function'
             ? getWallSlicePolygon(seg.raw,0,1,1)?.poly :
@@ -7512,7 +7506,8 @@ function getSheetBranchOpenMap(){
         });
 
         v216JointPieces().forEach(j=>{const host=v216ViewerBands.find(b=>j.ids.includes(b.wallId));if(host)v216ViewerBands.push({poly:j.poly,y0:0,y1:Math.min(j.height*hScale,Math.max(...v216ViewerBands.filter(b=>j.ids.includes(b.wallId)).map(b=>b.y1))),wallId:host.wallId,material:host.material});});
-        v216AddUnionMeshes(THREE,group,v216ViewerBands,p=>({x:(p.x-bounds.cx)*scale,z:(p.y-bounds.cy)*scale}),mesh=>pickables.push(mesh));
+        const v225HeightRatio=100*hScale/getScaleCmPerUnit(),v225Voids=v216OpeningVoids().map(v=>({...v,y0:v.y0*v225HeightRatio,y1:v.y1*v225HeightRatio}));
+        v216AddUnionMeshes(THREE,group,v216ViewerBands,p=>({x:(p.x-bounds.cx)*scale,z:(p.y-bounds.cy)*scale}),mesh=>pickables.push(mesh),{voids:v225Voids});
         return group;
       };
       const roomSlabsGroup = buildArchitecturalRoomSlabs(layoutZones, focusZoneIds);
@@ -7607,9 +7602,9 @@ function getSheetBranchOpenMap(){
       const targetFocusForRack = (r, mode='slot') => {
         if(!r) return new THREE.Vector3(0,0,0);
         const model = rackModel(r.modelId) || baseRackModel();
-        const w = Math.max(.8, (Number(r.w || model.width || 120))*scale);
-        const d = Math.max(.45, (Number(r.h || model.depth || 56))*scale);
-        const rackH = Math.max(1.2, (Number(r.rackHeight || model.height || 240))*hScale);
+        const w = v225RackWorldSize(r,scale,hScale).w;
+        const d = v225RackWorldSize(r,scale,hScale).d;
+        const rackH = v225RackWorldSize(r,scale,hScale).h;
         const levels = Math.max(1, Math.min(8, Number(model.levels || 4) || 4));
         const levelSlots = typeof buildLevelSlots==='function' ? buildLevelSlots(model) : [];
         const target = activeInfoForRack(r);
@@ -7631,39 +7626,38 @@ function getSheetBranchOpenMap(){
       const buildDetailedRack = (r, active=false) => {
         const group = new THREE.Group();
         const model = rackModel(r.modelId) || baseRackModel();
-        const w = Math.max(.8, (Number(r.w || model.width || 120))*scale);
-        const d = Math.max(.45, (Number(r.h || model.depth || 56))*scale);
-        const rackH = Math.max(1.2, (Number(r.rackHeight || model.height || 240))*hScale);
+        const w = v225RackWorldSize(r,scale,hScale).w;
+        const d = v225RackWorldSize(r,scale,hScale).d;
+        const rackH = v225RackWorldSize(r,scale,hScale).h;
         const levels = Math.max(1, Math.min(8, Number(model.levels || 4) || 4));
         const slots = Math.max(1, Math.min(6, Number(model.slots || model.capacity || 2) || 2));
         const p = toWorld(Number(r.x||0) + Number(r.w||model.width||120)/2, Number(r.y||0) + Number(r.h||model.depth||56)/2, 0);
-        group.position.set(p.x, 0, p.z);
+        group.position.set(p.x, v225RackWorldSize(r,scale,hScale).base, p.z);
         group.rotation.y = rackYaw(r);
-        if(model?.furniture?.enabled && typeof getFurnitureRenderPieces === 'function') {
-          const pieces=getFurnitureRenderPieces(model);
-          const MW=Math.max(1,Number(model.width||120)),MD=Math.max(1,Number(model.depth||40)),MH=Math.max(1,Number(model.height||200));
-          const sx=w/MW, sz=d/MD, sy=rackH/MH;
-          const panelBase=model.furniture.material==='metal'?0x45667f:(model.furniture.material==='wood'?0xb47b43:0xdce5ed);
-          const panelMat=new THREE.MeshStandardMaterial({color:panelBase,roughness:model.furniture.material==='metal'?.36:.72,metalness:model.furniture.material==='metal'?.58:.03});
-          const backMat=new THREE.MeshStandardMaterial({color:panelBase,roughness:.8,metalness:.02,transparent:true,opacity:.55});
-          pieces.forEach(piece=>{
-            if(piece.type==='brace'){const a=new THREE.Vector3(-w/2+Number(piece.x||0)*sx,Number(piece.z||0)*sy,-d/2+Math.max(.02,Number(piece.y||0))*sz),b=new THREE.Vector3(-w/2+Number(piece.x2||piece.x+piece.w||0)*sx,Number(piece.z2||piece.z+piece.h||0)*sy,-d/2+Math.max(.02,Number(piece.y||0))*sz);addCylinderBetween(group,a,b,Math.max(.018,Number(piece.d||2)*Math.min(sx,sy)*.45),panelMat,false);return;}
-            const pw=Math.max(.012,Number(piece.w||1)*sx),ph=Math.max(.012,Number(piece.h||1)*sy),pd=Math.max(.012,Number(piece.d||1)*sz),px=-w/2+(Number(piece.x||0)+Number(piece.w||1)/2)*sx,py=(Number(piece.z||0)+Number(piece.h||1)/2)*sy,pz=-d/2+(Number(piece.y||0)+Number(piece.d||1)/2)*sz;addBox(group,pw,ph,pd,px,py,pz,piece.type==='back'?backMat:panelMat,false);
+        if(model?.furniture?.enabled){
+          const physical=v222FurnitureForRack(r,v222Dimensions(r)),sx=scale/getScaleCmPerUnit(),sy=hScale/getScaleCmPerUnit();
+          const panelBase=physical.furniture.material==='metal'?0x45667f:(physical.furniture.material==='wood'?0xb47b43:0xdce5ed);
+          const panelMat=new THREE.MeshStandardMaterial({color:panelBase,roughness:physical.furniture.material==='metal'?.36:.72,metalness:physical.furniture.material==='metal'?.58:.03});
+          v222FurnitureMeshes(physical).forEach(item=>{
+            const geometry=v222PieceGeometry(THREE,item,1);geometry.rotateZ(item.angle||0);
+            const mesh=new THREE.Mesh(geometry,panelMat);mesh.scale.set(sx,sy,sx);
+            mesh.position.set((item.profile?-physical.width/2:item.x-physical.width/2)*sx,(item.profile?0:item.y)*sy,(item.profile?item.z-item.d/2-physical.depth/2:item.z-physical.depth/2)*sx);
+            mesh.userData.pieceId=item.piece.id;group.add(mesh);
           });
-          const target=activeInfoForRack(r),defs=typeof deriveFurnitureLevels==='function'?deriveFurnitureLevels(model):[];
+          const target=activeInfoForRack(r),defs=deriveFurnitureLevels(physical);
           if(active&&defs.length){const lv=defs.find(l=>l.index===Math.max(1,Number(target.level||1))),slot=lv?.slots?.[Math.max(1,Number(target.slot||1))-1];if(lv&&slot){const hw=Math.max(.04,(slot.x1-slot.x0)*sx*.92),hh=Math.max(.05,(lv.z1-lv.z0)*sy*.84),hd=Math.max(.04,d*.82),hx=-w/2+(slot.x0+(slot.x1-slot.x0)/2)*sx,hy=(lv.z0+(lv.z1-lv.z0)/2)*sy;const activeShell=addBox(group,hw,hh,hd,hx,hy,0,matActive,false);activePulseTargets.push({activeShell,baseScale:1});}}
-          if(active){const haloGeo=new THREE.EdgesGeometry(new THREE.BoxGeometry(w+.16,rackH+.16,d+.16)),halo=new THREE.LineSegments(haloGeo,new THREE.LineBasicMaterial({color:0x7dffab,transparent:true,opacity:.96}));halo.position.y=rackH/2;group.add(halo);}
+          if(active){const haloGeo=new THREE.EdgesGeometry(new THREE.BoxGeometry(w,rackH,d)),halo=new THREE.LineSegments(haloGeo,new THREE.LineBasicMaterial({color:0x7dffab,transparent:true,opacity:.96}));halo.position.y=rackH/2;group.add(halo);}
           return group;
         }
         const postW = Math.max(.045, w*.045);
         const beamH = Math.max(.035, rackH*.014);
-        [[-w/2,-d/2],[w/2,-d/2],[-w/2,d/2],[w/2,d/2]].forEach(([x,z]) => addBox(group, postW, rackH, postW, x, rackH/2, z, matFrame));
+        [[-w/2+postW/2,-d/2+postW/2],[w/2-postW/2,-d/2+postW/2],[-w/2+postW/2,d/2-postW/2],[w/2-postW/2,d/2-postW/2]].forEach(([x,z]) => addBox(group, postW, rackH, postW, x, rackH/2, z, matFrame));
         for(let i=0;i<=levels;i++){
-          const y = (rackH/levels)*i;
-          addBox(group, w+postW, beamH, postW, 0, y, -d/2, matBeam);
-          addBox(group, w+postW, beamH, postW, 0, y, d/2, matBeam);
-          addBox(group, postW, beamH, d+postW, -w/2, y, 0, matBeam);
-          addBox(group, postW, beamH, d+postW, w/2, y, 0, matBeam);
+          const y = Math.max(beamH/2,Math.min(rackH-beamH/2,(rackH/levels)*i));
+          addBox(group, w, beamH, postW, 0, y, -d/2+postW/2, matBeam);
+          addBox(group, w, beamH, postW, 0, y, d/2-postW/2, matBeam);
+          addBox(group, postW, beamH, d, -w/2+postW/2, y, 0, matBeam);
+          addBox(group, postW, beamH, d, w/2-postW/2, y, 0, matBeam);
         }
         const target = activeInfoForRack(r);
         for(let li=1; li<=levels; li++){
@@ -7704,9 +7698,9 @@ function getSheetBranchOpenMap(){
       const buildBasicRack = (r, active=false, ghost=true) => {
         const group = new THREE.Group();
         const model = rackModel(r.modelId) || baseRackModel();
-        const w = Math.max(.8, (Number(r.w || model.width || 120))*scale), d = Math.max(.45, (Number(r.h || model.depth || 56))*scale), rackH = Math.max(1.1, (Number(r.rackHeight || model.height || 240))*hScale);
+        const w = v225RackWorldSize(r,scale,hScale).w, d = v225RackWorldSize(r,scale,hScale).d, rackH = v225RackWorldSize(r,scale,hScale).h;
         const p = toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2, Number(r.y||0)+Number(r.h||model.depth||56)/2, 0);
-        group.position.set(p.x,0,p.z);
+        group.position.set(p.x,v225RackWorldSize(r,scale,hScale).base,p.z);
         group.rotation.y = rackYaw(r);
         const mesh = addBox(group, w, rackH, d, 0, rackH/2, 0, ghost ? matGhost : matActive, false);
         mesh.material.opacity = active ? .34 : (ghost ? .13 : .24);
@@ -7716,21 +7710,21 @@ function getSheetBranchOpenMap(){
       };
       const buildMediumRack = (r) => {
         const group=new THREE.Group(), model=rackModel(r.modelId)||baseRackModel();
-        const w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rackH=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale);
+        const w=v225RackWorldSize(r,scale,hScale).w,d=v225RackWorldSize(r,scale,hScale).d,rackH=v225RackWorldSize(r,scale,hScale).h;
         const levels=Math.max(1,Math.min(8,Number(model.levels||4)||4)), p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0);
-        group.position.set(p.x,0,p.z); group.rotation.y=rackYaw(r);
-        if(model?.furniture?.enabled && typeof getFurnitureRenderPieces === 'function'){const pieces=getFurnitureRenderPieces(model),MW=Math.max(1,Number(model.width||120)),MD=Math.max(1,Number(model.depth||40)),MH=Math.max(1,Number(model.height||200)),sx=w/MW,sz=d/MD,sy=rackH/MH,c=rackVisualColor(r),mat=new THREE.MeshStandardMaterial({color:ui.wmsMode==='architecture'?(model.furniture.material==='wood'?0xb47b43:model.furniture.material==='metal'?0x45667f:0xdce5ed):c,roughness:model.furniture.material==='metal'?.4:.74,metalness:model.furniture.material==='metal'?.48:.03});pieces.filter(piece=>piece.type!=='brace'&&piece.type!=='back').slice(0,48).forEach(piece=>{addBox(group,Math.max(.012,Number(piece.w||1)*sx),Math.max(.012,Number(piece.h||1)*sy),Math.max(.012,Number(piece.d||1)*sz),-w/2+(Number(piece.x||0)+Number(piece.w||1)/2)*sx,(Number(piece.z||0)+Number(piece.h||1)/2)*sy,-d/2+(Number(piece.y||0)+Number(piece.d||1)/2)*sz,mat,false);});return group;}
+        group.position.set(p.x,v225RackWorldSize(r,scale,hScale).base,p.z); group.rotation.y=rackYaw(r);
+        if(model?.furniture?.enabled)return buildDetailedRack(r,false);
         const c=rackVisualColor(r), frameC=ui.wmsMode==='architecture'?new THREE.Color(0x315c7a):c.clone().multiplyScalar(.72), beamC=ui.wmsMode==='architecture'?new THREE.Color(0xd58437):c;
         const frameMat=new THREE.MeshStandardMaterial({color:frameC,roughness:.38,metalness:.56}), beamMat=new THREE.MeshStandardMaterial({color:beamC,roughness:.44,metalness:.32}), shelfMat=new THREE.MeshStandardMaterial({color:c.clone().lerp(new THREE.Color(0xdbe1e4),.55),roughness:.72,metalness:.08,transparent:true,opacity:.78});
         const post=Math.max(.04,w*.035), beam=Math.max(.03,rackH*.012);
-        [[-w/2,-d/2],[w/2,-d/2],[-w/2,d/2],[w/2,d/2]].forEach(([x,z])=>addBox(group,post,rackH,post,x,rackH/2,z,frameMat,false));
-        for(let i=0;i<=levels;i++){const y=Math.min(rackH,(rackH/levels)*i);addBox(group,w+post,beam,post,0,y,-d/2,beamMat,false);addBox(group,w+post,beam,post,0,y,d/2,beamMat,false);if(i>0)addBox(group,w*.94,Math.max(.018,beam*.55),d*.82,0,Math.max(.03,y-beam*.7),0,shelfMat,false);}
+        [[-w/2+post/2,-d/2+post/2],[w/2-post/2,-d/2+post/2],[-w/2+post/2,d/2-post/2],[w/2-post/2,d/2-post/2]].forEach(([x,z])=>addBox(group,post,rackH,post,x,rackH/2,z,frameMat,false));
+        for(let i=0;i<=levels;i++){const y=Math.max(beam/2,Math.min(rackH-beam/2,(rackH/levels)*i));addBox(group,w,beam,post,0,y,-d/2+post/2,beamMat,false);addBox(group,w,beam,post,0,y,d/2-post/2,beamMat,false);if(i>0)addBox(group,w*.94,Math.max(.018,beam*.55),d*.82,0,Math.max(.03,y-beam*.7),0,shelfMat,false);}
         return group;
       };
       const addInstancedRackProxies = racks => {
         if(!racks.length)return null; const geo=new THREE.BoxGeometry(1,1,1),mat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.58,metalness:.18,transparent:true,opacity:ui.wmsMode==='architecture'?.18:.64,vertexColors:true});
         const mesh=new THREE.InstancedMesh(geo,mat,racks.length); mesh.userData.entityType='rack'; mesh.userData.rackIds=racks.map(r=>r.id); mesh.userData.isRackInstanced=true; const dummy=new THREE.Object3D();
-        racks.forEach((r,i)=>{const model=rackModel(r.modelId)||baseRackModel(),w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale),p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0);dummy.position.set(p.x,rh/2,p.z);dummy.rotation.set(0,rackYaw(r),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,rackVisualColor(r));instancedRackLookup.set(r.id,{mesh,index:i});});
+        racks.forEach((r,i)=>{const model=rackModel(r.modelId)||baseRackModel(),w=v225RackWorldSize(r,scale,hScale).w,d=v225RackWorldSize(r,scale,hScale).d,rh=v225RackWorldSize(r,scale,hScale).h,p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0);dummy.position.set(p.x,v225RackWorldSize(r,scale,hScale).base+rh/2,p.z);dummy.rotation.set(0,rackYaw(r),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,rackVisualColor(r));instancedRackLookup.set(r.id,{mesh,index:i});});
         mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;mesh.castShadow=false;mesh.receiveShadow=true;world.add(mesh);pickables.push(mesh);return mesh;
       };
 
@@ -7913,7 +7907,7 @@ function getSheetBranchOpenMap(){
       const entityBox = entity => {
         if(!entity?.type||!entity.id)return null;
         if(entity.object && !entity.object.isInstancedMesh){ try{return new THREE.Box3().setFromObject(entity.object);}catch{} }
-        if(entity.type==='rack'){ const r=findNav3DRackById(entity.id); if(!r)return null; const model=rackModel(r.modelId)||baseRackModel(),w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale),p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0); return new THREE.Box3(new THREE.Vector3(p.x-w/2,0,p.z-d/2),new THREE.Vector3(p.x+w/2,rh,p.z+d/2)); }
+        if(entity.type==='rack'){ const r=findNav3DRackById(entity.id); if(!r)return null; const model=rackModel(r.modelId)||baseRackModel(),w=v225RackWorldSize(r,scale,hScale).w,d=v225RackWorldSize(r,scale,hScale).d,rh=v225RackWorldSize(r,scale,hScale).h,p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0); return new THREE.Box3(new THREE.Vector3(p.x-w/2,0,p.z-d/2),new THREE.Vector3(p.x+w/2,rh,p.z+d/2)); }
         const candidate=pickables.find(o=>(entity.type==='wall'&&(o.userData?.wallId===entity.id||o.userData?.wallIds?.includes(entity.id)))||(entity.type==='opening'&&o.userData?.openingId===entity.id)||(entity.type==='zone'&&o.userData?.zoneId===entity.id));
         if(candidate){try{return new THREE.Box3().setFromObject(candidate);}catch{}} return null;
       };
@@ -7933,9 +7927,9 @@ function getSheetBranchOpenMap(){
       };
       const selectRackFromScene = (rackId, center = false) => { if(!rackId)return; setEntitySelection({type:'rack',id:rackId},{center}); if(!center)focusRackCamera(rackId,false); setTimeout(()=>{renderSideRacks();renderProductOperationalCard();renderMiniMap();syncToolbar();},60); };
       const updateRackSceneTransform = rack => {
-        if(!rack)return; const model=rackModel(rack.modelId)||baseRackModel(),w=Math.max(.8,(Number(rack.w||model.width||120))*scale),d=Math.max(.45,(Number(rack.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(rack.rackHeight||model.height||240))*hScale),p=toWorld(Number(rack.x||0)+Number(rack.w||model.width||120)/2,Number(rack.y||0)+Number(rack.h||model.depth||56)/2,0);
-        const obj=rackObjectMap.get(rack.id); if(obj){obj.position.set(p.x,0,p.z);obj.rotation.y=rackYaw(rack);}
-        const inst=instancedRackLookup.get(rack.id); if(inst){const dummy=new THREE.Object3D();dummy.position.set(p.x,rh/2,p.z);dummy.rotation.set(0,rackYaw(rack),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();inst.mesh.setMatrixAt(inst.index,dummy.matrix);inst.mesh.instanceMatrix.needsUpdate=true;}
+        if(!rack)return; const model=rackModel(rack.modelId)||baseRackModel(),w=v225RackWorldSize(rack,scale,hScale).w,d=v225RackWorldSize(rack,scale,hScale).d,rh=v225RackWorldSize(rack,scale,hScale).h,p=toWorld(Number(rack.x||0)+Number(rack.w||model.width||120)/2,Number(rack.y||0)+Number(rack.h||model.depth||56)/2,0);
+        const obj=rackObjectMap.get(rack.id); if(obj){obj.position.set(p.x,v225RackWorldSize(rack,scale,hScale).base,p.z);obj.rotation.y=rackYaw(rack);}
+        const inst=instancedRackLookup.get(rack.id); if(inst){const dummy=new THREE.Object3D();dummy.position.set(p.x,v225RackWorldSize(rack,scale,hScale).base+rh/2,p.z);dummy.rotation.set(0,rackYaw(rack),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();inst.mesh.setMatrixAt(inst.index,dummy.matrix);inst.mesh.instanceMatrix.needsUpdate=true;}
         showSelectionHelper({type:'rack',id:rack.id});
       };
       const rackPlacementErrors = rackId => typeof v117OperationalIssues==='function' ? v117OperationalIssues().filter(i=>i.severity==='error'&&(i.rackIds||[]).includes(rackId)) : [];
@@ -11982,7 +11976,7 @@ function getSheetBranchOpenMap(){
         <p class="tiny muted" style="margin:0">Acerca dos caras: el snap alinea sus aristas reales, ajusta giros próximos (máx. 7°), conserva la cara posterior y respeta la separación seleccionada (0 cm = contacto). La guía verde anticipa el resultado. Ctrl ignora temporalmente el snap.</p>
         <p class="tiny muted" style="margin:0">Libre: puedes mover fuera de zonas pequeñas sin que el rack regrese. Se advierten las interferencias sin bloquear. Desactívalo para exigir cabida y ausencia de colisiones. El snap general se mantiene independiente. Ctrl mientras arrastras: ignorar snap.</p>
       </div>
-      <div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(r.displayCode||r.id)} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
+      <div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(v222RackCode(r))} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
   }
 
   function layoutSelectedSummary(){
@@ -11993,7 +11987,7 @@ function getSheetBranchOpenMap(){
     const room = findRoomById(appState.selectedRoomId);
     const rack = findRackById(appState.selectedRackLayoutId);
     if(isRackDistributionScreen()){
-      if(rack) return { type:'rack', title:rack.displayCode||rack.id, subtitle:`${rack.zoneId} · ${escapeHtml(v222RackName(rack))}` };
+      if(rack) return { type:'rack', title:v222RackCode(rack), subtitle:`${rack.zoneId} · ${escapeHtml(v222RackName(rack))}` };
       if(zone) return { type:'none', title:'Selecciona un rack', subtitle:`Zona ${zone.name||zone.id} · ${(appState.layout.racks||[]).filter(r=>r.zoneId===zone.id).length} racks disponibles` };
       return { type:'none', title:'Sin rack seleccionado', subtitle:'Selecciona o agrega un rack; la estructura está bloqueada' };
     }
@@ -12510,7 +12504,7 @@ function getSheetBranchOpenMap(){
     // Prioridad: cara completa -> punto individual -> rejilla. Un contacto
     // entre aristas no puede ser sustituido después por un punto cercano.
     if(snapping && appState.editor?.distributionEdgeSnap===true){
-      const edgeMatch=v224SnapRackEdges(n,opts.ignoreRackIds||[]);
+      const edgeMatch=v224SnapRackEdges(n,opts.ignoreRackIds||[])||(typeof v225SnapRackWalls==='function'?v225SnapRackWalls(n,opts.ignoreRackIds||[]):null);
       if(edgeMatch){
         Object.assign(n,{x:edgeMatch.rack.x,y:edgeMatch.rack.y,w:edgeMatch.rack.w,h:edgeMatch.rack.h,rot:edgeMatch.rack.rot});
         setRackSnapPreview({type:edgeMatch.kind,strength:'hard',
@@ -12524,7 +12518,10 @@ function getSheetBranchOpenMap(){
       const points=[],segments=[],vertexPoints=[];
       const addEdges=pts=>{(pts||[]).forEach((pt,i)=>{const q=pts[(i+1)%pts.length];points.push(pt);vertexPoints.push(pt);if(q && pts.length>1){segments.push([pt,q]);points.push({x:(pt.x+q.x)/2,y:(pt.y+q.y)/2});}});};
       (appState.layout?.zones||[]).forEach(zone=>addEdges(zone.pts||[]));
-      (appState.layout?.wallNodes||[]).forEach(pt=>{points.push(pt);vertexPoints.push(pt);});
+      // V225: capturar las caras del muro, sin atraer el mueble a su eje interior.
+      if(typeof v225WallFaceForRack==='function'){
+        (appState.layout?.walls||[]).forEach(w=>{const face=v225WallFaceForRack(w,n);if(face){points.push(face.a,face.b);vertexPoints.push(face.a,face.b);segments.push([face.a,face.b]);}});
+      }else (appState.layout?.wallNodes||[]).forEach(pt=>{points.push(pt);vertexPoints.push(pt);});
       (appState.layout?.racks||[]).filter(r=>r.id!==rack.id&&!opts.ignoreRackIds?.includes(r.id)).forEach(other=>{
         addEdges(rackCorners(other));
         points.push({x:other.x+other.w/2,y:other.y+other.h/2});
@@ -12575,6 +12572,8 @@ function getSheetBranchOpenMap(){
     return n;
   }
   function distributionRackInterference(rack,ignoreIds=[]){
+    const walls=typeof v225RackWallHits==='function'?v225RackWallHits(rack):[];
+    if(walls.length)return `El mueble invade el muro ${walls[0]}.`;
     const host=distributionHostForRack(rack);
     if(!host||!rackFullyInsideZone(rack,host))return 'El rack queda parcial o totalmente fuera de la zona; puedes ajustarlo después.';
     const ignored=new Set([rack.id,...ignoreIds]);
@@ -12584,6 +12583,7 @@ function getSheetBranchOpenMap(){
   }
   function distributionCanCommit(rack,ignoreIds=[]){
     if(distributionIsFreeMove())return true;
+    if(typeof v225RackWallHits==='function'&&v225RackWallHits(rack).length)return false;
     const host=distributionHostForRack(rack);
     if(!host||!rackFullyInsideZone(rack,host))return false;
     const ignored=new Set([rack.id,...ignoreIds]);
@@ -12595,6 +12595,10 @@ function getSheetBranchOpenMap(){
   function v206AlignRackToSegment(a,b,reference='muro'){
     const rack=findRackById(appState.editor?.rackAlignTargetId||appState.selectedRackLayoutId);
     if(!rack){showToast('Selecciona primero el rack que deseas alinear.','warning',2600);return false;}
+    if(reference==='muro'&&typeof v225WallFaceForRack==='function'){
+      const wall=(appState.layout.walls||[]).find(w=>Math.min(pointDist2D(a,{x:w.x1,y:w.y1})+pointDist2D(b,{x:w.x2,y:w.y2}),pointDist2D(b,{x:w.x1,y:w.y1})+pointDist2D(a,{x:w.x2,y:w.y2}))<.001);
+      const face=wall&&v225WallFaceForRack(wall,rack);if(face){a=face.a;b=face.b;}
+    }
     const vx=Number(b?.x)-Number(a?.x),vy=Number(b?.y)-Number(a?.y);
     const len=Math.hypot(vx,vy);if(!Number.isFinite(len)||len<1){showToast('Se necesitan dos puntos distintos para alinear.','warning',2200);return false;}
     const baseAngle=normalizeAngle(Math.atan2(vy,vx)*180/Math.PI);
@@ -13504,6 +13508,7 @@ function getSheetBranchOpenMap(){
     svg = svg || document.getElementById('layoutSvg') || document.getElementById('layout-svg');
     if(!svg) return;
     if(typeof v128RebuildSharedWallRegistry === 'function') v128RebuildSharedWallRegistry();
+    if(typeof v225RefreshValidation==='function')v225RefreshValidation();
     appState.editor.view = 'ortho';
     svg.innerHTML = '';
     svg.style.setProperty('--layout-dim-font-size', `${getDimFontSize()}px`);
@@ -14348,7 +14353,7 @@ function getSheetBranchOpenMap(){
         x:0,y:4,class:'ortho-label','text-anchor':'middle','dominant-baseline':'middle',
         style:'pointer-events:none', transform:`rotate(${-normalizeAngle(r.rot||0)})`
       });
-      t.textContent=v222RackCode(r);const rackTitle=svgEl('title');rackTitle.textContent=`${v222RackCode(r)} · ${v222RackName(r)}`;g.appendChild(rackTitle);
+      t.textContent=v222RackCode(r);const rackTitle=svgEl('title');rackTitle.textContent=[`${v222RackCode(r)} · ${v222RackName(r)}`,...(appState.editor.validationIssues||[]).filter(i=>i.rackIds?.includes(r.id)).map(i=>i.message)].join('\n');g.appendChild(rackTitle);
       const baseHVal = Math.round(Number(r.baseHeight || 0));
       const levelBadge = svgEl('g',{transform:`translate(${-visualW/2 + 18} ${-visualH/2 + 10})`,style:'pointer-events:none'});
       levelBadge.appendChild(svgEl('rect',{x:-18,y:-12,width:36,height:18,rx:'9',fill:'rgba(8,18,30,.95)',stroke:'#56d2ff','stroke-width':'1'}));
@@ -16175,7 +16180,7 @@ function getSheetBranchOpenMap(){
     return null;
   }
   function v213SelectionTitle(){
-    if(isRackDistributionScreen()){const r=findRackById(appState.selectedRackLayoutId);return r?`Editando rack: ${r.displayCode||r.id}`:'Selecciona un rack';}
+    if(isRackDistributionScreen()){const r=findRackById(appState.selectedRackLayoutId);return r?`Editando rack: ${v222RackCode(r)}`:'Selecciona un rack';}
     if(activeLayoutWorkspace()!=='architecture')return 'Edición de calles y veredas';
     const opening=findOpeningById(appState.selectedOpeningId),wall=findWallById(appState.selectedWallId);
     if(opening)return `Editando abertura: ${opening.id}`;
@@ -16902,18 +16907,22 @@ function getSheetBranchOpenMap(){
     racks.forEach(r=>{ const z=findZoneById(r.zoneId); if(!z||!rackFullyInsideZone(r,z))issues.push({type:'outside',severity:'error',rackIds:[r.id],message:`${r.id}: fuera de su zona.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}}); });
     for(let i=0;i<racks.length;i++) for(let j=i+1;j<racks.length;j++){
       const a=racks[i],b=racks[j]; if(racksCanOverlapByLevel(a,b))continue; const pa=rackCorners(a),pb=rackCorners(b);
-      if(v117PolyOverlap(pa,pb)) issues.push({type:'rack-collision',severity:'error',rackIds:[a.id,b.id],message:`${a.id} y ${b.id}: colisión entre racks.`,point:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}});
+      if(typeof rackContoursOverlap==='function'?rackContoursOverlap(a,b,.02/Math.max(.0001,sc)):v117PolyOverlap(pa,pb)) issues.push({type:'rack-collision',severity:'error',rackIds:[a.id,b.id],message:`${a.id} y ${b.id}: colisión entre racks.`,point:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}});
       else { const gap=v117RackAisleGap(a,b); if(gap!==null&&gap>=0&&gap<minAisle)issues.push({type:'aisle',severity:'warning',rackIds:[a.id,b.id],message:`Pasillo ${Math.round(gap*sc)} cm entre ${a.id} y ${b.id} (mín. ${Math.round(minAisleCm)} cm).`,point:{x:(a.x+a.w/2+b.x+b.w/2)/2,y:(a.y+a.h/2+b.y+b.h/2)/2}}); }
     }
-    const wallPolys=walls.map(w=>({wall:w,poly:getWallSlicePolygon(w,0,1,1)?.poly||[]}));
-    racks.forEach(r=>{const rp=rackCorners(r); wallPolys.forEach(x=>{if(x.poly.length&&v117PolyOverlap(rp,x.poly))issues.push({type:'wall-collision',severity:'error',rackIds:[r.id],wallId:x.wall.id,message:`${r.id}: invade el muro ${x.wall.id}.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}});});});
+    if(typeof v225RackWallHits==='function'){
+      racks.forEach(r=>v225RackWallHits(r).forEach(id=>issues.push({type:'wall-collision',severity:'error',rackIds:[r.id],wallId:id,message:`${v222RackCode(r)}: invade el muro ${id}.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}})));
+    }else{
+      const wallPolys=walls.map(w=>({wall:w,poly:getWallSlicePolygon(w,0,1,1)?.poly||[]}));
+      racks.forEach(r=>{const rp=rackCorners(r);wallPolys.forEach(x=>{if(x.poly.length&&v117PolyOverlap(rp,x.poly))issues.push({type:'wall-collision',severity:'error',rackIds:[r.id],wallId:x.wall.id,message:`${r.id}: invade el muro ${x.wall.id}.`,point:{x:r.x+r.w/2,y:r.y+r.h/2}});});});
+    }
     const doors=(appState.layout.openings||[]).filter(o=>normalizeOpeningType(o.type)==='door');
     doors.forEach(o=>{const w=findWallById(o.wallId);if(!w)return;const poly=v117DoorClearancePolygon(o,w,minAisle*.72);if(!poly)return;racks.forEach(r=>{if(v117PolyOverlap(rackCorners(r),poly))issues.push({type:'door-clearance',severity:'warning',rackIds:[r.id],openingId:o.id,message:`${r.id}: bloquea el despeje de la puerta ${o.id}.`,point:getOpeningSegment(o,w)?.center});});});
     return issues.slice(0,300);
   }
   function v117RunValidation({quiet=false}={}){ appState.editor.validationIssues=v117OperationalIssues(); appState.editor.validationAt=Date.now(); if(!quiet)showToast(appState.editor.validationIssues.length?`${appState.editor.validationIssues.length} incidencia(s) detectada(s).`:'Layout operativo sin incidencias.',appState.editor.validationIssues.length?'warning':'success',2600); return appState.editor.validationIssues; }
-  function v117ConflictRackIds(){ return new Set((appState.editor?.validationIssues||[]).flatMap(i=>i.rackIds||[])); }
-  function v117ConflictWallIds(){ return new Set((appState.editor?.validationIssues||[]).map(i=>i.wallId).filter(Boolean)); }
+  function v117ConflictRackIds(){ return new Set((appState.editor?.validationIssues||[]).filter(i=>i.severity==='error').flatMap(i=>i.rackIds||[])); }
+  function v117ConflictWallIds(){ return new Set((appState.editor?.validationIssues||[]).filter(i=>i.severity==='error').map(i=>i.wallId).filter(Boolean)); }
   function v117FocusIssue(index){
     const issue=(appState.editor?.validationIssues||[])[Number(index)]; if(!issue)return;
     if(issue.rackIds?.length)setSelectedRackIds(issue.rackIds); if(issue.wallId)appState.selectedWallId=issue.wallId;
@@ -17207,7 +17216,7 @@ function getSheetBranchOpenMap(){
   }
   function v216AddUnionMeshes(THREE,host,bands,mapper,register,options={}){
     if(!bands.length)return;
-    const voids=v216OpeningVoids(options.walls||null);
+    const voids=options.voids||v216OpeningVoids(options.walls||null);
     const levels=[...new Set([...bands,...voids].flatMap(b=>[b.y0,b.y1]))].sort((a,b)=>a-b);
     for(let i=0;i<levels.length-1;i++){
       const y0=levels[i],y1=levels[i+1],mid=(y0+y1)/2;if(y1-y0<1e-7)continue;
@@ -19394,9 +19403,10 @@ function v222RackName(rack){
   const model=v222ModelFor(rack),source=rack?.furnitureSource;
   return String(rack?.name||(source?.name&&rack?.virtualName===source.name?model?.name:rack?.virtualName)||model?.name||rack?.id||'Mueble');
 }
-function v222RackCode(rack){ return String(rack?.displayCode||rack?.id||''); }
+function v222RackCode(rack){ return typeof v225RackCode==='function'?v225RackCode(rack):String(rack?.displayCode||rack?.id||''); }
 function v222CodeKey(value){ return String(value||'').normalize('NFKC').trim().toLocaleUpperCase('es'); }
 function v222CodePlan(rack,value){
+  if(typeof v225CodePlan==='function')return v225CodePlan(rack,value);
   const next=String(value??'').trim().slice(0,80),current=v222RackCode(rack);
   if(!next)return {ok:false,msg:'La nomenclatura no puede quedar vacía.'};
   const others=(appState.layout?.racks||[]).filter(r=>r.id!==rack.id);
@@ -19408,6 +19418,10 @@ function v222ApplyCodePlan(rack,plan){
   if(!plan.ok||!plan.changed)return;
   if(plan.other)plan.other.displayCode=plan.current;
   rack.displayCode=plan.next;
+  if(typeof v225CodeZone==='function'){
+    const zone=v225CodeZone(rack);if(zone)rack.nomenclatureZoneId=zone.id;
+    if(plan.other){const otherZone=v225CodeZone(plan.other);if(otherZone)plan.other.nomenclatureZoneId=otherZone.id;}
+  }
 }
 function v222PrepareRackCopy(copy,source){
   const taken=new Set((appState.layout?.racks||[]).filter(r=>r.id!==copy.id).map(r=>v222CodeKey(v222RackCode(r))));let code=String(copy.id),suffix=1;while(taken.has(v222CodeKey(code)))code=String(copy.id)+'-'+suffix++;
@@ -19452,6 +19466,7 @@ function v222SynchronizeModels({persist=true}={}){
     }
     const layouts=[appState.layout,...Object.values(appState.branchLayouts||{})].filter(Boolean),seen=new Set();
     for(const layout of layouts){if(seen.has(layout))continue;seen.add(layout);for(const rack of layout.racks||[])changed=v222SyncRack(rack,layout)||changed;
+      if(typeof v225SyncRackCodes==='function')changed=v225SyncRackCodes(layout)||changed;
       for(let pass=0;pass<Math.min(12,(layout.racks||[]).length);pass++){let moved=false;for(const rack of layout.racks||[]){if(!rack.stackedOnId)continue;const support=layout.racks.find(r=>r.id===rack.stackedOnId);if(!support)continue;const top=Number(support.baseHeight||0)+v222Dimensions(support).height;if(Math.abs(Number(rack.baseHeight||0)-top)>.01){rack.baseHeight=top;moved=true;changed=true;}}if(!moved)break;}
     }
     if(persist&&changed&&appState.layout){
@@ -19512,8 +19527,8 @@ function v222RackPropertiesMarkup(rack,model,fp,modelOptions){
   const dims=v222Dimensions(rack),custom=['width','depth','height'].some(key=>rack.furnitureOverrides?.[key]!=null);
   return `<section class="layout-prop-card v222-rack-properties"><div class="layout-prop-title">Mueble seleccionado</div><small class="v222-rack-model-label">${escapeHtml(model?.name||'Modelo de mobiliario')}</small><div class="layout-prop-grid two">
     <label style="grid-column:1/-1">Nombre del mueble<input id="rpRackName" maxlength="80" value="${escapeHtml(v222RackName(rack))}" placeholder="Ej. Exhibidor de herramientas"></label>
-    <label style="grid-column:1/-1">Nomenclatura<input id="rpRackDisplayCode" maxlength="80" value="${escapeHtml(v222RackCode(rack))}" placeholder="Ej. A-01-R03"></label>
-    <small class="v222-code-hint" style="grid-column:1/-1">Si el código ya existe, se intercambia con ese mueble.</small>
+    <label style="grid-column:1/-1">Nomenclatura<input id="rpRackDisplayCode" maxlength="80" value="${escapeHtml(v222RackCode(rack))}" placeholder="Ej. Z3-E5"></label>
+    <small class="v222-code-hint" style="grid-column:1/-1">El prefijo sigue la zona. Un código repetido en esa zona intercambia los números.</small>
     <label>Ancho (cm)<input id="rpRackWidth" type="number" min="30" step=".1" value="${round1(dims.width)}"></label><label>Profundidad (cm)<input id="rpRackDepth" type="number" min="20" step=".1" value="${round1(dims.depth)}"></label>
     <label>Altura (cm)<input id="rpRackHeight" type="number" min="60" step=".1" value="${round1(dims.height)}"></label><label>NPT desde piso (cm)<input id="rpRackNpt" type="number" min="0" max="20000" step="1" value="${round1(rack.baseHeight||0)}"></label>
     </div><div class="v222-rack-measures"><small>${custom?'Medidas particulares de este mueble':'Medidas vinculadas al modelo'}</small>${custom?'<button class="seg-btn v222-reset-dimensions" id="rpRackResetDimensions">Usar medidas del modelo</button>':''}</div>
@@ -19614,6 +19629,190 @@ function v222EditModelField(id,field,value){
   }
   if(model.furniture.enabled){furnitureRefitModel(model);syncFurnitureModelToLegacy(model);const errors=furnitureValidateModel(model).errors;if(field==='levels'&&model.levels!==Math.round(v222Number(value,previous.levels,1,12)))errors.unshift('La altura no permite esa cantidad de niveles. Aumenta la altura o reduce los niveles.');if(errors.length){Object.keys(model).forEach(k=>delete model[k]);Object.assign(model,previous);showToast(errors[0],'warning',3000);v222RenderLibrary();return;}}
   saveRackModels();if(appState.screen==='racks')v222RenderLibrary();else renderRackModelPreview();
+}
+/* V225 — nomenclatura por zona y encuentros físicos comunes a CAD y Three.js. */
+function v225CodeZone(rack,layout=appState.layout){
+  return (layout?.zones||[]).find(z=>String(z.id)===String(rack?.zoneId))||null;
+}
+function v225RackCodeSuffix(rack,value=rack?.displayCode||rack?.id,layout=appState.layout){
+  let suffix=String(value||'').trim();
+  const prefixes=[rack?.nomenclatureZoneId,rack?.zoneId,...(layout?.zones||[]).map(z=>z.id)].filter(Boolean).map(String).sort((a,b)=>b.length-a.length);
+  const prefix=prefixes.find(p=>suffix.toLocaleUpperCase('es').startsWith(p.toLocaleUpperCase('es')+'-'));
+  if(prefix)suffix=suffix.slice(prefix.length+1);
+  else suffix=suffix.replace(/^(?:Z\d+|ALM(?:ACEN)?)-/i,'');
+  if(!suffix)suffix=String(rack?.id||'E1').replace(/^(?:Z\d+|ALM(?:ACEN)?)-/i,'')||'E1';
+  return /^\d+$/.test(suffix)?'E'+suffix:suffix;
+}
+function v225RackCode(rack,layout=appState.layout){
+  const zone=v225CodeZone(rack,layout);
+  if(!zone)return String(rack?.displayCode||rack?.id||'');
+  return String(zone.id).trim().toLocaleUpperCase('es')+'-'+v225RackCodeSuffix(rack,undefined,layout);
+}
+function v225SyncRackCodes(layout=appState.layout,{reassign=false}={}){
+  if(!layout)return false;
+  let changed=false;
+  const zones=layout.zones||[],racks=layout.racks||[],taken=new Set(),pending=[];
+  for(const rack of racks){
+    if(reassign){
+      const center={x:Number(rack.x||0)+Number(rack.w||0)/2,y:Number(rack.y||0)+Number(rack.h||0)/2};
+      const host=zones.find(z=>z.pts?.length>=3&&pointInPoly(center,z.pts));
+      if(host&&rack.zoneId!==host.id){rack.zoneId=host.id;changed=true;}
+    }
+    const zone=v225CodeZone(rack,layout),code=v225RackCode(rack,layout),raw=String(rack.displayCode||rack.id||'');
+    const item={rack,zone,code};
+    // Los códigos que ya pertenecen al destino se reservan antes de los que llegan.
+    if(v222CodeKey(raw)===v222CodeKey(code)&&!taken.has(v222CodeKey(code))){taken.add(v222CodeKey(code));pending.push({...item,reserved:true});}
+    else pending.push(item);
+  }
+  for(const item of pending){
+    const {rack,zone}=item;let code=item.code;
+    if(!item.reserved){
+      if(taken.has(v222CodeKey(code))){
+        const prefix=zone?String(zone.id).trim().toLocaleUpperCase('es')+'-':'';
+        let number=1;
+        for(const key of taken){if(key.startsWith(v222CodeKey(prefix))){const match=key.slice(prefix.length).match(/^E(\d+)$/);if(match)number=Math.max(number,Number(match[1])+1);}}
+        if(zone){code=prefix+'E'+number;while(taken.has(v222CodeKey(code)))code=prefix+'E'+(++number);}
+        else{let n=2;while(taken.has(v222CodeKey(code)))code=item.code+'-'+n++;}
+      }
+      taken.add(v222CodeKey(code));
+    }
+    if(rack.displayCode!==code){rack.displayCode=code;changed=true;}
+    if(zone&&rack.nomenclatureZoneId!==zone.id){rack.nomenclatureZoneId=zone.id;changed=true;}
+  }
+  return changed;
+}
+function v225CodePlan(rack,value){
+  const raw=String(value??'').trim().slice(0,80);
+  if(!raw)return {ok:false,msg:'La nomenclatura no puede quedar vacía.'};
+  const zone=v225CodeZone(rack),next=zone?String(zone.id).trim().toLocaleUpperCase('es')+'-'+v225RackCodeSuffix(rack,raw):raw;
+  if(next.length>80)return {ok:false,msg:'La nomenclatura admite hasta 80 caracteres, incluido el prefijo de zona.'};
+  const current=v225RackCode(rack),matches=(appState.layout?.racks||[]).filter(r=>r.id!==rack.id&&v222CodeKey(v225RackCode(r))===v222CodeKey(next));
+  if(matches.length>1)return {ok:false,msg:'Ese código corresponde a varios muebles. Renombra uno antes de intercambiar.'};
+  return {ok:true,next,current,other:matches[0]||null,changed:next!==current};
+}
+
+// Alturas en metros; coordenadas XY en unidades CAD, igual que los muros del visor.
+function v225WallBandsFor(wall,walls=appState.layout.walls,levels=null){
+  const scale=getScaleCmPerUnit()/100,L=wallLength(wall);
+  if(L<1)return [];
+  const height=v219WallRenderHeight(wall,getScaleCmPerUnit());
+  const heights=levels||[...new Set([0,...walls.map(w=>v219WallRenderHeight(w,getScaleCmPerUnit()))])].sort((a,b)=>a-b);
+  const openings=(appState.layout.openings||[]).filter(o=>o.wallId===wall.id).map(o=>{
+    const source=(appState.layout.walls||[]).find(w=>w.id===wall.id)||wall,segment=getOpeningSegment(o,source),defaults=openingDefaultForType(o.type);
+    const c=Number(segment?.t??o.t??.5)*(wall.v217SourceLength||L)-(wall.v217StartDistance||0),half=Number(segment?.width||o.width||90)/2;
+    return {left:Math.max(0,c-half),right:Math.min(L,c+half),low:Math.max(0,Number(o.sill??defaults.sill))*scale,high:Math.min(height,(Math.max(0,Number(o.sill??defaults.sill))+Math.max(20,Number(o.height||defaults.height)))*scale)};
+  }).filter(o=>o.right>o.left&&o.low<height);
+  const cuts=[...new Set([0,L,...openings.flatMap(o=>[o.left,o.right])])].sort((a,b)=>a-b),bands=[];
+  const add=(a,b,y0,y1)=>{
+    if((b-a)*scale<.000001||y1-y0<.000001)return;
+    const slices=[y0,...heights.filter(h=>h>y0+1e-7&&h<y1-1e-7),y1];
+    for(let i=0;i<slices.length-1;i++){
+      const low=slices[i],high=slices[i+1],neighbors=walls.filter(w=>v219WallRenderHeight(w,getScaleCmPerUnit())>=high-1e-7);
+      const slice=getWallSlicePolygon(wall,a/L,b/L,1,neighbors);
+      if(slice?.poly?.length>=3)bands.push({poly:slice.poly,y0:low,y1:high,wallId:wall.id,cutaway:!!wall.v219Cutaway});
+    }
+  };
+  for(let i=0;i<cuts.length-1;i++){
+    const a=cuts[i],b=cuts[i+1],mid=(a+b)/2,voids=openings.filter(o=>o.left<=mid&&o.right>=mid).sort((x,y)=>x.low-y.low);
+    let cursor=0;
+    for(const hole of voids){if(hole.low>cursor)add(a,b,cursor,hole.low);cursor=Math.max(cursor,hole.high);}
+    if(cursor<height)add(a,b,cursor,height);
+  }
+  return bands;
+}
+function v225JointBands(walls,bands,levels){
+  const result=[];
+  for(let i=0;i<levels.length-1;i++){
+    const y0=levels[i],y1=levels[i+1],neighbors=walls.filter(w=>v219WallRenderHeight(w,getScaleCmPerUnit())>=y1-1e-7);
+    for(const joint of v216JointPieces(neighbors)){
+      const host=bands.find(b=>joint.ids.includes(b.wallId)&&b.y0<=y0+1e-7&&b.y1>=y1-1e-7);
+      if(host)result.push({poly:joint.poly,y0,y1,wallId:host.wallId,wallIds:joint.ids,material:host.material,cutaway:host.cutaway});
+    }
+  }
+  return result;
+}
+let v225WallCache=null;
+function v225WallSolids(){
+  const layout=appState.layout,signature=JSON.stringify([getScaleCmPerUnit(),layout.walls,layout.openings,(layout.zones||[]).map(z=>[z.id,z.pts])]);
+  if(v225WallCache?.signature===signature)return v225WallCache.cells;
+  // El corte del diorama es visual. La ocupación física conserva la altura guardada.
+  const walls=(layout.walls||[]).map(w=>{const copy={...w};delete copy.v219Cutaway;return copy;});
+  const heights=[...new Set([0,...walls.map(w=>v219WallRenderHeight(w,getScaleCmPerUnit()))])].sort((a,b)=>a-b);
+  const bands=walls.flatMap(w=>v225WallBandsFor(w,walls,heights));bands.push(...v225JointBands(walls,bands,heights));
+  const voids=v216OpeningVoids(),levels=[...new Set([...bands,...voids].flatMap(b=>[b.y0,b.y1]))].sort((a,b)=>a-b),cells=[];
+  for(let i=0;i<levels.length-1;i++){
+    const y0=levels[i],y1=levels[i+1],mid=(y0+y1)/2,active=bands.filter(b=>b.y0<=mid&&b.y1>=mid);
+    if(!active.length)continue;
+    const holes=voids.filter(v=>v.y0<=mid&&v.y1>=mid).map(v=>v.poly);
+    cells.push({y0,y1,parts:active,rings:v216Union(active.map(b=>b.poly),holes)});
+  }
+  v225WallCache={signature,cells};return cells;
+}
+function v225ClipToConvex(poly,clip){
+  let result=poly.map(p=>({...p}));
+  for(let i=0;i<clip.length&&result.length;i++){
+    const a=clip[i],b=clip[(i+1)%clip.length],side=p=>(b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x),out=[];
+    for(let j=0;j<result.length;j++){
+      const p=result[j],q=result[(j+1)%result.length],sp=side(p),sq=side(q),inP=sp>=0,inQ=sq>=0;
+      if(inP)out.push(p);
+      if(inP!==inQ){const t=sp/(sp-sq);out.push({x:p.x+(q.x-p.x)*t,y:p.y+(q.y-p.y)*t});}
+    }
+    result=out;
+  }
+  return result;
+}
+function v225RackWallHits(rack){
+  const epsilon=.02/Math.max(.0001,getScaleCmPerUnit()),fp=getRackFootprint(rack.modelId,rack.rot||0,rack),corners=rackCorners(rack);
+  const cx=Number(rack.x||0)+Number(rack.w||fp.w)/2,cy=Number(rack.y||0)+Number(rack.h||fp.h)/2;
+  const rad=Number(rack.rot||0)*Math.PI/180,c=Math.cos(rad),s=Math.sin(rad),bw=Math.max(0,fp.baseW-2*epsilon),bh=Math.max(0,fp.baseH-2*epsilon);
+  if(!bw||!bh||corners.length!==4)return [];
+  const clip=[[-bw/2,-bh/2],[bw/2,-bh/2],[bw/2,bh/2],[-bw/2,bh/2]].map(([x,y])=>({x:cx+x*c-y*s,y:cy+x*s+y*c}));
+  const low=Number(rack.baseHeight||0)/100,high=low+v222Dimensions(rack).height/100,hits=new Set();
+  for(const cell of v225WallSolids()){
+    if(high<=cell.y0+.0002||cell.y1<=low+.0002)continue;
+    const area=cell.rings.reduce((sum,ring)=>sum+v216SignedArea(v225ClipToConvex(ring,clip)),0);
+    if(area<=epsilon*epsilon*.001)continue;
+    for(const part of cell.parts){if(Math.abs(v216SignedArea(v225ClipToConvex(part.poly,clip)))>epsilon*epsilon*.001)(part.wallIds||[part.wallId]).forEach(id=>hits.add(id));}
+  }
+  return [...hits];
+}
+let v225ValidationSignature='';
+function v225RefreshValidation(){
+  if(typeof v117OperationalIssues!=='function')return;
+  const layout=appState.layout,signature=JSON.stringify([layout.zones,layout.walls,layout.openings,layout.meta?.scaleCmPerUnit,layout.meta?.minAisleCm,(layout.racks||[]).map(r=>[r.id,r.zoneId,r.displayCode,r.x,r.y,r.w,r.h,r.rot,r.modelId,r.baseHeight,r.rackHeight,r.virtual,r.furnitureOverrides,r.stackedOnId])]);
+  if(signature===v225ValidationSignature&&Array.isArray(appState.editor.validationIssues))return;
+  appState.editor.validationIssues=v117OperationalIssues();appState.editor.validationAt=Date.now();
+  v225ValidationSignature=signature;
+}
+function v225RackWorldSize(rack,scale,heightScale=scale){
+  const fp=getRackFootprint(rack.modelId,rack.rot||0,rack),cm=Math.max(.0001,getScaleCmPerUnit()),dims=v222Dimensions(rack);
+  return {w:fp.baseW*scale,d:fp.baseH*scale,h:dims.height/cm*heightScale,base:Number(rack.baseHeight||0)/cm*heightScale};
+}
+function v225WallFaceForRack(wall,rack){
+  const raw=getWallRawSlicePolygon(wall),center={x:rack.x+rack.w/2,y:rack.y+rack.h/2};
+  if(!raw)return null;
+  const dot=(center.x-raw.a.x)*raw.normal.x+(center.y-raw.a.y)*raw.normal.y,offset=getWallFaceOffsets(wall);
+  const distance=dot>=0?offset.left:-offset.right;
+  return {a:{x:raw.a.x+raw.normal.x*distance,y:raw.a.y+raw.normal.y*distance},b:{x:raw.b.x+raw.normal.x*distance,y:raw.b.y+raw.normal.y*distance}};
+}
+function v225SnapRackWalls(rack,excluded=[]){
+  const gap=Math.max(0,Number(appState.editor?.rackAlignClearanceCm||0))/getScaleCmPerUnit(),threshold=Math.max(3,Math.min(14,getSnapSize()*3));
+  let best=null;
+  for(const wall of appState.layout.walls||[]){
+    const face=v225WallFaceForRack(wall,rack);if(!face)continue;
+    const dx=face.b.x-face.a.x,dy=face.b.y-face.a.y,len=Math.hypot(dx,dy),ux=dx/len,uy=dy/len;
+    const center={x:rack.x+rack.w/2,y:rack.y+rack.h/2},side=(center.x-face.a.x)*(-uy)+(center.y-face.a.y)*ux>=0?1:-1,nx=-uy*side,ny=ux*side;
+    for(const edge of rackContourEdges(rack)){
+      if(edge.nx*nx+edge.ny*ny>-.9999)continue;
+      const distance=(edge.a.x-face.a.x)*nx+(edge.a.y-face.a.y)*ny,shift=gap-distance;
+      const along=p=>(p.x-face.a.x)*ux+(p.y-face.a.y)*uy,lo=Math.min(along(edge.a),along(edge.b)),hi=Math.max(along(edge.a),along(edge.b));
+      if(Math.min(hi,len)-Math.max(lo,0)<.5||Math.abs(shift)>threshold+1e-7)continue;
+      const next={...rack,x:rack.x+nx*shift,y:rack.y+ny*shift};
+      if(v225RackWallHits(next).length||(appState.layout.racks||[]).some(r=>r.id!==rack.id&&!excluded.includes(r.id)&&rackVerticalOverlap(r,next)&&rackContoursOverlap(r,next)))continue;
+      if(!best||Math.abs(shift)<best.cost)best={rack:next,cost:Math.abs(shift),kind:'wall',target:face,moving:rackContourEdges(next)[edge.index],label:`Cara del muro · ${round1(gap*getScaleCmPerUnit())} cm`};
+    }
+  }
+  return best;
 }
 /* WMS V161: modelos 3D paramétricos de mobiliario y cajas colocadas sobre niveles.
  * Geometría y materiales creados en Three.js; sin imágenes incrustadas ni modelos remotos.
@@ -19907,7 +20106,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     (appState.layout?.racks||[]).forEach(r=>{
       const sp=vspaceSpec(r);
       for(let l=1;l<=sp.levels;l++) for(let s=1;s<=sp.slots;s++){
-        vspaceProductsForSlot(r,l,s).forEach(p=>rows.push({...p,rackId:r.id,level:l,slot:s,code:`${r.id}-N${l}-S${s}`}));
+        vspaceProductsForSlot(r,l,s).forEach(p=>rows.push({...p,rackId:r.id,level:l,slot:s,code:`${v222RackCode(r)}-N${l}-S${s}`}));
       }
     });
     return rows;
@@ -19927,13 +20126,15 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
   }
   function vspaceFits(candidate,ignoreId=''){
     const zone=(appState.layout?.zones||[]).find(z=>z.id===candidate.zoneId);
-    if(!zone || !vspaceCorners(candidate).every(p=>vspacePointInZone(p,zone)))return {ok:false,msg:'El mueble sale de la zona. Cambia su posición o dimensiones.'};
+    if(!zone || !rackFullyInsideZone(candidate,zone))return {ok:false,msg:'El mueble sale de la zona. Cambia su posición o dimensiones.'};
     const b=vspaceBounds(candidate);
     const collision=(appState.layout.racks||[]).find(r=>{
-      if(r.id===ignoreId || r.zoneId!==candidate.zoneId)return false;
+      if(r.id===ignoreId)return false;
       const aLow=Number(r.baseHeight||0), bLow=Number(candidate.baseHeight||0);const aHigh=aLow+Number(r.rackHeight||vspaceSpec(r).height||200),bHigh=bLow+Number(candidate.rackHeight||vspaceSpec(candidate).height||200);if(aHigh<=bLow+.5 || bHigh<=aLow+.5)return false;
       return rackContoursOverlap(candidate,r,0.02);
     });
+    const walls=typeof v225RackWallHits==='function'?v225RackWallHits(candidate):[];
+    if(walls.length)return {ok:false,msg:`El mueble invade el muro ${walls[0]}.`};
     return collision?{ok:false,msg:`Colisión detectada con ${collision.virtualName||collision.id}.`}:{ok:true,msg:''};
   }
   // V196: apilamiento interactivo sin perder la identidad ni las piezas de los muebles.
@@ -19953,6 +20154,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     return result;
   }
   function vspaceStackIntersect(a,b){
+    if(typeof v225RackWallHits==='function')return rackVerticalOverlap(a,b)&&rackContoursOverlap(a,b,.02/Math.max(.0001,getScaleCmPerUnit()));
     const az=Number(a.baseHeight||0),bz=Number(b.baseHeight||0);
     if(az+vspaceStackHeight(a)<=bz+.5||bz+vspaceStackHeight(b)<=az+.5)return false;
     return rackContoursOverlap(a,b,0.02);
@@ -19962,12 +20164,14 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     const others=(appState.layout?.racks||[]).filter(r=>!ids.has(r.id));
     for(const p of changes){
       const zone=(appState.layout?.zones||[]).find(z=>z.id===p.zoneId);
-      if(!zone||!vspaceCorners(p).every(pt=>vspacePointInZone(pt,zone)))return {ok:false,msg:`${p.id} no cabe en la zona.`};
-      const crash=others.find(r=>r.zoneId===p.zoneId&&vspaceStackIntersect(p,r));
+      if(!zone||!rackFullyInsideZone(p,zone))return {ok:false,msg:`${p.id} no cabe en la zona.`};
+      const walls=typeof v225RackWallHits==='function'?v225RackWallHits(p):[];
+      if(walls.length)return {ok:false,msg:`${v222RackCode(p)} invade el muro ${walls[0]}.`};
+      const crash=others.find(r=>vspaceStackIntersect(p,r));
       if(crash)return {ok:false,msg:`Interferencia con ${crash.virtualName||crash.id}.`};
     }
     for(let i=0;i<changes.length;i++)for(let j=i+1;j<changes.length;j++){
-      if(changes[i].zoneId===changes[j].zoneId&&vspaceStackIntersect(changes[i],changes[j]))return {ok:false,msg:`Los módulos ${changes[i].id} y ${changes[j].id} se superponen.`};
+      if(vspaceStackIntersect(changes[i],changes[j]))return {ok:false,msg:`Los módulos ${changes[i].id} y ${changes[j].id} se superponen.`};
     }
     const proposedMap=new Map(changes.map(item=>[item.id,item]));
     for(const child of changes){
@@ -20069,7 +20273,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
   function vspaceUpdateRack(rack,patch){
     if(!rack || !vspaceIsEditable())return;
     const cloneRack=clone(rack),currentSpec=vspaceSpec(rack);cloneRack.furnitureOverrides={...(rack.furnitureOverrides||{})};cloneRack.furnitureDataVersion=222;
-    const codePlan=patch.code!==undefined?v222CodePlan(rack,patch.code):null;if(codePlan&&!codePlan.ok){vspaceToast(codePlan.msg,true);return;}
+    let codePlan=null;
     if(patch.name!==undefined)cloneRack.name=cloneRack.virtualName=String(patch.name).trim().slice(0,80)||v222RackName(rack);
     if(patch.x!==undefined)cloneRack.x=vspaceFloat(patch.x,rack.x);
     if(patch.y!==undefined)cloneRack.y=vspaceFloat(patch.y,rack.y);
@@ -20098,6 +20302,8 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     const invalid=(rack.virtualPlacements||[]).some(a=>Number(a.level)>spec.levels||Number(a.slot)>spec.slots)
       ||(rack.virtualContainers||[]).some(a=>a.kind!=='none'&&Number(a.count)>0&&(Number(a.level)>spec.levels||Number(a.slot)>spec.slots));
     if(invalid){vspaceToast('Hay productos o cajas en niveles que desaparecerían. Reubícalos antes de reducirlos.',true);vspaceActive?.refreshInspector();return;}
+    const host=distributionHostForRack(cloneRack);if(host)cloneRack.zoneId=host.id;
+    codePlan=patch.code!==undefined?v222CodePlan(cloneRack,patch.code):null;if(codePlan&&!codePlan.ok){vspaceToast(codePlan.msg,true);return;}
     const proposals=vspaceFollowAttachedModules(rack,cloneRack);
     const fitting=vspaceValidateRackProposals(proposals);
     if(!fitting.ok){vspaceToast(fitting.msg,true);vspaceActive?.refreshInspector();return;}
@@ -20133,6 +20339,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
     // La maqueta y el CAD comparten muros. Convertir el perímetro inicial una sola vez
     // para que las paredes que antes eran solo visuales también sean editables.
     ensureLayoutMeta();
+    if(typeof v225SyncRackCodes==='function')v225SyncRackCodes();
     if(!appState.layout.meta.architectureInitializedV180){
       if(!(appState.layout.walls || []).length){
         (appState.layout.zones || []).forEach(zone => {
@@ -20964,44 +21171,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
             const h=Math.max(20,Number(o.height||210))*scale;
             return {o,left:Math.max(0,c-w/2),right:Math.min(length,c+w/2),c,w,sill,h};
           }).filter(o=>o.c+o.w/2>0&&o.c-o.w/2<length&&o.sill<wallHeight-1e-7).sort((a,b)=>a.left-b.left);
-          const cuts=[0,length,...openings.flatMap(o=>[o.left,o.right])].sort((a,b)=>a-b);
-          const breaks=cuts.filter((n,i)=>i===0||Math.abs(n-cuts[i-1])>.001);
-          const addWallPiece=(l,r,y0,y1)=>{
-            if(r-l<.008||y1-y0<.008)return;
-            const split=wallHeightLevels.find(h=>h>y0+1e-7&&h<y1-1e-7);
-            if(split!==undefined){addWallPiece(l,r,y0,split);addWallPiece(l,r,split,y1);return;}
-            let geo=null,position=null;
-            // V210: project the joined CAD footprint into this wall's local
-            // x/z frame so the virtual designer and layout close on the same
-            // bevel/miter points, even at diagonal-to-vertical intersections.
-            const neighbors=visibleWallParts.filter(p=>v219WallRenderHeight(p,getScaleCmPerUnit())>=y1-1e-7);
-            const slice=typeof getWallSlicePolygon==='function'?getWallSlicePolygon(wall,l/length,r/length,1,neighbors):null;
-            if(slice?.poly){wallUnionBands.push({poly:slice.poly,y0,y1,wallId:wall.id,material:mat,cutaway:!!wall.v219Cutaway});return;}
-            if(slice?.poly?.length===4){
-              const d={x:dx/L,y:dy/L};const n={x:-d.y,y:d.x};
-              const ax=Number(wall.x1||0),ay=Number(wall.y1||0);
-              const coords=slice.poly.map(p=>{const rx=p.x-ax,ry=p.y-ay;return {x:(rx*d.x+ry*d.y)*scale,z:(rx*n.x+ry*n.y)*scale};});
-              const positions=[];coords.forEach(p=>positions.push(p.x,y0,p.z));coords.forEach(p=>positions.push(p.x,y1,p.z));
-              const indices=[0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7];
-              geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setIndex(indices);geo.computeVertexNormals();
-              position={x:0,y:0,z:0};
-            }else{geo=new THREE.BoxGeometry(r-l,y1-y0,thickness);position={x:(l+r)/2,y:(y0+y1)/2,z:faceCenter};}
-            const mesh=new THREE.Mesh(geo,mat);
-            mesh.position.set(position.x,position.y,position.z);
-            mesh.castShadow=true;mesh.receiveShadow=true;
-            mesh.userData={wallId:wall.id,entityType:'wall'};
-            group.add(mesh);state.architectureMeshes.push(mesh);
-            const edge=new THREE.LineSegments(new THREE.EdgesGeometry(geo),lineMat);
-            edge.position.copy(mesh.position);group.add(edge);
-          };
-          for(let i=0;i<breaks.length-1;i++){
-            const l=breaks[i],r=breaks[i+1],mid=(l+r)/2;
-            if(r-l<.008)continue;
-            const voids=openings.filter(o=>o.left<=mid+.001&&o.right>=mid-.001).map(o=>[o.sill,Math.min(wallHeight,o.sill+o.h)]).sort((a,b)=>a[0]-b[0]);
-            let cursor=0;
-            voids.forEach(([a,b])=>{if(a>cursor+.008)addWallPiece(l,r,cursor,a);cursor=Math.max(cursor,b);});
-            if(wallHeight>cursor+.008)addWallPiece(l,r,cursor,wallHeight);
-          }
+          v225WallBandsFor(wall,visibleWallParts,wallHeightLevels).forEach(band=>wallUnionBands.push({...band,material:mat}));
           const frameMat=meshMat(0x515a55,{metalness:.38,roughness:.48});
           const glassMat=meshMat(0xadc9c5,{metalness:.08,roughness:.18,transparent:true,opacity:.33,depthWrite:false,side:THREE.DoubleSide});
           const addTrim=(o,cx,cy,w,h,d,material)=>{
@@ -21221,7 +21391,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           const urbanItem=urbanHit?(appState.layout.streets||[]).find(s=>s.id===urbanHit.streetId)?.streetFurniture?.find(item=>item.id===urbanHit.furnitureId):null;
           const wantsPan = e.button===1 || e.button===2 || e.shiftKey;
           gesture={x:e.clientX,y:e.clientY,button:e.button,mode:(e.button===0&&state.move&&canWrite()&&urbanItem&&!e.shiftKey)?'move-urban':(e.button===0&&state.move&&canWrite()&&rack&&!rack.stackedOnId&&!e.shiftKey)?'move':wantsPan?'pan':'orbit',rackId:rack?.id||'',urbanId:urbanHit?.furnitureId||'',streetId:urbanHit?.streetId||'',
-            initialX:Number(rack?.x||0),initialY:Number(rack?.y||0),urbanStartX:Number(urbanItem?.x||0),urbanStartY:Number(urbanItem?.y||0),groundStart:point,moved:false};
+            historyBefore:rack?clone(appState.layout.racks):null,initialX:Number(rack?.x||0),initialY:Number(rack?.y||0),urbanStartX:Number(urbanItem?.x||0),urbanStartY:Number(urbanItem?.y||0),groundStart:point,moved:false};
           try{canvas.setPointerCapture(e.pointerId);}catch(_){}
         });
         canvas.addEventListener('pointermove',e=>{
@@ -21250,14 +21420,14 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
           }else if(gesture.mode==='move'){
             const rack=appState.layout.racks.find(r=>r.id===gesture.rackId),current=groundPoint(e);
             if(rack&&current&&gesture.groundStart){
-              const candidate={...rack,x:Math.round(gesture.initialX+current.x-gesture.groundStart.x),y:Math.round(gesture.initialY+current.y-gesture.groundStart.y)};
+              const candidate=distributionRackPlacement(rack,gesture.initialX+current.x-gesture.groundStart.x,gesture.initialY+current.y-gesture.groundStart.y,{ignoreSnap:!!e.ctrlKey,ignoreRackIds:vspaceStackFamily(rack.id).map(r=>r.id)});
               const drafts=vspaceFollowAttachedModules(rack,candidate);
               if(vspaceValidateRackProposals(drafts).ok){
                 drafts.forEach(next=>{
                   const current=(appState.layout.racks||[]).find(item=>item.id===next.id);if(!current)return;
-                  current.x=next.x;current.y=next.y;current.baseHeight=next.baseHeight;
+                  Object.assign(current,{x:next.x,y:next.y,w:next.w,h:next.h,rot:next.rot,zoneId:next.zoneId,baseHeight:next.baseHeight});
                   const group=state.objects.get(current.id);
-                  if(group){const cp=coord({x:current.x+current.w/2,y:current.y+current.h/2});group.position.x=cp.x;group.position.z=cp.z;group.position.y=Number(current.baseHeight||0)/100;}
+                  if(group){const cp=coord({x:current.x+current.w/2,y:current.y+current.h/2});group.position.x=cp.x;group.position.z=cp.z;group.position.y=Number(current.baseHeight||0)/100;group.rotation.y=-Number(current.rot||0)*Math.PI/180;}
                 });state.refreshMiniLayout();
               }
             }
@@ -21266,7 +21436,7 @@ function vspaceBuildIsometricFurniture(THREE, group, rack, spec, options){
         });
         canvas.addEventListener('pointerup',()=>{
           if(gesture?.mode==='move-urban'&&gesture.moved){vspaceCommit('mobiliario urbano desplazado');state.refreshInspector();}
-          if(gesture?.mode==='move'&&gesture.moved){vspaceCommit('mueble desplazado');state.refreshInspector();}
+          if(gesture?.mode==='move'&&gesture.moved){if(gesture.historyBefore)recordHistorySnapshot('distribution',gesture.historyBefore);clearRackSnapPreview();vspaceCommit('mueble desplazado');state.refreshInspector();}
           // Camera cut is evaluated in the render frame; rebuild only if the visible set changes.
           gesture=null;
         });

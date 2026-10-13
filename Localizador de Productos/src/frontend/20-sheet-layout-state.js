@@ -453,6 +453,8 @@
     if(!appState.branchLayouts) appState.branchLayouts = {};
     normalizeLayoutSectionState();
     ensureLayoutMeta();
+    if(typeof v225SyncRackCodes==='function')v225SyncRackCodes(appState.layout,{reassign:!bucket?.isApplying});
+    if(typeof v225RefreshValidation==='function')v225RefreshValidation();
     if(!bucket?.isApplying){recordHistorySnapshot(historyType);if(typeof snapshotForType==='function'){bucket.operationLabels=bucket.operationLabels||{};const key=JSON.stringify(snapshotForType(historyType));if(operation!=='cambio'||!bucket.operationLabels[key])bucket.operationLabels[key]=operation;const retained=new Set([...bucket.undoStack,...bucket.redoStack]);Object.keys(bucket.operationLabels).forEach(key=>{if(!retained.has(key))delete bucket.operationLabels[key];});}}
     appState.branchLayouts[idx] = clone(appState.layout);
     const saved=saveBranchLayouts();
@@ -472,6 +474,7 @@
     appState.editor.dragging = null;
     appState.editor.mode = 'select';
     ensureRackProps();
+    if(typeof v225SyncRackCodes==='function')v225SyncRackCodes(appState.layout,{reassign:true});
   }
   function setLayoutBranch(branchIndex){
     persistActiveLayout();
@@ -739,13 +742,13 @@
   }
   function renameRackByZone(rack, zoneId, seq){
     rack.zoneId = zoneId;
-    rack.id = `${zoneId}-E${seq}`;
+    if(typeof v225SyncRackCodes==='function'){rack.displayCode=`${zoneId}-E${seq}`;rack.nomenclatureZoneId=zoneId;}else rack.id = `${zoneId}-E${seq}`;
   }
   function assignRackToZone(rack, zoneId){
     if(!rack || !zoneId) return;
     if(rack.zoneId === zoneId && String(rack.id||'').startsWith(`${zoneId}-E`)) return;
     rack.zoneId = zoneId;
-    rack.id = nextRackId(zoneId);
+    if(typeof v225SyncRackCodes==='function')v225SyncRackCodes();else rack.id = nextRackId(zoneId);
   }
   function normalizeZoneAndRackIds(){
     const zones = appState.layout.zones || [];
@@ -768,7 +771,7 @@
     (appState.layout.racks||[]).forEach(r=>{
       if(!r) return;
       if(zoneRemap.has(String(r.zoneId || '').toUpperCase())) r.zoneId = zoneRemap.get(String(r.zoneId || '').toUpperCase());
-      if(appState.layout.meta?.zoneSemantics!=='virtual' && r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
+      if(typeof v225SyncRackCodes!=='function' && appState.layout.meta?.zoneSemantics!=='virtual' && r.zoneId === 'ALM' && !String(r.id || '').toUpperCase().startsWith('ALM-E')){
         const est = parseInt((String(r.id || '').match(/-E(\d+)/i)||[])[1] || '1', 10) || 1;
         r.id = `ALM-E${est}`;
       }

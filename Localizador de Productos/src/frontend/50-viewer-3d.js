@@ -725,9 +725,10 @@
       const getWallOpeningsForSegment = (seg, rawLengthUnits) => {
         const wallOpenings = (appState.layout?.openings || []).filter(o => o.wallId === seg.id);
         return wallOpenings.map(o => {
-          const width = Math.max(40, Math.min(rawLengthUnits * .86, Number(o.width || (o.type === 'window' ? 120 : 90)) || 90));
+          const source=seg.raw||(appState.layout.walls||[]).find(w=>w.id===seg.id),segment=source?getOpeningSegment(o,source):null;
+          const width = Math.max(40, Number(segment?.width||o.width||(o.type==='window'?120:90)));
           const half = (width / 2) / Math.max(1, rawLengthUnits);
-          const t = Math.max(half, Math.min(1-half, Number(o.t || .5)));
+          const t = Number(segment?.t??Math.max(half, Math.min(1-half, Number(o.t || .5))));
           const type = normalizeOpeningType(o.type);
           const def = openingDefaultForType(type);
           const sillUnits = (type==='door' || type==='gate') ? 0 : Math.max(0, Number(o.sill ?? def.sill) || 0);
@@ -883,31 +884,12 @@
           const glassMat = new THREE.MeshStandardMaterial({ color:0x8feaff, transparent:true, opacity:appState.ui?.nav3DArchitectural ? .46 : .32, roughness:.18, metalness:.04, side:THREE.DoubleSide, depthWrite:false });
           const leafMat = new THREE.MeshStandardMaterial({ color:0x9aa8b4, transparent:true, opacity:appState.ui?.nav3DArchitectural ? .62 : .46, roughness:.55, metalness:.08, side:THREE.DoubleSide });
           const openings = getWallOpeningsForSegment(seg, rawLengthUnits);
-          if(openings.length){
-            let cursor = 0;
-            openings.forEach(o => {
-              const safeT0 = Math.max(cursor, o.t0);
-              const safeT1 = Math.max(safeT0, o.t1);
-              if(safeT0 > cursor + .004){
-                addWallMesh(group, makeWallBandGeometry(seg, cursor, safeT0, 0, height, thicknessUnits), wallMat, isActive, seg.id);
-              }
-              const sill = Math.max(0, Number(o.sillUnits || 0) * hScale);
-              const openingTop = Math.min(height, Math.max(.08, (Number(o.sillUnits || 0) + Number(o.heightUnits || 210)) * hScale));
-              if(sill > .035){
-                addWallMesh(group, makeWallBandGeometry(seg, safeT0, safeT1, 0, Math.min(sill, height), thicknessUnits), wallMat, isActive, seg.id);
-              }
-              if(openingTop < height - .035){
-                addWallMesh(group, makeWallBandGeometry(seg, safeT0, safeT1, openingTop, height, thicknessUnits), wallMat, isActive, seg.id);
-              }
-              // v112: el hueco sigue siendo vacío real; se agrega únicamente marco arquitectónico opcional.
-              addOpeningFrame3D(group, seg, o, rawLengthUnits, height, thicknessUnits, isActive);
-              cursor = Math.max(cursor, safeT1);
-            });
-            if(cursor < .996){
-              addWallMesh(group, makeWallBandGeometry(seg, cursor, 1, 0, height, thicknessUnits), wallMat, isActive, seg.id);
-            }
-            addArchitecturalBaseboards(group,seg,openings,thicknessUnits,isActive);
-            return;
+          if(typeof v225WallBandsFor==='function'&&seg.raw){
+            const fullParts=segments.map(s=>s.raw).filter(Boolean),levels=[...new Set([0,...fullParts.map(w=>v219WallRenderHeight(w,getScaleCmPerUnit()))])].sort((a,b)=>a-b);
+            const ratio=100*hScale/getScaleCmPerUnit();
+            v225WallBandsFor(seg.raw,fullParts,levels).forEach(b=>{const y0=b.y0*ratio,y1=Math.min(height,b.y1*ratio);if(y1>y0)v216ViewerBands.push({...b,y0,y1,material:wallMat});});
+            openings.forEach(o=>addOpeningFrame3D(group,seg,o,rawLengthUnits,height,thicknessUnits,isActive));
+            addArchitecturalBaseboards(group,seg,openings,thicknessUnits,isActive);return;
           }
           const joinedPoly = !seg.autoZoneEdge && seg.raw && typeof getWallSlicePolygon==='function'
             ? getWallSlicePolygon(seg.raw,0,1,1)?.poly :
@@ -946,7 +928,8 @@
         });
 
         v216JointPieces().forEach(j=>{const host=v216ViewerBands.find(b=>j.ids.includes(b.wallId));if(host)v216ViewerBands.push({poly:j.poly,y0:0,y1:Math.min(j.height*hScale,Math.max(...v216ViewerBands.filter(b=>j.ids.includes(b.wallId)).map(b=>b.y1))),wallId:host.wallId,material:host.material});});
-        v216AddUnionMeshes(THREE,group,v216ViewerBands,p=>({x:(p.x-bounds.cx)*scale,z:(p.y-bounds.cy)*scale}),mesh=>pickables.push(mesh));
+        const v225HeightRatio=100*hScale/getScaleCmPerUnit(),v225Voids=v216OpeningVoids().map(v=>({...v,y0:v.y0*v225HeightRatio,y1:v.y1*v225HeightRatio}));
+        v216AddUnionMeshes(THREE,group,v216ViewerBands,p=>({x:(p.x-bounds.cx)*scale,z:(p.y-bounds.cy)*scale}),mesh=>pickables.push(mesh),{voids:v225Voids});
         return group;
       };
       const roomSlabsGroup = buildArchitecturalRoomSlabs(layoutZones, focusZoneIds);
@@ -1041,9 +1024,9 @@
       const targetFocusForRack = (r, mode='slot') => {
         if(!r) return new THREE.Vector3(0,0,0);
         const model = rackModel(r.modelId) || baseRackModel();
-        const w = Math.max(.8, (Number(r.w || model.width || 120))*scale);
-        const d = Math.max(.45, (Number(r.h || model.depth || 56))*scale);
-        const rackH = Math.max(1.2, (Number(r.rackHeight || model.height || 240))*hScale);
+        const w = v225RackWorldSize(r,scale,hScale).w;
+        const d = v225RackWorldSize(r,scale,hScale).d;
+        const rackH = v225RackWorldSize(r,scale,hScale).h;
         const levels = Math.max(1, Math.min(8, Number(model.levels || 4) || 4));
         const levelSlots = typeof buildLevelSlots==='function' ? buildLevelSlots(model) : [];
         const target = activeInfoForRack(r);
@@ -1065,39 +1048,38 @@
       const buildDetailedRack = (r, active=false) => {
         const group = new THREE.Group();
         const model = rackModel(r.modelId) || baseRackModel();
-        const w = Math.max(.8, (Number(r.w || model.width || 120))*scale);
-        const d = Math.max(.45, (Number(r.h || model.depth || 56))*scale);
-        const rackH = Math.max(1.2, (Number(r.rackHeight || model.height || 240))*hScale);
+        const w = v225RackWorldSize(r,scale,hScale).w;
+        const d = v225RackWorldSize(r,scale,hScale).d;
+        const rackH = v225RackWorldSize(r,scale,hScale).h;
         const levels = Math.max(1, Math.min(8, Number(model.levels || 4) || 4));
         const slots = Math.max(1, Math.min(6, Number(model.slots || model.capacity || 2) || 2));
         const p = toWorld(Number(r.x||0) + Number(r.w||model.width||120)/2, Number(r.y||0) + Number(r.h||model.depth||56)/2, 0);
-        group.position.set(p.x, 0, p.z);
+        group.position.set(p.x, v225RackWorldSize(r,scale,hScale).base, p.z);
         group.rotation.y = rackYaw(r);
-        if(model?.furniture?.enabled && typeof getFurnitureRenderPieces === 'function') {
-          const pieces=getFurnitureRenderPieces(model);
-          const MW=Math.max(1,Number(model.width||120)),MD=Math.max(1,Number(model.depth||40)),MH=Math.max(1,Number(model.height||200));
-          const sx=w/MW, sz=d/MD, sy=rackH/MH;
-          const panelBase=model.furniture.material==='metal'?0x45667f:(model.furniture.material==='wood'?0xb47b43:0xdce5ed);
-          const panelMat=new THREE.MeshStandardMaterial({color:panelBase,roughness:model.furniture.material==='metal'?.36:.72,metalness:model.furniture.material==='metal'?.58:.03});
-          const backMat=new THREE.MeshStandardMaterial({color:panelBase,roughness:.8,metalness:.02,transparent:true,opacity:.55});
-          pieces.forEach(piece=>{
-            if(piece.type==='brace'){const a=new THREE.Vector3(-w/2+Number(piece.x||0)*sx,Number(piece.z||0)*sy,-d/2+Math.max(.02,Number(piece.y||0))*sz),b=new THREE.Vector3(-w/2+Number(piece.x2||piece.x+piece.w||0)*sx,Number(piece.z2||piece.z+piece.h||0)*sy,-d/2+Math.max(.02,Number(piece.y||0))*sz);addCylinderBetween(group,a,b,Math.max(.018,Number(piece.d||2)*Math.min(sx,sy)*.45),panelMat,false);return;}
-            const pw=Math.max(.012,Number(piece.w||1)*sx),ph=Math.max(.012,Number(piece.h||1)*sy),pd=Math.max(.012,Number(piece.d||1)*sz),px=-w/2+(Number(piece.x||0)+Number(piece.w||1)/2)*sx,py=(Number(piece.z||0)+Number(piece.h||1)/2)*sy,pz=-d/2+(Number(piece.y||0)+Number(piece.d||1)/2)*sz;addBox(group,pw,ph,pd,px,py,pz,piece.type==='back'?backMat:panelMat,false);
+        if(model?.furniture?.enabled){
+          const physical=v222FurnitureForRack(r,v222Dimensions(r)),sx=scale/getScaleCmPerUnit(),sy=hScale/getScaleCmPerUnit();
+          const panelBase=physical.furniture.material==='metal'?0x45667f:(physical.furniture.material==='wood'?0xb47b43:0xdce5ed);
+          const panelMat=new THREE.MeshStandardMaterial({color:panelBase,roughness:physical.furniture.material==='metal'?.36:.72,metalness:physical.furniture.material==='metal'?.58:.03});
+          v222FurnitureMeshes(physical).forEach(item=>{
+            const geometry=v222PieceGeometry(THREE,item,1);geometry.rotateZ(item.angle||0);
+            const mesh=new THREE.Mesh(geometry,panelMat);mesh.scale.set(sx,sy,sx);
+            mesh.position.set((item.profile?-physical.width/2:item.x-physical.width/2)*sx,(item.profile?0:item.y)*sy,(item.profile?item.z-item.d/2-physical.depth/2:item.z-physical.depth/2)*sx);
+            mesh.userData.pieceId=item.piece.id;group.add(mesh);
           });
-          const target=activeInfoForRack(r),defs=typeof deriveFurnitureLevels==='function'?deriveFurnitureLevels(model):[];
+          const target=activeInfoForRack(r),defs=deriveFurnitureLevels(physical);
           if(active&&defs.length){const lv=defs.find(l=>l.index===Math.max(1,Number(target.level||1))),slot=lv?.slots?.[Math.max(1,Number(target.slot||1))-1];if(lv&&slot){const hw=Math.max(.04,(slot.x1-slot.x0)*sx*.92),hh=Math.max(.05,(lv.z1-lv.z0)*sy*.84),hd=Math.max(.04,d*.82),hx=-w/2+(slot.x0+(slot.x1-slot.x0)/2)*sx,hy=(lv.z0+(lv.z1-lv.z0)/2)*sy;const activeShell=addBox(group,hw,hh,hd,hx,hy,0,matActive,false);activePulseTargets.push({activeShell,baseScale:1});}}
-          if(active){const haloGeo=new THREE.EdgesGeometry(new THREE.BoxGeometry(w+.16,rackH+.16,d+.16)),halo=new THREE.LineSegments(haloGeo,new THREE.LineBasicMaterial({color:0x7dffab,transparent:true,opacity:.96}));halo.position.y=rackH/2;group.add(halo);}
+          if(active){const haloGeo=new THREE.EdgesGeometry(new THREE.BoxGeometry(w,rackH,d)),halo=new THREE.LineSegments(haloGeo,new THREE.LineBasicMaterial({color:0x7dffab,transparent:true,opacity:.96}));halo.position.y=rackH/2;group.add(halo);}
           return group;
         }
         const postW = Math.max(.045, w*.045);
         const beamH = Math.max(.035, rackH*.014);
-        [[-w/2,-d/2],[w/2,-d/2],[-w/2,d/2],[w/2,d/2]].forEach(([x,z]) => addBox(group, postW, rackH, postW, x, rackH/2, z, matFrame));
+        [[-w/2+postW/2,-d/2+postW/2],[w/2-postW/2,-d/2+postW/2],[-w/2+postW/2,d/2-postW/2],[w/2-postW/2,d/2-postW/2]].forEach(([x,z]) => addBox(group, postW, rackH, postW, x, rackH/2, z, matFrame));
         for(let i=0;i<=levels;i++){
-          const y = (rackH/levels)*i;
-          addBox(group, w+postW, beamH, postW, 0, y, -d/2, matBeam);
-          addBox(group, w+postW, beamH, postW, 0, y, d/2, matBeam);
-          addBox(group, postW, beamH, d+postW, -w/2, y, 0, matBeam);
-          addBox(group, postW, beamH, d+postW, w/2, y, 0, matBeam);
+          const y = Math.max(beamH/2,Math.min(rackH-beamH/2,(rackH/levels)*i));
+          addBox(group, w, beamH, postW, 0, y, -d/2+postW/2, matBeam);
+          addBox(group, w, beamH, postW, 0, y, d/2-postW/2, matBeam);
+          addBox(group, postW, beamH, d, -w/2+postW/2, y, 0, matBeam);
+          addBox(group, postW, beamH, d, w/2-postW/2, y, 0, matBeam);
         }
         const target = activeInfoForRack(r);
         for(let li=1; li<=levels; li++){
@@ -1138,9 +1120,9 @@
       const buildBasicRack = (r, active=false, ghost=true) => {
         const group = new THREE.Group();
         const model = rackModel(r.modelId) || baseRackModel();
-        const w = Math.max(.8, (Number(r.w || model.width || 120))*scale), d = Math.max(.45, (Number(r.h || model.depth || 56))*scale), rackH = Math.max(1.1, (Number(r.rackHeight || model.height || 240))*hScale);
+        const w = v225RackWorldSize(r,scale,hScale).w, d = v225RackWorldSize(r,scale,hScale).d, rackH = v225RackWorldSize(r,scale,hScale).h;
         const p = toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2, Number(r.y||0)+Number(r.h||model.depth||56)/2, 0);
-        group.position.set(p.x,0,p.z);
+        group.position.set(p.x,v225RackWorldSize(r,scale,hScale).base,p.z);
         group.rotation.y = rackYaw(r);
         const mesh = addBox(group, w, rackH, d, 0, rackH/2, 0, ghost ? matGhost : matActive, false);
         mesh.material.opacity = active ? .34 : (ghost ? .13 : .24);
@@ -1150,21 +1132,21 @@
       };
       const buildMediumRack = (r) => {
         const group=new THREE.Group(), model=rackModel(r.modelId)||baseRackModel();
-        const w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rackH=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale);
+        const w=v225RackWorldSize(r,scale,hScale).w,d=v225RackWorldSize(r,scale,hScale).d,rackH=v225RackWorldSize(r,scale,hScale).h;
         const levels=Math.max(1,Math.min(8,Number(model.levels||4)||4)), p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0);
-        group.position.set(p.x,0,p.z); group.rotation.y=rackYaw(r);
-        if(model?.furniture?.enabled && typeof getFurnitureRenderPieces === 'function'){const pieces=getFurnitureRenderPieces(model),MW=Math.max(1,Number(model.width||120)),MD=Math.max(1,Number(model.depth||40)),MH=Math.max(1,Number(model.height||200)),sx=w/MW,sz=d/MD,sy=rackH/MH,c=rackVisualColor(r),mat=new THREE.MeshStandardMaterial({color:ui.wmsMode==='architecture'?(model.furniture.material==='wood'?0xb47b43:model.furniture.material==='metal'?0x45667f:0xdce5ed):c,roughness:model.furniture.material==='metal'?.4:.74,metalness:model.furniture.material==='metal'?.48:.03});pieces.filter(piece=>piece.type!=='brace'&&piece.type!=='back').slice(0,48).forEach(piece=>{addBox(group,Math.max(.012,Number(piece.w||1)*sx),Math.max(.012,Number(piece.h||1)*sy),Math.max(.012,Number(piece.d||1)*sz),-w/2+(Number(piece.x||0)+Number(piece.w||1)/2)*sx,(Number(piece.z||0)+Number(piece.h||1)/2)*sy,-d/2+(Number(piece.y||0)+Number(piece.d||1)/2)*sz,mat,false);});return group;}
+        group.position.set(p.x,v225RackWorldSize(r,scale,hScale).base,p.z); group.rotation.y=rackYaw(r);
+        if(model?.furniture?.enabled)return buildDetailedRack(r,false);
         const c=rackVisualColor(r), frameC=ui.wmsMode==='architecture'?new THREE.Color(0x315c7a):c.clone().multiplyScalar(.72), beamC=ui.wmsMode==='architecture'?new THREE.Color(0xd58437):c;
         const frameMat=new THREE.MeshStandardMaterial({color:frameC,roughness:.38,metalness:.56}), beamMat=new THREE.MeshStandardMaterial({color:beamC,roughness:.44,metalness:.32}), shelfMat=new THREE.MeshStandardMaterial({color:c.clone().lerp(new THREE.Color(0xdbe1e4),.55),roughness:.72,metalness:.08,transparent:true,opacity:.78});
         const post=Math.max(.04,w*.035), beam=Math.max(.03,rackH*.012);
-        [[-w/2,-d/2],[w/2,-d/2],[-w/2,d/2],[w/2,d/2]].forEach(([x,z])=>addBox(group,post,rackH,post,x,rackH/2,z,frameMat,false));
-        for(let i=0;i<=levels;i++){const y=Math.min(rackH,(rackH/levels)*i);addBox(group,w+post,beam,post,0,y,-d/2,beamMat,false);addBox(group,w+post,beam,post,0,y,d/2,beamMat,false);if(i>0)addBox(group,w*.94,Math.max(.018,beam*.55),d*.82,0,Math.max(.03,y-beam*.7),0,shelfMat,false);}
+        [[-w/2+post/2,-d/2+post/2],[w/2-post/2,-d/2+post/2],[-w/2+post/2,d/2-post/2],[w/2-post/2,d/2-post/2]].forEach(([x,z])=>addBox(group,post,rackH,post,x,rackH/2,z,frameMat,false));
+        for(let i=0;i<=levels;i++){const y=Math.max(beam/2,Math.min(rackH-beam/2,(rackH/levels)*i));addBox(group,w,beam,post,0,y,-d/2+post/2,beamMat,false);addBox(group,w,beam,post,0,y,d/2-post/2,beamMat,false);if(i>0)addBox(group,w*.94,Math.max(.018,beam*.55),d*.82,0,Math.max(.03,y-beam*.7),0,shelfMat,false);}
         return group;
       };
       const addInstancedRackProxies = racks => {
         if(!racks.length)return null; const geo=new THREE.BoxGeometry(1,1,1),mat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.58,metalness:.18,transparent:true,opacity:ui.wmsMode==='architecture'?.18:.64,vertexColors:true});
         const mesh=new THREE.InstancedMesh(geo,mat,racks.length); mesh.userData.entityType='rack'; mesh.userData.rackIds=racks.map(r=>r.id); mesh.userData.isRackInstanced=true; const dummy=new THREE.Object3D();
-        racks.forEach((r,i)=>{const model=rackModel(r.modelId)||baseRackModel(),w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale),p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0);dummy.position.set(p.x,rh/2,p.z);dummy.rotation.set(0,rackYaw(r),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,rackVisualColor(r));instancedRackLookup.set(r.id,{mesh,index:i});});
+        racks.forEach((r,i)=>{const model=rackModel(r.modelId)||baseRackModel(),w=v225RackWorldSize(r,scale,hScale).w,d=v225RackWorldSize(r,scale,hScale).d,rh=v225RackWorldSize(r,scale,hScale).h,p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0);dummy.position.set(p.x,v225RackWorldSize(r,scale,hScale).base+rh/2,p.z);dummy.rotation.set(0,rackYaw(r),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,rackVisualColor(r));instancedRackLookup.set(r.id,{mesh,index:i});});
         mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;mesh.castShadow=false;mesh.receiveShadow=true;world.add(mesh);pickables.push(mesh);return mesh;
       };
 
@@ -1347,7 +1329,7 @@
       const entityBox = entity => {
         if(!entity?.type||!entity.id)return null;
         if(entity.object && !entity.object.isInstancedMesh){ try{return new THREE.Box3().setFromObject(entity.object);}catch{} }
-        if(entity.type==='rack'){ const r=findNav3DRackById(entity.id); if(!r)return null; const model=rackModel(r.modelId)||baseRackModel(),w=Math.max(.8,(Number(r.w||model.width||120))*scale),d=Math.max(.45,(Number(r.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(r.rackHeight||model.height||240))*hScale),p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0); return new THREE.Box3(new THREE.Vector3(p.x-w/2,0,p.z-d/2),new THREE.Vector3(p.x+w/2,rh,p.z+d/2)); }
+        if(entity.type==='rack'){ const r=findNav3DRackById(entity.id); if(!r)return null; const model=rackModel(r.modelId)||baseRackModel(),w=v225RackWorldSize(r,scale,hScale).w,d=v225RackWorldSize(r,scale,hScale).d,rh=v225RackWorldSize(r,scale,hScale).h,p=toWorld(Number(r.x||0)+Number(r.w||model.width||120)/2,Number(r.y||0)+Number(r.h||model.depth||56)/2,0); return new THREE.Box3(new THREE.Vector3(p.x-w/2,0,p.z-d/2),new THREE.Vector3(p.x+w/2,rh,p.z+d/2)); }
         const candidate=pickables.find(o=>(entity.type==='wall'&&(o.userData?.wallId===entity.id||o.userData?.wallIds?.includes(entity.id)))||(entity.type==='opening'&&o.userData?.openingId===entity.id)||(entity.type==='zone'&&o.userData?.zoneId===entity.id));
         if(candidate){try{return new THREE.Box3().setFromObject(candidate);}catch{}} return null;
       };
@@ -1367,9 +1349,9 @@
       };
       const selectRackFromScene = (rackId, center = false) => { if(!rackId)return; setEntitySelection({type:'rack',id:rackId},{center}); if(!center)focusRackCamera(rackId,false); setTimeout(()=>{renderSideRacks();renderProductOperationalCard();renderMiniMap();syncToolbar();},60); };
       const updateRackSceneTransform = rack => {
-        if(!rack)return; const model=rackModel(rack.modelId)||baseRackModel(),w=Math.max(.8,(Number(rack.w||model.width||120))*scale),d=Math.max(.45,(Number(rack.h||model.depth||56))*scale),rh=Math.max(1.1,(Number(rack.rackHeight||model.height||240))*hScale),p=toWorld(Number(rack.x||0)+Number(rack.w||model.width||120)/2,Number(rack.y||0)+Number(rack.h||model.depth||56)/2,0);
-        const obj=rackObjectMap.get(rack.id); if(obj){obj.position.set(p.x,0,p.z);obj.rotation.y=rackYaw(rack);}
-        const inst=instancedRackLookup.get(rack.id); if(inst){const dummy=new THREE.Object3D();dummy.position.set(p.x,rh/2,p.z);dummy.rotation.set(0,rackYaw(rack),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();inst.mesh.setMatrixAt(inst.index,dummy.matrix);inst.mesh.instanceMatrix.needsUpdate=true;}
+        if(!rack)return; const model=rackModel(rack.modelId)||baseRackModel(),w=v225RackWorldSize(rack,scale,hScale).w,d=v225RackWorldSize(rack,scale,hScale).d,rh=v225RackWorldSize(rack,scale,hScale).h,p=toWorld(Number(rack.x||0)+Number(rack.w||model.width||120)/2,Number(rack.y||0)+Number(rack.h||model.depth||56)/2,0);
+        const obj=rackObjectMap.get(rack.id); if(obj){obj.position.set(p.x,v225RackWorldSize(rack,scale,hScale).base,p.z);obj.rotation.y=rackYaw(rack);}
+        const inst=instancedRackLookup.get(rack.id); if(inst){const dummy=new THREE.Object3D();dummy.position.set(p.x,v225RackWorldSize(rack,scale,hScale).base+rh/2,p.z);dummy.rotation.set(0,rackYaw(rack),0);dummy.scale.set(w,rh,d);dummy.updateMatrix();inst.mesh.setMatrixAt(inst.index,dummy.matrix);inst.mesh.instanceMatrix.needsUpdate=true;}
         showSelectionHelper({type:'rack',id:rack.id});
       };
       const rackPlacementErrors = rackId => typeof v117OperationalIssues==='function' ? v117OperationalIssues().filter(i=>i.severity==='error'&&(i.rackIds||[]).includes(rackId)) : [];

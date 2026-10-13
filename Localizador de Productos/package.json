@@ -1,8 +1,8 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "2.2.2-mobiliario-unificado",
+  "version": "2.2.3-editor-amplio",
   "private": true,
-  "description": "WMS V222: medidas coherentes, biblioteca simplificada y nomenclaturas intercambiables",
+  "description": "WMS V223: biblioteca con visor amplio, selector superior e inspector derecho",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",
@@ -12,7 +12,7 @@
     "test:regression": "node scripts/audit-v202.mjs && node scripts/test-v205.mjs && node scripts/test-v206.mjs && node scripts/test-v208.mjs && npm run test:v209 && node scripts/test-v210-walls.mjs && node scripts/test-v211.mjs && node scripts/test-v212.mjs && node scripts/test-v214.mjs && node scripts/test-v216.mjs && node scripts/test-v217.mjs && node scripts/test-v218.mjs && node scripts/test-v219.mjs && node scripts/test-v220.mjs && node scripts/test-v221.mjs && node scripts/test-v222.mjs",
     "check": "npm run build && npm run verify:frontend && npm run test:regression && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js",
     "test:v209": "node scripts/test-v209.mjs",
-    "test:ui": "node scripts/test-v220-ui.mjs && node scripts/test-v221-ui.mjs && node scripts/test-v222-ui.mjs",
+    "test:ui": "node scripts/test-v220-ui.mjs && node scripts/test-v221-ui.mjs && node scripts/test-v222-ui.mjs && node scripts/test-v223-ui.mjs",
     "test:ui:layout": "node scripts/test-v216-ui.mjs"
   },
   "dependencies": {

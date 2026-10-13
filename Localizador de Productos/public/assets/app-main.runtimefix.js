@@ -17918,6 +17918,24 @@ function getSheetBranchOpenMap(){
     try{e.renderer?.dispose?.();e.renderer?.forceContextLoss?.();e.renderer?.domElement?.remove();}catch{}
     rackLibrary3DEngine=null;
   }
+  function v223FitRackLibraryCamera(e,options={}){
+    if(!e?.meshByPiece?.size)return;
+    const T=e.THREE,bounds=new T.Box3();e.root.updateMatrixWorld(true);e.meshByPiece.forEach(mesh=>bounds.expandByObject(mesh));if(bounds.isEmpty())return;
+    const zoom=Number.isFinite(options.zoom)?options.zoom:(e.fitDistance?e.distance/e.fitDistance:1);
+    bounds.getCenter(e.target);
+    const cp=Math.cos(e.pitch),sp=Math.sin(e.pitch),cy=Math.cos(e.yaw),sy=Math.sin(e.yaw),tanV=Math.tan(e.camera.fov*Math.PI/360),tanH=tanV*Math.max(.05,e.camera.aspect);
+    const occupiedX=Math.min(.86,Math.max(.3,1-56/Math.max(1,e.host.clientWidth))),occupiedY=Math.min(.84,Math.max(.3,1-72/Math.max(1,e.host.clientHeight)));
+    let distance=20;
+    for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
+      const dx=x-e.target.x,dy=y-e.target.y,dz=z-e.target.z,right=sy*dx-cy*dz,up=-sp*cy*dx+cp*dy-sp*sy*dz,depth=cp*cy*dx+sp*dy+cp*sy*dz;
+      distance=Math.max(distance,depth+Math.abs(right)/(tanH*occupiedX),depth+Math.abs(up)/(tanV*occupiedY));
+    }
+    e.fitDistance=distance;e.distance=distance*Math.max(.1,Math.min(8,zoom));updateRackFurniture3DCamera(e);
+  }
+  function v223CleanRackLibraryHelpers(e,keepSelection=false){
+    e.spaceMeshes.forEach(mesh=>{e.root.remove(mesh);mesh.geometry?.dispose();mesh.material?.dispose();});e.spaceMeshes=[];
+    e.root.children.slice().filter(o=>o.isAxesHelper||(o.isLineSegments&&(!keepSelection||!o.userData?.decorative))).forEach(o=>{e.root.remove(o);o.geometry?.dispose();o.material?.dispose();});
+  }
   async function renderRackLibrary3DPreview(modelId){
     const token=++rackLibraryPreviewToken;
     const model=rackModel(modelId),host=document.getElementById('rackPreviewStage');
@@ -17927,6 +17945,7 @@ function getSheetBranchOpenMap(){
     if(token!==rackLibraryPreviewToken||!host.isConnected)return;
     let e=rackLibrary3DEngine;
     if(!e||e.host!==host){
+      const previousView=e?.modelId===modelId?{yaw:e.yaw,pitch:e.pitch,fitKey:e.fitKey,zoom:e.distance/(e.fitDistance||e.distance)}:null;
       disposeRackLibrary3DPreview();
       let renderer;
       try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:false});}
@@ -17943,27 +17962,23 @@ function getSheetBranchOpenMap(){
       scene.add(new THREE.HemisphereLight(0xffffff,0xc7beb2,2.15));
       const key=new THREE.DirectionalLight(0xffffff,2.0);key.position.set(260,400,460);key.castShadow=true;key.shadow.mapSize.set(1024,1024);scene.add(key);
       const fill=new THREE.DirectionalLight(0xdce8ff,.65);fill.position.set(-280,140,-220);scene.add(fill);
-      e={THREE,host,renderer,scene,camera,root,modelId,meshByPiece:new Map(),spaceMeshes:[],target:new THREE.Vector3(),yaw:.83,pitch:.36,distance:400,raf:0,raycaster:new THREE.Raycaster(),pointer:new THREE.Vector2(),fitKey:''};
+      e={THREE,host,renderer,scene,camera,root,modelId,meshByPiece:new Map(),spaceMeshes:[],target:new THREE.Vector3(),yaw:previousView?.yaw??.83,pitch:previousView?.pitch??.36,distance:400,raf:0,raycaster:new THREE.Raycaster(),pointer:new THREE.Vector2(),fitKey:'',fitDistance:0,pendingView:previousView};
       rackLibrary3DEngine=e;
       host.style.position='relative';
       host.appendChild(renderer.domElement);
-      const resize=()=>{if(!host.isConnected)return;const w=Math.max(160,host.clientWidth||600),h=Math.max(180,host.clientHeight||480);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRackFurniture3DRender(e);};
+      const resize=()=>{if(!host.isConnected)return;const w=Math.max(160,host.clientWidth||600),h=Math.max(180,host.clientHeight||480);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();v223FitRackLibraryCamera(e);requestRackFurniture3DRender(e);};
       e.resizeObserver=new ResizeObserver(resize);e.resizeObserver.observe(host);resize();
-      renderer.domElement.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;const hit=rackFurniture3DHit(e,ev);if(hit?.object?.userData?.pieceId){appState.ui.v222LibraryAdvanced=true;const advanced=document.getElementById('rackLibraryAdvanced');if(advanced)advanced.open=true;}rackFurniture3DPointerDown(e,ev);rebuildRackFurniture3DScene(e,rackModel(e.modelId));requestRackFurniture3DRender(e);});
+      renderer.domElement.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;const hit=rackFurniture3DHit(e,ev);if(hit?.object?.userData?.pieceId){appState.ui.v222LibraryAdvanced=true;const advanced=document.getElementById('rackLibraryAdvanced');if(advanced)advanced.open=true;}rackFurniture3DPointerDown(e,ev);if(hit?.object?.userData?.pieceId)v223RevealLibraryPieceInspector();rebuildRackFurniture3DScene(e,rackModel(e.modelId));v223CleanRackLibraryHelpers(e,true);requestRackFurniture3DRender(e);});
       renderer.domElement.addEventListener('wheel',ev=>{ev.preventDefault();e.distance=Math.max(10,Math.min(60000,e.distance*(ev.deltaY>0?1.1:.9)));updateRackFurniture3DCamera(e);requestRackFurniture3DRender(e);},{passive:false});
     }
     e.modelId=model.id;
     rebuildRackFurniture3DScene(e,model); // Misma geometría y materiales que 'Crear mobiliario 3D'.
     // El catálogo no muestra ejes, zonas fantasma ni seleccionados de la sesión de construcción.
-    e.spaceMeshes.forEach(mesh=>{e.root.remove(mesh);mesh.geometry?.dispose();mesh.material?.dispose();});
-    e.spaceMeshes=[];
-    e.root.children.slice().filter(o=>o.isAxesHelper||o.isLineSegments).forEach(o=>{e.root.remove(o);o.geometry?.dispose();o.material?.dispose();});
+    v223CleanRackLibraryHelpers(e);
     const W=Math.max(1,Number(model.width||120)),D=Math.max(1,Number(model.depth||40)),H=Math.max(1,Number(model.height||200));
-    const fitKey=JSON.stringify([model.id,W,D,H]);if(e.fitKey!==fitKey){e.fitKey=fitKey;
-    e.target.set(W/2,H*.5,D/2);
-    // Encuadre según dimensión mayor y relación de aspecto, para muebles cortos o muy anchos.
-    const radius=Math.hypot(W,H,D)*.57;
-    e.distance=Math.max(70,radius/(Math.sin(Math.PI*34/360)*Math.min(1,Math.max(.4,e.camera.aspect)))*1.0);
+    const fitKey=JSON.stringify([model.id,W,D,H]);if(e.fitKey!==fitKey){
+    const zoom=e.pendingView?.fitKey===fitKey?e.pendingView.zoom:1;e.fitKey=fitKey;e.pendingView=null;
+    v223FitRackLibraryCamera(e,{zoom});
     }
     updateRackFurniture3DCamera(e);
     const svg=host.querySelector('#rackModelSvg');if(svg)svg.style.display='none';
@@ -19361,7 +19376,7 @@ function v222SetInstanceDimensions(rack,patch){
   recordHistorySnapshot('distribution');proposals.forEach(next=>{const target=(appState.layout.racks||[]).find(r=>r.id===next.id);if(target)Object.assign(target,next);});persistActiveLayout(patch.reset?'Usar medidas del modelo':'Editar medidas del mueble');return true;
 }
 function distributionIsFreeMoveAvailable(){return typeof distributionIsFreeMove==='function'&&distributionIsFreeMove();}
-/* V222 — catálogo compacto y un único preview editable. */
+/* V223 — visor amplio, selector superior e inspector derecho; sincronización V222. */
 function v222RackPropertiesMarkup(rack,model,fp,modelOptions){
   const dims=v222Dimensions(rack),custom=['width','depth','height'].some(key=>rack.furnitureOverrides?.[key]!=null);
   return `<section class="layout-prop-card v222-rack-properties"><div class="layout-prop-title">Mueble seleccionado</div><small class="v222-rack-model-label">${escapeHtml(model?.name||'Modelo de mobiliario')}</small><div class="layout-prop-grid two">
@@ -19383,9 +19398,9 @@ function v222LibraryList(){
 function v222LibraryControls(model){
   const f=model.furniture,enabled=!!f?.enabled,sloped=enabled?f.roofMode==='slope':isUnderStairsStyle(model.style),levels=enabled?deriveFurnitureLevels(model):[],divisions=levels.length?Math.max(...levels.map(l=>l.physicalDividerCount)):Math.max(0,Number(model.slots||1)-1);
   const input=(key,label,value,min,max=10000)=>`<label>${label}<span class="v222-input-unit"><input id="rackLibrary-${key}" data-v222-model="${key}" type="number" min="${min}" max="${max}" step="${key==='levels'||key==='divisions'?1:.1}" value="${round1(value)}"><em>${key==='levels'||key==='divisions'?'':'cm'}</em></span></label>`;
-  return `<div class="v222-model-identity"><label>Nombre del modelo<input id="rackLibrary-name" data-v222-model="name" value="${escapeHtml(model.name)}" maxlength="80"></label><small>Estas propiedades editan el modelo de la biblioteca. Las medidas particulares se editan en el layout.</small></div>
-    <div class="v222-dimension-grid">${input('width','Ancho',model.width,30)}${input('depth','Profundidad',model.depth,20)}<label>Cubierta<select id="rackLibrary-roofMode" data-v222-model="roofMode"><option value="flat" ${!sloped?'selected':''}>Una altura</option><option value="slope" ${sloped?'selected':''}>Con pendiente</option></select></label>${sloped?`${input('leftHeight','Altura izquierda',enabled?f.leftHeight:model.leftHeight||model.height,60)}${input('rightHeight','Altura derecha',enabled?f.rightHeight:model.rightHeight||model.height,60)}`:input('height','Altura',model.height,60)}${input('levels','Niveles',model.levels||1,1,12)}${input('divisions','Divisiones verticales',divisions,0,11)}</div>
-    <div class="v222-controls-foot"><span>Los niveles distribuyen repisas. Cada división agrega un compartimento por nivel.</span><button type="button" class="mini-btn" id="rackLibraryOpenBuilder">Editar estructura</button><button type="button" class="btn" id="rackLibraryPlace">Colocar en layout</button></div>`;
+  return `<div class="v222-model-identity"><label>Nombre del modelo<input id="rackLibrary-name" data-v222-model="name" value="${escapeHtml(model.name)}" maxlength="80"></label><small>Modelo compartido con el layout y el espacio 3D.</small></div>
+    <section class="v223-controls-section" aria-labelledby="rackLibraryMeasuresTitle"><h4 id="rackLibraryMeasuresTitle">Medidas <span>cm</span></h4><div class="v222-dimension-grid">${input('width','Ancho',model.width,30)}${input('depth','Profundidad',model.depth,20)}<label class="v223-field-wide">Altura de la cubierta<select id="rackLibrary-roofMode" data-v222-model="roofMode"><option value="flat" ${!sloped?'selected':''}>Una altura</option><option value="slope" ${sloped?'selected':''}>Con pendiente</option></select></label>${sloped?`${input('leftHeight','Altura izquierda',enabled?f.leftHeight:model.leftHeight||model.height,60)}${input('rightHeight','Altura derecha',enabled?f.rightHeight:model.rightHeight||model.height,60)}`:`<div class="v223-field-wide">${input('height','Altura',model.height,60)}</div>`}</div></section>
+    <section class="v223-controls-section" aria-labelledby="rackLibraryDistributionTitle"><h4 id="rackLibraryDistributionTitle">Distribución</h4><div class="v222-dimension-grid">${input('levels','Niveles',model.levels||1,1,12)}${input('divisions','Divisiones',divisions,0,11)}</div><small>Los niveles distribuyen repisas; las divisiones crean compartimentos.</small></section>`;
 }
 function v222LibraryAdvanced(model){
   const f=model.furniture;
@@ -19400,28 +19415,50 @@ function v222BindLibraryControls(model){
 }
 function v222RefreshLibraryControls(){
   const host=document.getElementById('rackLibraryControls'),model=v222ModelFor({modelId:appState.selectedModelId});if(!host||!model)return;
-  host.innerHTML=v222LibraryControls(model);v222BindLibraryControls(model);v222LibraryList();
+  host.innerHTML=v222LibraryControls(model);v222BindLibraryControls(model);v222LibraryList();v223RefreshLibrarySummary(model);
+}
+function v223RefreshLibrarySummary(model){
+  const title=document.getElementById('rackLibraryTitle'),picker=document.getElementById('rackLibraryModelName'),readout=document.getElementById('rackLibraryDimensions');
+  if(title)title.textContent=model.name;if(picker)picker.textContent=model.name;
+  if(readout){const f=model.furniture,slope=f?.enabled&&f.roofMode==='slope';readout.textContent=`${round1(model.width)} × ${round1(model.depth)} × ${slope?`${round1(f.leftHeight)}–${round1(f.rightHeight)}`:round1(model.height)} cm`;}
+}
+function v223ApplyLibraryExpanded(){
+  const page=document.querySelector('.v223-library-page'),inspector=document.getElementById('rackLibraryInspector'),button=document.getElementById('rackLibraryExpand');if(!page||!inspector||!button)return;
+  const expanded=!!appState.ui.v223LibraryExpanded;page.classList.toggle('is-expanded',expanded);inspector.hidden=expanded;
+  button.setAttribute('aria-pressed',String(expanded));button.innerHTML=`<svg class="wms-icon" aria-hidden="true"><use href="#wms-${expanded?'collapse':'expand'}"></use></svg><span>${expanded?'Volver a edición':'Ampliar vista'}</span>`;
+}
+function v223RevealLibraryPieceInspector(){
+  if(appState.screen!=='racks')return;appState.ui.v223LibraryExpanded=false;v223ApplyLibraryExpanded();
+  const advanced=document.getElementById('rackLibraryAdvanced');if(advanced){advanced.open=true;appState.ui.v222LibraryAdvanced=true;}
+  requestAnimationFrame(()=>{const scroller=document.getElementById('rackLibraryInspectorScroll'),target=document.getElementById('rackBuilderInspector');if(scroller&&target)scroller.scrollTop+=target.getBoundingClientRect().top-scroller.getBoundingClientRect().top-12;});
+}
+function v223BindLibraryMenus(){
+  if(window.__v223LibraryMenusBound)return;window.__v223LibraryMenusBound=true;
+  document.addEventListener('pointerdown',event=>{for(const id of ['rackLibraryCatalog','rackLibraryModelActions']){const menu=document.getElementById(id);if(menu?.open&&!menu.contains(event.target))menu.open=false;}});
+  document.addEventListener('keydown',event=>{if(event.key!=='Escape'||appState.screen!=='racks')return;let closed=false;for(const id of ['rackLibraryCatalog','rackLibraryModelActions']){const menu=document.getElementById(id);if(menu?.open){menu.open=false;menu.querySelector('summary')?.focus();closed=true;}}if(!closed&&appState.ui.v223LibraryExpanded){appState.ui.v223LibraryExpanded=false;v223ApplyLibraryExpanded();document.getElementById('rackLibraryExpand')?.focus();closed=true;}if(closed)event.preventDefault();});
 }
 function v222RenderLibrary(){
   appState.screen='racks';appState.ui=appState.ui||{};appState.ui.rackBuilder=appState.ui.rackBuilder||{shelfZ:80,dividerX:60,dividerFrom:0,dividerTo:120,snap:1};
   if(!appState.models?.length)appState.models=[{id:'std_4',name:'Rack estándar',width:120,depth:40,height:240,levels:4,slots:2,style:'metallic'}];
   appState.models.forEach(ensureRackFurnitureModel);v222SynchronizeModels();
   const model=v222ModelFor({modelId:appState.selectedModelId})||appState.models[0];appState.selectedModelId=model.id;
-  const query=document.getElementById('rackLibrarySearch')?.value||'',scroll=document.getElementById('modelsList')?.scrollTop||0;
-  contentTitle.textContent='Biblioteca de racks';contentSubtitle.textContent='Selecciona un modelo y edita sus medidas en una sola vista.';detailTitle.textContent='Modelo de mobiliario';detailSubtitle.textContent='';detailWrap.innerHTML='';
+  const query=document.getElementById('rackLibrarySearch')?.value||'',scroll=document.getElementById('modelsList')?.scrollTop||0,inspectorScroll=document.getElementById('rackLibraryInspectorScroll')?.scrollTop||0;
+  contentTitle.textContent='Biblioteca de racks';contentSubtitle.textContent='Selecciona un modelo para editarlo.';detailTitle.textContent='Modelo de mobiliario';detailSubtitle.textContent='';detailWrap.innerHTML='';
   setTags([{label:'↶ Deshacer',active:true,action:'history-undo-racks',extraClass:'history-chip'},{label:'↷ Rehacer',active:true,action:'history-redo-racks',extraClass:'history-chip'}]);
-  contentWrap.innerHTML=`<div class="rack-models-page v222-library-page"><aside class="rack-models-main v222-library-catalog"><div class="v222-catalog-heading"><b>Modelos</b><span>${appState.models.length}</span></div><input id="rackLibrarySearch" class="v222-library-search" type="search" placeholder="Buscar modelo…" aria-label="Buscar modelo" value="${escapeHtml(query)}"><div id="modelsList" class="v222-model-list"></div><button class="btn" id="btnNewModel">+ Crear mobiliario</button><div class="v222-catalog-actions"><button class="mini-btn" id="btnDuplicateModel">Duplicar</button><button class="mini-btn danger" id="btnDeleteModel">Eliminar</button></div></aside><main class="rack-models-side v222-library-workspace"><section class="rack-block preview-box-3d v222-model-preview"><div class="v222-preview-head"><div><h3>${escapeHtml(model.name)}</h3><small>Arrastra el fondo para girar · rueda para zoom · clic en una pieza para editar</small></div><button class="mini-btn" id="rackLibraryCenter">Centrar vista</button><button class="btn" id="btnSaveModel">Guardar</button></div><div class="detail-stage is-navigable" id="rackPreviewStage"><svg id="rackModelSvg" viewBox="0 0 520 480"></svg></div><div id="rackLibraryControls" class="v222-library-controls">${v222LibraryControls(model)}</div></section>${v222LibraryAdvanced(model)}</main></div>`;
+  contentWrap.innerHTML=`<div class="rack-models-page v222-library-page v223-library-page"><div class="v223-library-toolbar"><details class="v223-model-picker" id="rackLibraryCatalog"><summary><span class="v223-picker-label">Modelo</span><svg class="wms-icon" aria-hidden="true"><use href="#wms-layers"></use></svg><span id="rackLibraryModelName">${escapeHtml(model.name)}</span><svg class="wms-icon v223-picker-chevron" aria-hidden="true"><use href="#wms-chevron"></use></svg></summary><div class="v222-library-catalog v223-model-popup"><div class="v222-catalog-heading"><b>Modelos</b><span>${appState.models.length}</span></div><input id="rackLibrarySearch" class="v222-library-search" type="search" placeholder="Buscar modelo…" aria-label="Buscar modelo" value="${escapeHtml(query)}"><div id="modelsList" class="v222-model-list"></div></div></details><div class="v223-toolbar-actions"><button type="button" class="mini-btn" id="btnNewModel">+ Crear mobiliario</button><details class="v223-model-actions" id="rackLibraryModelActions"><summary>Opciones <svg class="wms-icon v223-picker-chevron" aria-hidden="true"><use href="#wms-chevron"></use></svg></summary><div class="v223-actions-popup"><button type="button" class="mini-btn" id="btnDuplicateModel">Duplicar modelo</button><button type="button" class="mini-btn danger" id="btnDeleteModel">Eliminar modelo</button></div></details><button type="button" class="btn" id="btnSaveModel">Guardar</button></div></div><div class="v223-library-workspace"><main class="rack-block preview-box-3d v222-model-preview v223-model-preview"><div class="v222-preview-head"><div><h3 id="rackLibraryTitle">${escapeHtml(model.name)}</h3><small>Clic en una pieza para editar</small></div><button type="button" class="mini-btn" id="rackLibraryCenter"><svg class="wms-icon" aria-hidden="true"><use href="#wms-fit"></use></svg>Centrar mueble</button><button type="button" class="mini-btn" id="rackLibraryExpand" aria-pressed="false" aria-controls="rackLibraryInspector"></button></div><div class="detail-stage is-navigable" id="rackPreviewStage"><svg id="rackModelSvg" viewBox="0 0 520 480"></svg></div><div class="v223-preview-foot"><span id="rackLibraryDimensions"></span><span>Arrastra el fondo para girar · rueda para zoom</span></div></main><aside class="v223-library-inspector" id="rackLibraryInspector" aria-label="Propiedades del modelo"><div class="v223-inspector-heading"><h3>Editar modelo</h3><span>Biblioteca</span></div><div class="v223-inspector-scroll" id="rackLibraryInspectorScroll"><div id="rackLibraryControls" class="v222-library-controls">${v222LibraryControls(model)}</div>${v222LibraryAdvanced(model)}</div><div class="v223-inspector-actions"><button type="button" class="btn" id="rackLibraryPlace">Colocar en layout</button><button type="button" class="mini-btn" id="rackLibraryOpenBuilder">Abrir constructor 3D</button></div></aside></div></div>`;
   v222LibraryList();document.getElementById('modelsList').scrollTop=scroll;
   document.getElementById('rackLibrarySearch').oninput=v222LibraryList;
+  document.getElementById('rackLibraryCatalog').ontoggle=event=>{const summary=event.currentTarget.querySelector('summary');summary.setAttribute('aria-expanded',String(event.currentTarget.open));if(event.currentTarget.open)document.getElementById('rackLibrarySearch')?.focus();};
   document.getElementById('btnNewModel').onclick=createNewFurnitureModelDraft;document.getElementById('btnDuplicateModel').onclick=()=>duplicateRackModel(model.id);document.getElementById('btnDeleteModel').onclick=()=>deleteRackModel(model.id);document.getElementById('btnSaveModel').onclick=saveRackModel;
   v222BindLibraryControls(model);
-  document.getElementById('rackLibraryCenter').onclick=()=>{if(rackLibrary3DEngine){rackLibrary3DEngine.yaw=.83;rackLibrary3DEngine.pitch=.36;rackLibrary3DEngine.fitKey='';}resetRackPreviewCamera();renderRackModelPreview();};
+  document.getElementById('rackLibraryCenter').onclick=()=>{if(rackLibrary3DEngine){rackLibrary3DEngine.yaw=.83;rackLibrary3DEngine.pitch=.36;rackLibrary3DEngine.fitKey='';rackLibrary3DEngine.pendingView=null;}resetRackPreviewCamera();renderRackModelPreview();};
+  document.getElementById('rackLibraryExpand').onclick=()=>{appState.ui.v223LibraryExpanded=!appState.ui.v223LibraryExpanded;v223ApplyLibraryExpanded();};v223ApplyLibraryExpanded();v223BindLibraryMenus();
   document.querySelectorAll('[data-model-input]').forEach(el=>el.onchange=()=>updateRackModelField(model.id,el.dataset.modelInput,el.value));
   bindRackFurnitureBuilder(model.id);renderRackFurnitureBuilder(model.id);
   const advanced=document.getElementById('rackLibraryAdvanced');if(advanced)advanced.ontoggle=()=>{appState.ui.v222LibraryAdvanced=advanced.open;};
   const back=document.getElementById('rackLibraryBackMode');if(back)back.onchange=()=>{recordHistorySnapshot('racks');model.furniture.backMode=back.value;furnitureSyncBackPanels(model);syncFurnitureModelToLegacy(model);saveRackModels();v222RenderLibrary();};
   const plinth=document.getElementById('rackLibraryPlinth');if(plinth)plinth.onchange=()=>{recordHistorySnapshot('racks');furnitureSetPlinth(model,plinth.checked);saveRackModels();v222RenderLibrary();};
-  renderRackModelPreview();updateUndoRedoUi();contentStatus.textContent='Biblioteca · Modelo vinculado al layout y al espacio 3D';contentFootRight.textContent=`${appState.models.length} modelos`;
+  document.getElementById('rackLibraryInspectorScroll').scrollTop=inspectorScroll;v223RefreshLibrarySummary(model);renderRackModelPreview();updateUndoRedoUi();contentStatus.textContent='Biblioteca · Modelo vinculado al layout y al espacio 3D';contentFootRight.textContent=`${appState.models.length} modelos`;
 }
 function v222EditModelField(id,field,value){
   const model=(appState.models||[]).find(m=>m.id===id);if(!model)return;

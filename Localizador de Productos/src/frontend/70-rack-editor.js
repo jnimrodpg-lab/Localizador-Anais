@@ -335,6 +335,24 @@
     try{e.renderer?.dispose?.();e.renderer?.forceContextLoss?.();e.renderer?.domElement?.remove();}catch{}
     rackLibrary3DEngine=null;
   }
+  function v223FitRackLibraryCamera(e,options={}){
+    if(!e?.meshByPiece?.size)return;
+    const T=e.THREE,bounds=new T.Box3();e.root.updateMatrixWorld(true);e.meshByPiece.forEach(mesh=>bounds.expandByObject(mesh));if(bounds.isEmpty())return;
+    const zoom=Number.isFinite(options.zoom)?options.zoom:(e.fitDistance?e.distance/e.fitDistance:1);
+    bounds.getCenter(e.target);
+    const cp=Math.cos(e.pitch),sp=Math.sin(e.pitch),cy=Math.cos(e.yaw),sy=Math.sin(e.yaw),tanV=Math.tan(e.camera.fov*Math.PI/360),tanH=tanV*Math.max(.05,e.camera.aspect);
+    const occupiedX=Math.min(.86,Math.max(.3,1-56/Math.max(1,e.host.clientWidth))),occupiedY=Math.min(.84,Math.max(.3,1-72/Math.max(1,e.host.clientHeight)));
+    let distance=20;
+    for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
+      const dx=x-e.target.x,dy=y-e.target.y,dz=z-e.target.z,right=sy*dx-cy*dz,up=-sp*cy*dx+cp*dy-sp*sy*dz,depth=cp*cy*dx+sp*dy+cp*sy*dz;
+      distance=Math.max(distance,depth+Math.abs(right)/(tanH*occupiedX),depth+Math.abs(up)/(tanV*occupiedY));
+    }
+    e.fitDistance=distance;e.distance=distance*Math.max(.1,Math.min(8,zoom));updateRackFurniture3DCamera(e);
+  }
+  function v223CleanRackLibraryHelpers(e,keepSelection=false){
+    e.spaceMeshes.forEach(mesh=>{e.root.remove(mesh);mesh.geometry?.dispose();mesh.material?.dispose();});e.spaceMeshes=[];
+    e.root.children.slice().filter(o=>o.isAxesHelper||(o.isLineSegments&&(!keepSelection||!o.userData?.decorative))).forEach(o=>{e.root.remove(o);o.geometry?.dispose();o.material?.dispose();});
+  }
   async function renderRackLibrary3DPreview(modelId){
     const token=++rackLibraryPreviewToken;
     const model=rackModel(modelId),host=document.getElementById('rackPreviewStage');
@@ -344,6 +362,7 @@
     if(token!==rackLibraryPreviewToken||!host.isConnected)return;
     let e=rackLibrary3DEngine;
     if(!e||e.host!==host){
+      const previousView=e?.modelId===modelId?{yaw:e.yaw,pitch:e.pitch,fitKey:e.fitKey,zoom:e.distance/(e.fitDistance||e.distance)}:null;
       disposeRackLibrary3DPreview();
       let renderer;
       try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:false});}
@@ -360,27 +379,23 @@
       scene.add(new THREE.HemisphereLight(0xffffff,0xc7beb2,2.15));
       const key=new THREE.DirectionalLight(0xffffff,2.0);key.position.set(260,400,460);key.castShadow=true;key.shadow.mapSize.set(1024,1024);scene.add(key);
       const fill=new THREE.DirectionalLight(0xdce8ff,.65);fill.position.set(-280,140,-220);scene.add(fill);
-      e={THREE,host,renderer,scene,camera,root,modelId,meshByPiece:new Map(),spaceMeshes:[],target:new THREE.Vector3(),yaw:.83,pitch:.36,distance:400,raf:0,raycaster:new THREE.Raycaster(),pointer:new THREE.Vector2(),fitKey:''};
+      e={THREE,host,renderer,scene,camera,root,modelId,meshByPiece:new Map(),spaceMeshes:[],target:new THREE.Vector3(),yaw:previousView?.yaw??.83,pitch:previousView?.pitch??.36,distance:400,raf:0,raycaster:new THREE.Raycaster(),pointer:new THREE.Vector2(),fitKey:'',fitDistance:0,pendingView:previousView};
       rackLibrary3DEngine=e;
       host.style.position='relative';
       host.appendChild(renderer.domElement);
-      const resize=()=>{if(!host.isConnected)return;const w=Math.max(160,host.clientWidth||600),h=Math.max(180,host.clientHeight||480);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRackFurniture3DRender(e);};
+      const resize=()=>{if(!host.isConnected)return;const w=Math.max(160,host.clientWidth||600),h=Math.max(180,host.clientHeight||480);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();v223FitRackLibraryCamera(e);requestRackFurniture3DRender(e);};
       e.resizeObserver=new ResizeObserver(resize);e.resizeObserver.observe(host);resize();
-      renderer.domElement.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;const hit=rackFurniture3DHit(e,ev);if(hit?.object?.userData?.pieceId){appState.ui.v222LibraryAdvanced=true;const advanced=document.getElementById('rackLibraryAdvanced');if(advanced)advanced.open=true;}rackFurniture3DPointerDown(e,ev);rebuildRackFurniture3DScene(e,rackModel(e.modelId));requestRackFurniture3DRender(e);});
+      renderer.domElement.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;const hit=rackFurniture3DHit(e,ev);if(hit?.object?.userData?.pieceId){appState.ui.v222LibraryAdvanced=true;const advanced=document.getElementById('rackLibraryAdvanced');if(advanced)advanced.open=true;}rackFurniture3DPointerDown(e,ev);if(hit?.object?.userData?.pieceId)v223RevealLibraryPieceInspector();rebuildRackFurniture3DScene(e,rackModel(e.modelId));v223CleanRackLibraryHelpers(e,true);requestRackFurniture3DRender(e);});
       renderer.domElement.addEventListener('wheel',ev=>{ev.preventDefault();e.distance=Math.max(10,Math.min(60000,e.distance*(ev.deltaY>0?1.1:.9)));updateRackFurniture3DCamera(e);requestRackFurniture3DRender(e);},{passive:false});
     }
     e.modelId=model.id;
     rebuildRackFurniture3DScene(e,model); // Misma geometría y materiales que 'Crear mobiliario 3D'.
     // El catálogo no muestra ejes, zonas fantasma ni seleccionados de la sesión de construcción.
-    e.spaceMeshes.forEach(mesh=>{e.root.remove(mesh);mesh.geometry?.dispose();mesh.material?.dispose();});
-    e.spaceMeshes=[];
-    e.root.children.slice().filter(o=>o.isAxesHelper||o.isLineSegments).forEach(o=>{e.root.remove(o);o.geometry?.dispose();o.material?.dispose();});
+    v223CleanRackLibraryHelpers(e);
     const W=Math.max(1,Number(model.width||120)),D=Math.max(1,Number(model.depth||40)),H=Math.max(1,Number(model.height||200));
-    const fitKey=JSON.stringify([model.id,W,D,H]);if(e.fitKey!==fitKey){e.fitKey=fitKey;
-    e.target.set(W/2,H*.5,D/2);
-    // Encuadre según dimensión mayor y relación de aspecto, para muebles cortos o muy anchos.
-    const radius=Math.hypot(W,H,D)*.57;
-    e.distance=Math.max(70,radius/(Math.sin(Math.PI*34/360)*Math.min(1,Math.max(.4,e.camera.aspect)))*1.0);
+    const fitKey=JSON.stringify([model.id,W,D,H]);if(e.fitKey!==fitKey){
+    const zoom=e.pendingView?.fitKey===fitKey?e.pendingView.zoom:1;e.fitKey=fitKey;e.pendingView=null;
+    v223FitRackLibraryCamera(e,{zoom});
     }
     updateRackFurniture3DCamera(e);
     const svg=host.querySelector('#rackModelSvg');if(svg)svg.style.display='none';

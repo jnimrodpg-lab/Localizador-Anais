@@ -7858,3 +7858,98 @@ body[data-screen="racks"] #appRoot.app .content-wrap{overflow:auto!important}
 @media(max-width:1050px){#appRoot.app .v222-library-page{grid-template-columns:210px minmax(0,1fr)!important;gap:14px!important}#appRoot.app .v222-dimension-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#appRoot.app .v222-model-identity{grid-template-columns:1fr;gap:8px}#appRoot.app .v222-advanced-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:740px){#appRoot.app .v222-library-page{grid-template-columns:1fr!important}#appRoot.app .v222-library-catalog{position:static;max-height:260px}#appRoot.app .v222-model-list{min-height:70px;max-height:120px}#appRoot.app .v222-library-controls,#appRoot.app .v222-preview-head{padding:16px}#appRoot.app .v222-model-preview #rackPreviewStage{height:320px!important}}
 
+/* V223 — Editor amplio: el inspector se desplaza sin restar altura al visor. */
+body[data-screen="racks"] #appRoot.app{grid-template-rows:minmax(0,1fr)!important}
+body[data-screen="racks"] #appRoot.app>.content-panel{height:100%!important;min-height:0!important;max-height:100%!important}
+body[data-screen="racks"] #appRoot.app .content-panel{grid-template-rows:auto minmax(0,1fr) auto!important}
+body[data-screen="racks"] #appRoot.app .content-wrap{display:block!important;align-content:normal!important;overflow:hidden!important;padding:12px 16px!important}
+#appRoot.app .v223-library-page{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto minmax(0,1fr)!important;align-items:stretch!important;align-content:stretch!important;gap:14px!important;padding:0!important;margin:0!important;max-width:none!important;height:100%!important;max-height:100%!important;min-height:0!important;overflow:visible!important}
+#appRoot.app .v223-library-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;position:relative;z-index:5}
+#appRoot.app .v223-model-picker{position:relative;min-width:0;max-width:min(52%,540px)}
+#appRoot.app .v223-model-picker>summary{display:flex;align-items:center;gap:10px;min-width:0;min-height:40px;padding:9px 12px;background:var(--surface-1);border:1px solid var(--line);border-radius:10px;color:var(--ink);font-size:13px;cursor:pointer;list-style:none}
+#appRoot.app .v223-model-picker>summary::-webkit-details-marker,#appRoot.app .v223-model-actions>summary::-webkit-details-marker{display:none}
+#appRoot.app .v223-picker-label{font-size:11px;color:var(--ink-soft);padding-right:3px}
+#appRoot.app #rackLibraryModelName{min-width:0;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
+#appRoot.app .v223-model-picker>summary>.wms-icon{width:17px;height:17px;flex-shrink:0;color:var(--primary)}
+#appRoot.app .v223-picker-chevron{width:14px!important;height:14px!important;transform:rotate(-90deg);flex-shrink:0}
+#appRoot.app .v223-model-picker[open]>summary .v223-picker-chevron,#appRoot.app .v223-model-actions[open]>summary .v223-picker-chevron{transform:rotate(90deg)}
+#appRoot.app .v223-model-picker>.v223-model-popup{position:absolute!important;top:calc(100% + 8px);left:0;width:min(380px,calc(100vw - 110px));max-width:none!important;max-height:min(520px,70vh)!important;padding:16px!important;gap:12px;z-index:10;box-shadow:0 14px 40px rgba(46,37,26,.18)}
+#appRoot.app .v223-model-popup .v222-model-list{min-height:90px;max-height:340px}
+#appRoot.app .v223-toolbar-actions{display:flex;align-items:center;gap:9px;flex-shrink:0}
+#appRoot.app .v223-toolbar-actions :is(.btn,.mini-btn){min-height:38px;padding:8px 13px}
+#appRoot.app .v223-model-actions{position:relative}
+#appRoot.app .v223-model-actions>summary{display:flex;align-items:center;gap:8px;min-height:38px;padding:8px 11px;cursor:pointer;list-style:none;border:1px solid var(--line);border-radius:10px;background:var(--surface-1);color:var(--ink);font-size:12px;font-weight:600}
+#appRoot.app .v223-actions-popup{display:grid;gap:7px;position:absolute;top:calc(100% + 8px);right:0;width:200px;max-width:none!important;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface-1);box-shadow:0 12px 28px rgba(46,37,26,.15);z-index:10}
+#appRoot.app .v223-actions-popup>button{width:100%;text-align:left;justify-content:flex-start}
+#appRoot.app .v223-library-workspace{display:grid;grid-template-columns:minmax(0,1fr) clamp(350px,25vw,390px);gap:16px;min-width:0;min-height:0;height:100%;overflow:hidden}
+#appRoot.app .v223-model-preview{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-width:0;min-height:0;height:100%;margin:0!important}
+#appRoot.app .v223-model-preview .v222-preview-head{padding:14px 18px;gap:10px;flex-wrap:wrap;background:var(--surface-1)}
+#appRoot.app .v223-model-preview .v222-preview-head>div{min-width:130px}
+#appRoot.app .v223-model-preview .v222-preview-head h3{font-size:16px;margin-bottom:3px;overflow-wrap:anywhere}
+#appRoot.app .v223-model-preview .v222-preview-head .mini-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:35px;padding:7px 10px;white-space:nowrap}
+#appRoot.app .v223-model-preview .v222-preview-head .wms-icon{width:16px;height:16px;flex-shrink:0}
+#appRoot.app .v223-model-preview #rackPreviewStage{height:100%!important;min-height:0!important;max-height:none!important;align-self:stretch;width:100%!important;overflow:hidden!important;position:relative}
+#appRoot.app .v223-model-preview #rackPreviewStage>svg{display:block;width:100%!important;height:100%!important}
+#appRoot.app .v223-preview-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:7px;padding:10px 18px;color:var(--ink-soft);font-size:11px;border-top:1px solid var(--line);background:var(--surface-1)}
+#appRoot.app #rackLibraryDimensions{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+#appRoot.app .v223-library-inspector{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;border:1px solid var(--line);border-radius:16px;background:var(--surface-1);overflow:hidden}
+#appRoot.app .v223-inspector-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line);flex:0 0 auto}
+#appRoot.app .v223-inspector-heading h3{margin:0;font-size:15px;font-weight:650;color:var(--ink)}
+#appRoot.app .v223-inspector-heading>span{padding:4px 8px;border-radius:7px;color:var(--primary);background:var(--accent-soft);font-size:10px}
+#appRoot.app .v223-inspector-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable}
+#appRoot.app .v223-library-inspector .v222-library-controls{display:grid;gap:22px;padding:18px 20px 20px;border-top:0}
+#appRoot.app .v223-library-inspector .v222-model-identity{grid-template-columns:minmax(0,1fr);gap:8px;min-width:0}
+#appRoot.app .v223-library-inspector .v222-model-identity>small{font-size:11px;line-height:1.45;padding-bottom:0}
+#appRoot.app .v223-controls-section{display:grid;gap:12px;min-width:0}
+#appRoot.app .v223-controls-section h4{display:flex;justify-content:space-between;align-items:center;margin:0;font-size:13px;font-weight:650;color:var(--ink)}
+#appRoot.app .v223-controls-section h4>span{font-size:10px;color:var(--ink-soft);font-weight:400}
+#appRoot.app .v223-controls-section>small{font-size:11px;line-height:1.5;color:var(--ink-soft)}
+#appRoot.app .v223-library-inspector .v222-dimension-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 11px}
+#appRoot.app .v223-field-wide{grid-column:1/-1;min-width:0}
+#appRoot.app .v223-library-inspector .v222-input-unit em{right:24px}
+#appRoot.app .v223-library-inspector .v222-library-advanced{margin:0 14px 16px;border-radius:10px;min-width:0;overflow:hidden}
+#appRoot.app .v223-library-inspector .v222-library-advanced>summary{padding:13px 12px;font-size:12px;line-height:1.45}
+#appRoot.app .v223-library-inspector .v222-advanced-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:7px 12px 15px}
+#appRoot.app .v223-library-inspector .v222-piece-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0 12px 15px}
+#appRoot.app .v223-library-inspector .v222-piece-actions>button{min-width:0;white-space:normal;font-size:11px;padding:8px 6px;min-height:34px}
+#appRoot.app .v223-library-inspector .v222-library-advanced #rackBuilderInspector{margin:0 10px 14px;padding:10px!important}
+#appRoot.app .v223-library-inspector :is(.rack-builder-piece-metrics,.rack-3d-param-grid){grid-template-columns:repeat(2,minmax(0,1fr))!important;min-width:0}
+#appRoot.app .v223-library-inspector :is(.rack-3d-param-actions,.rack-3d-param-head,.rack-builder-inspector-head){flex-wrap:wrap!important}
+#appRoot.app .v223-library-inspector .v222-level-options{margin:0 12px 15px}
+#appRoot.app .v223-library-inspector .rack-builder-level-card{padding:9px!important;min-width:0}
+#appRoot.app .v223-inspector-actions{display:grid;gap:8px;padding:14px 18px;border-top:1px solid var(--line);background:var(--surface-1);flex:0 0 auto}
+#appRoot.app .v223-inspector-actions>button{width:100%;min-height:36px;justify-content:center}
+#appRoot.app .v223-library-page.is-expanded .v223-library-workspace{grid-template-columns:minmax(0,1fr)}
+#appRoot.app .v223-library-inspector[hidden]{display:none!important}
+#appRoot.app #rackLibraryExpand[aria-pressed="true"]{background:var(--accent-soft)!important;color:var(--primary)!important;border-color:var(--primary)!important}
+@media(max-width:1100px){
+ #appRoot.app .v223-library-workspace{grid-template-columns:minmax(0,1fr) 350px;gap:12px}
+ #appRoot.app .v223-model-preview .v222-preview-head{padding:12px 14px;gap:7px}
+ #appRoot.app .v223-model-preview .v222-preview-head>div{flex-basis:100%}
+ #appRoot.app .v223-preview-foot{padding:9px 14px}
+ #appRoot.app .v223-library-toolbar{gap:9px}
+ #appRoot.app .v223-toolbar-actions{gap:7px}
+}
+@media(max-width:1180px){
+ body[data-screen="racks"] #appRoot.app>.content-panel{height:max(620px,calc(100dvh * var(--wms-density-inverse) - 210px))!important;min-height:620px!important;max-height:none!important}
+}
+@media(max-width:740px){
+ body[data-screen="racks"] #appRoot.app .content-wrap{overflow:auto!important;padding:10px!important}
+ #appRoot.app .v223-library-page{height:auto!important;max-height:none!important;grid-template-rows:auto auto!important;gap:12px!important}
+ #appRoot.app .v223-library-toolbar{flex-wrap:wrap;gap:10px}
+ #appRoot.app .v223-model-picker{max-width:100%;width:100%}
+ #appRoot.app .v223-model-picker>summary{width:100%}
+ #appRoot.app #rackLibraryModelName{max-width:none;flex:1}
+ #appRoot.app .v223-model-picker>.v223-model-popup{width:100%;max-height:430px!important}
+ #appRoot.app .v223-model-popup .v222-model-list{max-height:300px}
+ #appRoot.app .v223-toolbar-actions{justify-content:flex-end;width:100%;flex-wrap:wrap}
+ #appRoot.app .v223-library-workspace{grid-template-columns:minmax(0,1fr);height:auto;overflow:visible;gap:12px}
+ #appRoot.app .v223-model-preview{height:clamp(440px,64vh,650px);min-height:440px}
+ #appRoot.app .v223-model-preview #rackPreviewStage{height:100%!important;min-height:0!important}
+ #appRoot.app .v223-model-preview .v222-preview-head>div{flex-basis:100%}
+ #appRoot.app .v223-library-inspector{height:auto;min-height:0}
+ #appRoot.app .v223-inspector-scroll{overflow:visible;scrollbar-gutter:auto;flex:0 0 auto}
+ #appRoot.app .v223-inspector-actions{padding:14px 18px}
+ #appRoot.app .v223-library-page.is-expanded .v223-model-preview{height:clamp(540px,78vh,850px)}
+}
+

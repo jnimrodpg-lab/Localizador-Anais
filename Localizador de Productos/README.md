@@ -1,10 +1,19 @@
-# WMS Industrial V222 — Mobiliario unificado y biblioteca simplificada
+# WMS Industrial V223 — Editor amplio de mobiliario
 
 Medidas y geometría coherentes entre Biblioteca de racks, Crear mobiliario 3D, Editar layout y Diseñar espacio 3D. Conserva Arquitectura, Urbanismo, Distribución, calles por puntos, diorama, apilamiento y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
 
+## Interfaz V223
+
+- Selector superior con búsqueda por nombre; crear, guardar y opciones para duplicar o eliminar siguen disponibles.
+- Visor 3D a toda la altura disponible y propiedades a la derecha, agrupadas en nombre, medidas y distribución.
+- Materiales y edición de piezas plegados, con desplazamiento independiente del visor. Seleccionar una pieza abre su inspector.
+- **Ampliar vista** oculta las propiedades; **Volver a edición** o Escape las recupera. El encuadre se adapta a la geometría real y proporción del visor. Los cambios de tamaño del visor conservan el giro y zoom.
+- Temas claro/oscuro y densidad al 80 %. En pantallas pequeñas, visor encima de las propiedades sin solaparse.
+- `scripts/test-v223-ui.mjs` comprueba selector, búsqueda, panel derecho, encuadre, edición, modo ampliado, piezas y tamaños adaptables.
+
 ## Mobiliario V222
 
-- La biblioteca tiene una sola previsualización 3D editable, con lista compacta de modelos y propiedades debajo: nombre, ancho, profundidad, cubierta plana o con pendiente, una altura o dos alturas laterales, niveles y divisiones físicas. Materiales y edición de piezas se despliegan al necesitarlos. Clic en una pieza abre el inspector; fondo y rueda permiten girar y acercar la vista.
+- La biblioteca tiene una sola previsualización 3D editable, con selector superior y propiedades a la derecha: nombre, ancho, profundidad, cubierta plana o con pendiente, una altura o dos alturas laterales, niveles y divisiones físicas. Materiales y edición de piezas se despliegan al necesitarlos. Clic en una pieza abre el inspector; fondo y rueda permiten girar y acercar la vista.
 - Las cuatro pantallas comparten dimensiones y descriptores físicos de piezas. Redimensionar conserva el espesor de tableros, piezas personalizadas y uniones; las repisas se redistribuyen cuando la altura o pendiente reduce su espacio. La tapa inclinada y los fondos recortados usan la misma geometría en el constructor, la biblioteca y el espacio 3D.
 - Los cambios de modelo actualizan los ejemplares vinculados en las sucursales. Ancho, profundidad y altura editados en el layout o espacio 3D son modificaciones del ejemplar y se conservan cuando cambia el modelo. **Usar medidas del modelo** restaura esas tres dimensiones. La rotación usa grados continuos y una huella real; la escala de plano se aplica una sola vez.
 - El inspector de un mueble seleccionado muestra directamente **nombre** y **nomenclatura**, también en el modo simplificado. La nomenclatura identifica el ejemplar y es independiente de su ID interno. Introducir el código de otro mueble del mismo layout intercambia los dos códigos en una operación que puede deshacerse; posiciones, nombre, SKU y contenidos conservan su ejemplar.
@@ -101,7 +110,7 @@ Se mantienen los estados de V213: guardado en este dispositivo, pendiente de sin
 
 `npm run check` compila fuentes/CSS, verifica el bundle, ejecuta regresiones geométricas V202–V222 y comprueba sintaxis del backend/frontend.
 
-`npm run test:ui` comprueba V220, V221 y V222 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. Incluye trazado nativo por puntos, conexiones compartidas, edición del eje, eliminación por botón y Supr, circuitos cerrados y eliminación en 3D. También verifica cruces y canaletas en 2D/3D, veredas junto a ochavas, edición de vértices, y el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
+`npm run test:ui` comprueba V220, V221, V222 y V223 en navegador: rotación completa con zócalos de 20 cm, divisiones interiores constantes, puertas/ventanas y recorte de marcos/vidrios, temas, base/sombra, desplazamiento/zoom sin reconstrucción, vistas Planta/Frontal/Isométrica, ciclo de muros y alturas guardadas. Incluye trazado nativo por puntos, conexiones compartidas, edición del eje, eliminación por botón y Supr, circuitos cerrados y eliminación en 3D. También verifica cruces y canaletas en 2D/3D, veredas junto a ochavas, edición de vértices, y el flujo Área comercial → Muros → Área total → Calles con creación nativa de muros, posición exterior de veredas, cambios de espesor, deshacer/rehacer y recarga local. `npm run test:ui:layout` conserva la prueba completa de edición de V216. Requieren Playwright/Chromium como dependencia opcional; no forman parte del despliegue. `WMS_TEST_BROWSER` permite indicar un Chromium existente. Capturas de QA solo temporales.
 
 ## Alcance
 

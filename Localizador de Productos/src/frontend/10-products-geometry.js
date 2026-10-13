@@ -824,6 +824,37 @@ function guessAutoRackWidth(slots, baseWidth=150, baseSlots=2){
       y: cy + pt.x * sin + pt.y * cos
     }));
   }
+  // V224: la cara posterior es SIEMPRE y local = -profundidad/2.
+  // El fondo físico creado en Furniture Builder utiliza Y=0; la transformación
+  // del plano usa la misma orientación que las piezas del visor 3D.
+  function rackContourEdges(rack){
+    const corners=rackCorners(rack);
+    return corners.map((a,i)=>{
+      const b=corners[(i+1)%corners.length],dx=b.x-a.x,dy=b.y-a.y;
+      const len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+      return {a,b,index:i,length:len,ux,uy,nx:uy,ny:-ux,
+        side:['back','right','front','left'][i]};
+    });
+  }
+  function rackVerticalOverlap(a,b){
+    const lowA=Number(a.baseHeight||0),lowB=Number(b.baseHeight||0);
+    const highA=lowA+Number(a.rackHeight||a.virtual?.height||rackModel(a.modelId)?.height||200);
+    const highB=lowB+Number(b.rackHeight||b.virtual?.height||rackModel(b.modelId)?.height||200);
+    return highA>lowB+0.001&&highB>lowA+0.001;
+  }
+  // Separating Axis Theorem para rectángulos rotados. La igualdad en una cara
+  // NO es colisión: permite encuentro exacto con separación de 0 cm.
+  function rackContoursOverlap(a,b,epsilon=0.02){
+    const pa=rackCorners(a),pb=rackCorners(b);
+    if(pa.length!==4||pb.length!==4)return false;
+    const axes=[...rackContourEdges(a),...rackContourEdges(b)];
+    for(const edge of axes){
+      const ax=edge.nx,ay=edge.ny;
+      const x=pa.map(pt=>pt.x*ax+pt.y*ay),y=pb.map(pt=>pt.x*ax+pt.y*ay);
+      if(Math.max(...x)<=Math.min(...y)+epsilon || Math.max(...y)<=Math.min(...x)+epsilon)return false;
+    }
+    return true;
+  }
   function rackFullyInsideZone(rack, zone){ return !!(rack && zone) && rackCorners(rack).every(pt => pointInPoly(pt, zone.pts) || pointNearPolygonEdge(pt, zone.pts, 1)); }
   function collectSnapPoints(exceptZoneId = ''){
     const out = [];
@@ -2567,15 +2598,12 @@ const DEFAULT_GRID_SIZE = 2;
   function closeStackMenu(){
     appState.editor.stackMenu = { open:false, rackId:'', x:0, y:0 };
   }
-  function getFrontLine(baseW, baseH){
-    const pad = 8;
-    // El frente siempre es el lado más largo del rack.
-    // Si el ancho base es mayor o igual al fondo, el frente es el borde superior.
-    // Si el fondo es mayor, el frente es el borde derecho.
-    if(baseW >= baseH){
-      return { x1: -baseW/2 + 12, y1: -baseH/2 + pad, x2: baseW/2 - 12, y2: -baseH/2 + pad, ax: 0, ay: -baseH/2 - 10, dir:'up' };
-    }
-    return { x1: baseW/2 - pad, y1: -baseH/2 + 12, x2: baseW/2 - pad, y2: baseH/2 - 12, ax: baseW/2 + 10, ay: 0, dir:'right' };
+  function getFrontLine(baseW,baseH){
+    // Línea de FONDO; nunca elegir lado por ser el más largo del rectángulo.
+    const margin=Math.min(8,Math.max(1,baseW*.08));
+    const y=-baseH/2;
+    return {x1:-baseW/2+margin,y1:y,x2:baseW/2-margin,y2:y,
+      ax:0,ay:y-Math.min(12,Math.max(6,baseH*.16)),dir:'up'};
   }
   function frontArrowPath(x, y, dir){
     if(dir === 'right') return `M ${x-9} ${y-6} L ${x-9} ${y+6} L ${x+4} ${y} Z`;

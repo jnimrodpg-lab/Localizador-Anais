@@ -69,11 +69,7 @@
     }
     return inside;
   }
-  function vspaceCorners(r){
-    const hw=(Number(r.w)||60)/2,hd=(Number(r.h)||45)/2;
-    const cx=Number(r.x)+hw,cy=Number(r.y)+hd;
-    return [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(([dx,dy])=>({x:cx+dx,y:cy+dy}));
-  }
+  function vspaceCorners(r){return rackCorners(r); /* V224: misma huella 2D y Three.js, también rotada */}
   function vspaceBounds(r){
     const ps=vspaceCorners(r);
     return {left:Math.min(...ps.map(p=>p.x)),right:Math.max(...ps.map(p=>p.x)),top:Math.min(...ps.map(p=>p.y)),bottom:Math.max(...ps.map(p=>p.y))};
@@ -85,8 +81,7 @@
     const collision=(appState.layout.racks||[]).find(r=>{
       if(r.id===ignoreId || r.zoneId!==candidate.zoneId)return false;
       const aLow=Number(r.baseHeight||0), bLow=Number(candidate.baseHeight||0);const aHigh=aLow+Number(r.rackHeight||vspaceSpec(r).height||200),bHigh=bLow+Number(candidate.rackHeight||vspaceSpec(candidate).height||200);if(aHigh<=bLow+.5 || bHigh<=aLow+.5)return false;
-      const q=vspaceBounds(r);
-      return b.left<q.right-2 && b.right>q.left+2 && b.top<q.bottom-2 && b.bottom>q.top+2;
+      return rackContoursOverlap(candidate,r,0.02);
     });
     return collision?{ok:false,msg:`Colisión detectada con ${collision.virtualName||collision.id}.`}:{ok:true,msg:''};
   }
@@ -109,8 +104,7 @@
   function vspaceStackIntersect(a,b){
     const az=Number(a.baseHeight||0),bz=Number(b.baseHeight||0);
     if(az+vspaceStackHeight(a)<=bz+.5||bz+vspaceStackHeight(b)<=az+.5)return false;
-    const ap=vspaceBounds(a),bp=vspaceBounds(b);
-    return ap.left<bp.right-1 && ap.right>bp.left+1 && ap.top<bp.bottom-1 && ap.bottom>bp.top+1;
+    return rackContoursOverlap(a,b,0.02);
   }
   function vspaceValidateRackProposals(changes){
     const ids=new Set(changes.map(r=>r.id));
@@ -1215,6 +1209,14 @@
             shared,block:addBlock,sprite:labelSprite,selected:r.id===state.selectedId,
             selectedLevel:state.selectedLevel,selectedSlot:state.selectedSlot,products:vspaceProductsForSlot
           });
+          // La cara de fondo del constructor tiene y=0 -> z local negativo.
+          // Trazo frontal 3D situado SOBRE la cubierta, en el borde posterior;
+          // rota solidariamente con el mueble (sin depender de ancho/profundidad).
+          const rearMat=shared.backEdge||(shared.backEdge=new THREE.MeshBasicMaterial({color:0x00ba94,depthTest:false}));
+          const rearW=Math.max(.04,spec.width/100-.045),rearZ=-spec.depth/200;
+          const rearLine=new THREE.Mesh(new THREE.BoxGeometry(rearW,.009,.013),rearMat);
+          rearLine.position.set(0,spec.height/100+.018,rearZ);
+          rearLine.renderOrder=18;rearLine.userData={decorative:true};group.add(rearLine);
           // Cinta de nivel física: diferencia N1/N2/N3 sin alterar los materiales del modelo.
           if(r.stackGroupId){
             const levelColor=[0x4a86c5,0x59a66e,0xe79a45,0x9675bc,0x5096a4,0xc47c8a][Math.max(0,Number(r.stackLevel||0))%6];

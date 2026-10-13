@@ -28,6 +28,7 @@
     if(appState.editor.visibleRackLevel===undefined) appState.editor.visibleRackLevel='all';
     if(appState.editor.distributionFreeMove===undefined) appState.editor.distributionFreeMove=true;
     if(appState.editor.distributionVertexSnap===undefined) appState.editor.distributionVertexSnap=true;
+    if(appState.editor.distributionEdgeSnap===undefined) appState.editor.distributionEdgeSnap=true;
     if(!['wall','vertices'].includes(appState.editor.rackAlignMode)) appState.editor.rackAlignMode='';
     if(appState.editor.rackAlignVertexA===undefined) appState.editor.rackAlignVertexA=null;
     if(appState.editor.rackAlignClearanceCm===undefined) appState.editor.rackAlignClearanceCm=2;
@@ -1983,14 +1984,16 @@
     return `<section class="layout-prop-card layout-v200-distribution"><div class="layout-prop-title">Precisión y movimiento</div>
       <div class="layout-v205-motion-options" style="display:grid;gap:9px;margin:10px 0 14px">
         <label style="display:flex;align-items:center;gap:8px"><input id="v205FreeMove" type="checkbox" ${appState.editor.distributionFreeMove!==false?'checked':''}><span>Movimiento libre de racks</span></label>
-        <label style="display:flex;align-items:center;gap:8px"><input id="v205VertexSnap" type="checkbox" ${appState.editor.distributionVertexSnap!==false?'checked':''}><span>Alinear con vértices y bordes</span></label>
+        <label style="display:flex;align-items:center;gap:8px"><input id="v205VertexSnap" type="checkbox" ${appState.editor.distributionVertexSnap!==false?'checked':''}><span>Snap a puntos y vértices</span></label>
+        <label style="display:flex;align-items:center;gap:8px"><input id="v224EdgeSnap" type="checkbox" ${appState.editor.distributionEdgeSnap!==false?'checked':''}><span>Snap entre aristas (contacto real)</span></label>
         <div class="layout-prop-title" style="margin-top:4px">Rotación y paralelismo</div>
         <label>Ángulo libre (0°–360°)<input id="v208RackAngle" type="number" min="0" max="360" step="0.1" inputmode="decimal" value="${findRackById(appState.selectedRackLayoutId)?Number(normalizeAngle(findRackById(appState.selectedRackLayoutId).rot||0).toFixed(2)):0}" ${!appState.selectedRackLayoutId?'disabled':''}></label>
-        <label>Separación perpendicular (cm)<input id="v206AlignClearance" type="number" min="0" max="250" step="0.1" value="${Number(appState.editor.rackAlignClearanceCm??2)}"></label>
+        <label>Separación entre caras / muro (cm)<input id="v206AlignClearance" type="number" min="0" max="250" step="0.1" value="${Number(appState.editor.rackAlignClearanceCm??2)}"></label>
         <div class="layout-template-grid"><button type="button" class="seg-btn ${appState.editor.rackAlignMode==='wall'?'active':''}" id="v206AlignWall" ${!appState.selectedRackLayoutId?'disabled':''}>↗ Hacer paralelo a muro</button><button type="button" class="seg-btn ${appState.editor.rackAlignMode==='vertices'?'active':''}" id="v206AlignVertices" ${!appState.selectedRackLayoutId?'disabled':''}>↗ Paralelo a 2 vértices</button></div>
         <div class="layout-template-grid"><button type="button" class="seg-btn" id="v208ReapplyParallel" ${!appState.editor?.rackAlignLast || appState.editor?.rackAlignLast?.rackId!==appState.selectedRackLayoutId?'disabled':''}>Aplicar nueva separación</button><button type="button" class="seg-btn" id="v208ReverseParallel" ${!appState.selectedRackLayoutId?'disabled':''}>Invertir sentido 180°</button></div>
         ${appState.editor?.rackAlignLast?.rackId===appState.selectedRackLayoutId?`<p class="tiny muted" style="margin:0">Referencia: ${escapeHtml(appState.editor.rackAlignLast.reference)} · ajusta la separación y aplica sin volver a seleccionar la arista.</p>`:''}
         ${appState.editor.rackAlignMode?`<p class="tiny muted" style="padding:9px;border:1px dashed #4d8d72;border-radius:9px">${appState.editor.rackAlignMode==='wall'?'Haz clic sobre el muro o arista inclinada que deseas seguir.':'Haz clic en el primer y segundo vértice para marcar la dirección.'} Esc cancela.</p>`:''}
+        <p class="tiny muted" style="margin:0">Acerca dos caras: el snap alinea sus aristas reales, ajusta giros próximos (máx. 7°), conserva la cara posterior y respeta la separación seleccionada (0 cm = contacto). La guía verde anticipa el resultado. Ctrl ignora temporalmente el snap.</p>
         <p class="tiny muted" style="margin:0">Libre: puedes mover fuera de zonas pequeñas sin que el rack regrese. Se advierten las interferencias sin bloquear. Desactívalo para exigir cabida y ausencia de colisiones. El snap general se mantiene independiente. Ctrl mientras arrastras: ignorar snap.</p>
       </div>
       <div class="layout-prop-title">Selección por altura</div><p class="tiny muted">Aísla N1 para seleccionar módulos inferiores aunque los niveles superiores tengan la misma huella.</p>${layoutLevelSelector()}<label class="layout-v200-rack-select">Seleccionar rack<select id="v200RackSelect"><option value="">Seleccionar rack</option>${(appState.layout?.racks||[]).filter(r=>rackVisibleAtLevel(r)).map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===appState.selectedRackLayoutId?'selected':''}>${escapeHtml(r.displayCode||r.id)} · NPT +${Math.round(Number(r.baseHeight||0))}</option>`).join('')}</select></label><button type="button" class="seg-btn" id="v200ShowSections">${appState.editor.sectionVisible?'Ocultar secciones':'Ver secciones X/Y'}</button></section>`;
@@ -2435,11 +2438,102 @@
     const c={x:Number(rack.x||0)+Number(rack.w||0)/2,y:Number(rack.y||0)+Number(rack.h||0)/2};
     return (appState.layout?.zones||[]).find(z=>pointInPoly(c,z.pts)) || findZoneById(rack.zoneId) || nearestZoneForPoint(c);
   }
+  // V224 — snap geométrico de CARAS de muebles (no esquinas redondeadas).
+  // Alineación por SAT + proyecciones tangenciales; posiciones en unidades del plano.
+  function v224SnapRackEdges(rack, excluded=[]){
+    const near=rackCorners(rack),nearX=near.map(pt=>pt.x),nearY=near.map(pt=>pt.y);
+    const margin=Math.max(4,Math.min(22,getSnapSize()*4))+Math.max(0,Number(appState.editor?.rackAlignClearanceCm||0))/Math.max(.0001,getScaleCmPerUnit());
+    const bounds={l:Math.min(...nearX)-margin,r:Math.max(...nearX)+margin,t:Math.min(...nearY)-margin,b:Math.max(...nearY)+margin};
+    const excludedSet=new Set(excluded);
+    const others=(appState.layout?.racks||[]).filter(r=>{
+      if(r.id===rack.id||excludedSet.has(r.id)||!rackVerticalOverlap(rack,r))return false;
+      const pts=rackCorners(r),xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+      return Math.max(...xs)>=bounds.l&&Math.min(...xs)<=bounds.r&&Math.max(...ys)>=bounds.t&&Math.min(...ys)<=bounds.b;
+    });
+    if(!others.length)return null;
+    const pxPerCm=1/Math.max(.0001,getScaleCmPerUnit());
+    const gap=Math.max(0,Math.min(250,Number(appState.editor?.rackAlignClearanceCm??0)||0))*pxPerCm;
+    const threshold=Math.max(3,Math.min(14,getSnapSize()*3));
+    const minOverlap=Math.max(.4,Math.min(3,threshold*.16));
+    let best=null;
+    const angleDelta=(a,b)=>((a-b+540)%360)-180;
+    const unit=(a,b)=>{const x=b.x-a.x,y=b.y-a.y,l=Math.hypot(x,y)||1;return {x:x/l,y:y/l};};
+    const tryCandidate=(candidate,other,movingSide,targetSide,kind,shift,turn)=>{
+      // Verifica contornos ROTADOS y altura, y evita que un snap invada terceros.
+      if(others.some(o=>rackContoursOverlap(candidate,o,0.02)))return;
+      // Preferir que dos traseras contiguas compartan línea (más útil que solo tocar lateralmente).
+      const cost=Math.hypot(shift.x,shift.y)+Math.abs(turn)*.12-(kind==='back'?threshold*.7:0);
+      if(!best||cost<best.cost){
+        const e1=rackContourEdges(candidate).find(e=>e.side===movingSide);
+        const e2=rackContourEdges(other).find(e=>e.side===targetSide);
+        best={rack:candidate,cost,kind,target:e2,moving:e1,other,
+          label:kind==='back'?'Fondos alineados':`Caras en contacto · ${Number(gap/pxPerCm).toFixed(1)} cm`};
+      }
+    };
+    for(const other of others){
+      const targetEdges=rackContourEdges(other);
+      for(const target of targetEdges){
+        for(const source of rackContourEdges(rack)){
+          let turn=0;
+          const signed=angleDelta(Math.atan2(target.uy,target.ux)*180/Math.PI,
+             Math.atan2(source.uy,source.ux)*180/Math.PI);
+          // Ambas orientaciones del segmento son paralelas; preservar el giro más cercano.
+          turn=((signed+90)%180+180)%180-90;
+          if(Math.abs(turn)>7.00001)continue;
+          const rot=normalizeAngle(Number(rack.rot||0)+turn);
+          const fp=getRackFootprint(rack.modelId,rot,rack);
+          const center={x:rack.x+rack.w/2,y:rack.y+rack.h/2};
+          const rotated={...rack,rot,w:fp.w,h:fp.h,x:center.x-fp.w/2,y:center.y-fp.h/2};
+          const edge=rackContourEdges(rotated)[source.index];
+          const facing=edge.nx*target.nx+edge.ny*target.ny;
+          const normalDistance=(edge.a.x-target.a.x)*target.nx+(edge.a.y-target.a.y)*target.ny;
+          const tangent=point=>(point.x-target.a.x)*target.ux+(point.y-target.a.y)*target.uy;
+          const p1=tangent(edge.a),p2=tangent(edge.b),lo=Math.min(p1,p2),hi=Math.max(p1,p2);
+          const overlap=Math.min(hi,target.length)-Math.max(lo,0);
+          // 1) Contacto de caras opuestas; exigir solape real sobre la misma línea.
+          if(facing<-.999 && overlap>=minOverlap){
+            const delta=gap-normalDistance;
+            const shift={x:target.nx*delta,y:target.ny*delta};
+            if(Math.abs(delta)>threshold)continue;
+            const candidate={...rotated,x:rotated.x+shift.x,y:rotated.y+shift.y};
+            tryCandidate(candidate,other,edge.side,target.side,'contact',shift,turn);
+          }
+          // 2) Dos fondos mirando a la misma dirección, adyacentes sin traslape:
+          //    alinea su cota posterior incluso con anchos/profundidades distintos.
+          if(edge.side==='back'&&target.side==='back'&&facing>.999 && overlap<=minOverlap
+             && overlap>=-threshold){
+            const shiftNormal={x:-target.nx*normalDistance,y:-target.ny*normalDistance};
+            let tangentShift=0;
+            if(lo>=target.length)tangentShift=target.length-lo;
+            else if(hi<=0)tangentShift=-hi;
+            const shift={x:shiftNormal.x+target.ux*tangentShift,y:shiftNormal.y+target.uy*tangentShift};
+            if(Math.max(Math.abs(shift.x),Math.abs(shift.y))>threshold)continue;
+            const candidate={...rotated,x:rotated.x+shift.x,y:rotated.y+shift.y};
+            tryCandidate(candidate,other,edge.side,target.side,'back',shift,turn);
+          }
+        }
+      }
+    }
+    return best;
+  }
   function distributionRackPlacement(rack, x, y, opts={}){
     const n={...rack,x:Number(x)||0,y:Number(y)||0};
     const snapping=isSnapEnabled()&&!opts.ignoreSnap;
     if(snapping){n.x=snapGrid(n.x);n.y=snapGrid(n.y);}
     clearRackSnapPreview();
+    // Prioridad: cara completa -> punto individual -> rejilla. Un contacto
+    // entre aristas no puede ser sustituido después por un punto cercano.
+    if(snapping && appState.editor?.distributionEdgeSnap===true){
+      const edgeMatch=v224SnapRackEdges(n,opts.ignoreRackIds||[]);
+      if(edgeMatch){
+        Object.assign(n,{x:edgeMatch.rack.x,y:edgeMatch.rack.y,w:edgeMatch.rack.w,h:edgeMatch.rack.h,rot:edgeMatch.rack.rot});
+        setRackSnapPreview({type:edgeMatch.kind,strength:'hard',
+          line:[edgeMatch.target.a,edgeMatch.target.b],
+          movingLine:[edgeMatch.moving.a,edgeMatch.moving.b],label:edgeMatch.label});
+        const host=distributionHostForRack(n);if(host)n.zoneId=host.id;
+        return n;
+      }
+    }
     if(snapping && appState.editor?.distributionVertexSnap!==false){
       const points=[],segments=[],vertexPoints=[];
       const addEdges=pts=>{(pts||[]).forEach((pt,i)=>{const q=pts[(i+1)%pts.length];points.push(pt);vertexPoints.push(pt);if(q && pts.length>1){segments.push([pt,q]);points.push({x:(pt.x+q.x)/2,y:(pt.y+q.y)/2});}});};
@@ -4218,7 +4312,7 @@
         if(Number(r.stackLevel||0)!==lastLevel && r.id!==appState.selectedRackLayoutId)return;
       }
       r.rot = normalizeAngle(r.rot || 0);
-      r.front = r.front || 'top';
+      r.front = 'back'; // La orientación procede del modelo, nunca del lado mayor.
       const fp = getRackFootprint(r.modelId, r.rot || 0, r);
       const unitScale=Math.max(.01,getScaleCmPerUnit());
       const baseW = r.stackGroupId ? Number(r.virtual?.width||120)/unitScale : fp.baseW;
@@ -4232,7 +4326,7 @@
         'data-rack-id':r.id
       });
       const hit = svgEl('rect',{
-        x:-(bboxW/2)-14,y:-(bboxH/2)-14,width:bboxW+28,height:bboxH+28,rx:'14',
+        x:-(bboxW/2)-14,y:-(bboxH/2)-14,width:bboxW+28,height:bboxH+28,rx:'0',
         class:'ortho-rack-hit',style:isLayoutWorkspaceScreen()?'cursor:move':'cursor:default'
       });
       const geomW = Math.max(8, baseW);
@@ -4241,7 +4335,7 @@
       const bodyInset = 0;
       const visualW = Math.max(4, geomW - bodyInset * 2);
       const visualH = Math.max(4, geomH - bodyInset * 2);
-      const cornerRadius = Math.min(5, Math.max(2, Math.min(visualW, visualH) / 12));
+      const cornerRadius = 0; // V224: contorno 2D coincide con el rectángulo CAD real.
       if(appState.selectedRackLayoutId===r.id) g.classList.add('selected');
       if(v117ConflictRacks.has(r.id)) g.classList.add('v117-conflict');
       if(isRackSelected(r.id)) g.classList.add('multi-selected');
@@ -4256,13 +4350,13 @@
       const outlineInset = 0;
       const outlineW = Math.max(4, geomW - outlineInset * 2);
       const outlineH = Math.max(4, geomH - outlineInset * 2);
-      const outlineRadius = Math.min(4, Math.max(2, Math.min(outlineW, outlineH) / 12));
+      const outlineRadius = 0;
       const outline = svgEl('rect',{
         x:-(outlineW/2),y:-(outlineH/2),width:outlineW,height:outlineH,rx:String(outlineRadius),
         class:'ortho-rack-outline'
       });
       const fl = getFrontLine(visualW, visualH);
-      const frontLine = svgEl('line',{x1:fl.x1,y1:fl.y1,x2:fl.x2,y2:fl.y2,class:'rack-front-line'});
+      const frontLine = svgEl('line',{x1:fl.x1,y1:fl.y1,x2:fl.x2,y2:fl.y2,class:'rack-front-line rack-back-edge'});
       const frontArrow = svgEl('path',{d:frontArrowPath(fl.ax, fl.ay, fl.dir), class:'rack-front-arrow'});
       const t = svgEl('text',{
         x:0,y:4,class:'ortho-label','text-anchor':'middle','dominant-baseline':'middle',
@@ -4388,6 +4482,13 @@
       guideLayer.appendChild(svgEl('line',{x1:p1.x,y1:p1.y,x2:p2.x,y2:p2.y,stroke:snapPreview.type==='side' ? '#65f0a8' : '#56d2ff','stroke-width': snapPreview.strength === 'hard' ? '4' : '3','stroke-dasharray':dash,opacity:'.96'}));
       guideLayer.appendChild(svgEl('circle',{cx:p1.x,cy:p1.y,r:'5',fill:'#65f0a8',opacity:'.95'}));
       guideLayer.appendChild(svgEl('circle',{cx:p2.x,cy:p2.y,r:'5',fill:'#65f0a8',opacity:'.95'}));
+      if(snapPreview.movingLine){
+        const [m1,m2]=snapPreview.movingLine;
+        guideLayer.appendChild(svgEl('line',{x1:m1.x,y1:m1.y,x2:m2.x,y2:m2.y,stroke:'#05a974','stroke-width':'3','stroke-dasharray':'5 3',style:'pointer-events:none'}));
+        const center={x:(m1.x+m2.x+p1.x+p2.x)/4,y:(m1.y+m2.y+p1.y+p2.y)/4};
+        const txt=svgEl('text',{x:center.x+8,y:center.y-12,fill:'#06825b',style:'font-size:11px;font-weight:800;paint-order:stroke;stroke:#fff;stroke-width:3px;pointer-events:none'});
+        txt.textContent=snapPreview.label||'Snap entre caras';guideLayer.appendChild(txt);
+      }
     }
 
     if(dsBox && appState.editor?.dragSelect?.active){
@@ -4667,6 +4768,7 @@
     if($('#v200StreetHandlesRail'))$('#v200StreetHandlesRail').onclick=streetHandles;
     if($('#v200RackSelect'))$('#v200RackSelect').onchange=e=>{const rack=findRackById(e.target.value);if(!rack)return;appState.selectedRackLayoutId=rack.id;appState.selectedZoneId=rack.zoneId;renderLayoutEditor();};
     if($('#v200ShowSections'))$('#v200ShowSections').onclick=()=>{appState.editor.sectionVisible=!appState.editor.sectionVisible;renderLayoutEditor();};
+    if($('#v224EdgeSnap'))$('#v224EdgeSnap').onchange=e=>{appState.editor.distributionEdgeSnap=!!e.target.checked;clearRackSnapPreview();persistActiveLayout();renderLayoutEditor();};
     if($('#v205FreeMove'))$('#v205FreeMove').onchange=e=>{appState.editor.distributionFreeMove=!!e.target.checked;persistActiveLayout();renderLayoutEditor();};
     if($('#v205VertexSnap'))$('#v205VertexSnap').onchange=e=>{appState.editor.distributionVertexSnap=!!e.target.checked;clearRackSnapPreview();persistActiveLayout();renderLayoutEditor();};
     if($('#v206AlignClearance'))$('#v206AlignClearance').onchange=e=>{appState.editor.rackAlignClearanceCm=Math.max(0,Math.min(250,Number(e.target.value)||0));persistActiveLayout();};
@@ -5282,7 +5384,7 @@
     if(dragIds.length>1){
       const originals={}; dragIds.forEach(id=>{const rr=findRackById(id);if(rr)originals[id]={x:rr.x,y:rr.y,zoneId:rr.zoneId};});
       appState.editor.dragging={type:'rack-group',rackIds:dragIds,start:p,originals,historyBefore:snapshotForType('distribution')};
-    }else appState.editor.dragging = { type:'rack', rackId, start:p, original: { x:rack.x, y:rack.y, cx, cy, zoneId:rack.zoneId },historyBefore:snapshotForType('distribution') };
+    }else appState.editor.dragging = { type:'rack', rackId, start:p, original: { x:rack.x, y:rack.y, cx, cy, w:rack.w, h:rack.h, rot:rack.rot, zoneId:rack.zoneId },historyBefore:snapshotForType('distribution') };
     renderLayoutSvg(svg); renderLayoutSection(); renderLayoutInspector();
   }
 
@@ -5441,8 +5543,9 @@
       const rawDY = p.y - d.start.y;
       const ncx = d.original.cx + rawDX;
       const ncy = d.original.cy + rawDY;
-      const proposed=distributionRackPlacement(rack,ncx-rack.w/2,ncy-rack.h/2,{ignoreSnap:!!e.ctrlKey});
-      if(distributionCanCommit(proposed)){rack.x=proposed.x;rack.y=proposed.y;rack.zoneId=proposed.zoneId;d.blocked=false;}
+      const originalRack={...rack,rot:d.original.rot,w:d.original.w,h:d.original.h,x:d.original.x,y:d.original.y};
+      const proposed=distributionRackPlacement(originalRack,ncx-d.original.w/2,ncy-d.original.h/2,{ignoreSnap:!!e.ctrlKey});
+      if(distributionCanCommit(proposed)){Object.assign(rack,{x:proposed.x,y:proposed.y,w:proposed.w,h:proposed.h,rot:proposed.rot,zoneId:proposed.zoneId});d.blocked=false;}
       else d.blocked=true;
       renderLayoutSvg(svg); renderLayoutSection();
     }
@@ -5614,7 +5717,7 @@
                 <button class="seg-btn" id="btnAddRackAbove">Agregar encima</button>
                 <div class="kv-row" style="padding:10px 12px"><b>Seleccionados</b><span>${getSelectedRackIds().length || 0}</span></div>
               </div>
-              <div class="kv-row" style="padding:10px 12px"><b>Referencia visual</b><span>Línea naranja = frente del rack · N = nivel</span></div>
+              <div class="kv-row" style="padding:10px 12px"><b>Referencia visual</b><span>Línea turquesa = fondo posterior real · N = nivel</span></div>
             `}
           </div>
         </div>` : ''}`;

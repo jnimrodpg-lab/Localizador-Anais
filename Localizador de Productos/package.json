@@ -1,15 +1,15 @@
 {
   "name": "wms-industrial-cloudflare",
-  "version": "2.2.3-editor-amplio",
+  "version": "2.2.4-contornos-snap",
   "private": true,
-  "description": "WMS V223: biblioteca con visor amplio, selector superior e inspector derecho",
+  "description": "WMS V224: fondo posterior coherente 2D/3D, contornos reales y snap entre aristas",
   "type": "module",
   "scripts": {
     "build": "npm run build:frontend && npm run build:css",
     "build:frontend": "node scripts/build-frontend.mjs",
     "build:css": "node scripts/build-css.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
-    "test:regression": "node scripts/audit-v202.mjs && node scripts/test-v205.mjs && node scripts/test-v206.mjs && node scripts/test-v208.mjs && npm run test:v209 && node scripts/test-v210-walls.mjs && node scripts/test-v211.mjs && node scripts/test-v212.mjs && node scripts/test-v214.mjs && node scripts/test-v216.mjs && node scripts/test-v217.mjs && node scripts/test-v218.mjs && node scripts/test-v219.mjs && node scripts/test-v220.mjs && node scripts/test-v221.mjs && node scripts/test-v222.mjs",
+    "test:regression": "node scripts/audit-v202.mjs && node scripts/test-v205.mjs && node scripts/test-v206.mjs && node scripts/test-v208.mjs && npm run test:v209 && node scripts/test-v210-walls.mjs && node scripts/test-v211.mjs && node scripts/test-v212.mjs && node scripts/test-v214.mjs && node scripts/test-v216.mjs && node scripts/test-v217.mjs && node scripts/test-v218.mjs && node scripts/test-v219.mjs && node scripts/test-v220.mjs && node scripts/test-v221.mjs && node scripts/test-v222.mjs && node scripts/test-v224.mjs",
     "check": "npm run build && npm run verify:frontend && npm run test:regression && node --check \"functions/api/[[path]].js\" && node --check public/assets/app-main.runtimefix.js",
     "test:v209": "node scripts/test-v209.mjs",
     "test:ui": "node scripts/test-v220-ui.mjs && node scripts/test-v221-ui.mjs && node scripts/test-v222-ui.mjs && node scripts/test-v223-ui.mjs",

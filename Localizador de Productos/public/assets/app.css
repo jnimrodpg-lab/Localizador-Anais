@@ -431,8 +431,8 @@ body.theme-dark{
     .ortho-rack-group.search-primary .ortho-rack-outline{stroke:#fff3a1;stroke-width:3}
     .ortho-rack-hit{fill:rgba(0,0,0,0);stroke:rgba(0,0,0,0)}
     .drag-select-box{fill:rgba(86,210,255,.12);stroke:#56d2ff;stroke-width:2;stroke-dasharray:8 5;vector-effect:non-scaling-stroke;pointer-events:none}
-    .rack-front-line{stroke:#ff8b3d;stroke-width:3;stroke-linecap:round;pointer-events:none}
-    .rack-front-arrow{fill:#ff8b3d;stroke:#fff1;stroke-width:1;pointer-events:none}
+    .rack-front-line{stroke:#00b995;stroke-width:3;stroke-linecap:butt;pointer-events:none}
+    .rack-front-arrow{fill:#00b995;stroke:#fff1;stroke-width:1;pointer-events:none}
     .vertex-hit{fill:rgba(0,0,0,0);cursor:pointer}
     .vertex{fill:#f7fbff;stroke:#1d9bff;stroke-width:2.4;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,.45))}
     .vertex.selected{fill:#fff6cc;stroke:#ffbf00;stroke-width:3.2}
@@ -2468,7 +2468,7 @@ linear-gradient(90deg, rgba(255,255,255,.05) 0 26%, transparent 26% 100%)}
 .layout-premium-render #layoutSvg .ortho-rack-group.multi-selected .ortho-rack-body{fill:rgba(102,228,192,.15)}
 .layout-premium-render #layoutSvg .ortho-rack-group.multi-selected .ortho-rack-outline{stroke:#7ee2c0;stroke-width:2.2}
 .layout-premium-render #layoutSvg .ortho-rack-group.search-hit .ortho-rack-outline{stroke:#ffd57b}
-.layout-premium-render #layoutSvg .rack-front-line{stroke:#ff9f43;stroke-width:2.6}
+.layout-premium-render #layoutSvg .rack-front-line{stroke:#00b995;stroke-width:2.6}
 .layout-premium-render #layoutSvg .ortho-label{fill:#f4f8fb;font-size:12px;font-weight:800;letter-spacing:.05em;paint-order:stroke;stroke:rgba(8,10,14,.72);stroke-width:3px}
 .layout-premium-render #layoutSvg .vertex{fill:#fefefe;stroke:#73d7ff;stroke-width:2.4}
 .layout-premium-render #layoutSvg .edge-handle{fill:#172434;stroke:#ffb462}

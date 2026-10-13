@@ -1,5 +1,5 @@
 {
-  "version": "223",
+  "version": "224",
   "output": "public/assets/app-main.runtimefix.js",
   "files": [
     "00-core-state.js",
@@ -29,5 +29,5 @@
     "80-auth-operations.js",
     "90-bootstrap-compat.js"
   ],
-  "notes": "V223: editor amplio, selector superior, inspector derecho y encuadre adaptable; conserva la sincronización V222"
+  "notes": "V224: fondo posterior 2D/3D fijo, contornos rectos, snap entre aristas con separación 0 cm, SAT con giro, guía previa. Conserva editor amplio V223."
 }

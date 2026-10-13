@@ -2919,8 +2919,8 @@
       g.appendChild(face(faceSide(rackW, 0, rackD, floorY + rackH - shellT, floorY + rackH),{fill:'#d6e0ea',stroke:'none'}));
     }
 
-    const frontTopA = lp(0, plan.bd, H);
-    const frontTopB = lp(plan.bw, plan.bd, H);
+    const frontTopA = lp(0, 0, H);
+    const frontTopB = lp(plan.bw, 0, H);
     g.appendChild(svgEl('line',{x1:frontTopA.x,y1:frontTopA.y,x2:frontTopB.x,y2:frontTopB.y,class:'rack-front-line'}));
     const midFront = { x:(frontTopA.x + frontTopB.x) / 2, y:(frontTopA.y + frontTopB.y) / 2 };
     const centerTop = lp(plan.bw / 2, plan.bd / 2, H);

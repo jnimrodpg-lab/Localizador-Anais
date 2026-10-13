@@ -1,6 +1,15 @@
-# WMS Industrial V223 — Editor amplio de mobiliario
+# WMS Industrial V224 — Geometría real y snap entre mobiliario
 
 Medidas y geometría coherentes entre Biblioteca de racks, Crear mobiliario 3D, Editar layout y Diseñar espacio 3D. Conserva Arquitectura, Urbanismo, Distribución, calles por puntos, diorama, apilamiento y visor 3D. Mantiene backend Pages, configuración Cloudflare y migraciones D1.
+
+## Correcciones V224 — contornos y fondo posterior
+
+- **Cara posterior única:** el fondo creado en la biblioteca corresponde al plano local Y=0. En Distribución la marca está siempre en la cara posterior, independientemente del lado más largo. Se visualiza también en el espacio 3D y en la vista isométrica heredada.
+- **Contornos 2D rectos:** las esquinas visuales de los muebles son de 90 grados, coincidentes con la geometría usada para cálculos y validaciones.
+- **Snap entre caras reales:** acercar aristas paralelas de dos muebles en Distribución permite contacto lateral y alineación de fondos, incluido encaje entre mueble alto y bajo. Si el ángulo tiene una desviación pequeña (hasta 7 grados), corrige la rotación del elemento móvil y preserva su centro, con verificación de posibles colisiones por polígonos rotados.
+- **Separación editable:** la casilla «Snap entre aristas» y el valor «Separación entre caras / muro» permiten de 0 a 250 cm (0 es contacto exacto). El snap entre aristas tiene prioridad sobre el snap a vértices. Ctrl suspende la captura durante el arrastre. La guía verde muestra la cara de referencia y la posición candidata.
+- **Detección por SAT:** se comprueba el solape geométrico real con rotación en planta y la altura NPT; una arista compartida no se considera colisión. Los controles de mover/rotar y el historial existentes se conservan.
+- `scripts/test-v224.mjs` prueba fondo consistente, contacto 0/4 cm, alineación de fondos, giro arbitrario, colisión precisa y reglas de NPT.
 
 ## Interfaz V223
 
